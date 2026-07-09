@@ -1,0 +1,90 @@
+playthrough_id: clear
+game: rushn_attack
+mission: '1'
+recorded_at: '2026-07-09'
+emulator: fceux
+fceux_version: 2.6.6
+fceux_port: win32
+fm2_file: reference/clear.fm2
+total_frames: 5909
+reference_clear_sec: 98.5
+segments:
+- id: seg_001
+  name: seg_001
+  checkpoint_from: 0
+  checkpoint_to: 1
+  frame_start: 1
+  frame_end: 1181
+  room_ids:
+  - '0x00'
+  - '0x01'
+  - '0x02'
+  - '0x03'
+  - '0x04'
+  - '0x05'
+  - '0x06'
+  - '0x07'
+  reference_clear_sec: 19.7
+  demo_file: demos/seg_001.npz
+  save_state: states/cp0.fc0
+- id: seg_002
+  name: seg_002
+  checkpoint_from: 1
+  checkpoint_to: 2
+  frame_start: 1182
+  frame_end: 2362
+  room_ids:
+  - '0x00'
+  - '0x01'
+  - '0x02'
+  - '0x03'
+  - '0x04'
+  - '0x05'
+  - '0x06'
+  - '0x07'
+  reference_clear_sec: 19.7
+  demo_file: demos/seg_002.npz
+  save_state: states/cp1.fc0
+- id: seg_003
+  name: seg_003
+  checkpoint_from: 2
+  checkpoint_to: 3
+  frame_start: 2363
+  frame_end: 3543
+  room_ids:
+  - '0x00'
+  reference_clear_sec: 19.7
+  demo_file: demos/seg_003.npz
+  save_state: states/cp2.fc0
+- id: seg_004
+  name: seg_004
+  checkpoint_from: 3
+  checkpoint_to: 4
+  frame_start: 3544
+  frame_end: 4724
+  room_ids:
+  - '0x00'
+  reference_clear_sec: 19.7
+  demo_file: demos/seg_004.npz
+  save_state: states/cp3.fc0
+- id: seg_005
+  name: seg_005
+  checkpoint_from: 4
+  checkpoint_to: 5
+  frame_start: 4725
+  frame_end: 5909
+  room_ids:
+  - '0x00'
+  - '0x01'
+  - '0x02'
+  - '0x03'
+  - '0x04'
+  - '0x05'
+  - '0x12'
+  - '0x13'
+  reference_clear_sec: 19.7
+  demo_file: demos/seg_005.npz
+  save_state: states/cp4.fc0
+inference:
+  gameplay_start_frame: 18
+  save_state: states/inference_cp0.fc0

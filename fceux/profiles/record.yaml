@@ -1,0 +1,7 @@
+profile: record
+lua_script: fceux/lua/record_logger.lua
+turbo: false
+headless: false
+sound: false
+movie_record: true
+ipc: false

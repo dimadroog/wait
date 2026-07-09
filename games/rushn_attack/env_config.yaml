@@ -1,0 +1,17 @@
+# Игро-специфичные параметры среды (ML_CONCEPT §10)
+# Путь: games/rushn_attack/env_config.yaml
+
+actions:
+  - ""
+  - left
+  - right
+  - down
+  - up
+  - right+up
+  - left+up
+  - A
+  - B
+
+lives:
+  min: 0
+  max: 9

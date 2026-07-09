@@ -1,0 +1,87 @@
+# Номинации achievements для inference (ML_CONCEPT §8)
+retention_hours: 4
+
+# Порядок блоков на эфире (драматургия)
+broadcast_order:
+  - mission_clear
+  - new_record
+  - many_achievements
+  - deep_run
+  - episode_reward
+  - ladder_ouch
+  - deja_vu
+  - fastest_death
+
+nominations:
+  - idx: 1
+    slug: mission_clear
+    title: Клир миссии
+    label: Mission clear
+    tier: gold
+    type: instant
+    condition:
+      mission_clear: true
+
+  - idx: 2
+    slug: episode_reward
+    title: Жадина
+    label: Greedy
+    tier: gold
+    type: top_k
+    field: episode_reward
+    k: 3
+    order: desc
+
+  - idx: 3
+    slug: fastest_death
+    title: Мгновенный респawn
+    label: Instant respawn
+    tier: skull
+    type: instant
+    condition:
+      died: true
+      max_episode_frames: 3
+
+  - idx: 4
+    slug: many_achievements
+    title: Тур CP
+    label: CP tour
+    tier: silver
+    type: instant
+    condition:
+      min_achieved_checkpoints: 4
+
+  - idx: 5
+    slug: deep_run
+    title: Почти финиш
+    label: Almost finish
+    tier: gold
+    type: instant
+    condition:
+      min_max_checkpoint: 4
+      mission_clear: false
+
+  - idx: 6
+    slug: deja_vu
+    title: Déjà vu
+    label: Deja vu
+    tier: skull
+    type: death_cluster
+    min_count: 3
+
+  - idx: 7
+    slug: ladder_ouch
+    title: Лестница съела
+    label: Ladder death
+    tier: skull
+    type: instant
+    condition:
+      died: true
+      death_room: "0x08"
+
+  - idx: 8
+    slug: new_record
+    title: Личный рекорд
+    label: New record
+    tier: gold
+    type: new_max_checkpoint

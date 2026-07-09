@@ -1,0 +1,42 @@
+---
+description: Карантин артефактов smoke/benchmark; запрет засорения games/
+alwaysApply: true
+---
+
+# Гигиена артефактов (smoke / benchmark)
+
+## Куда писать
+
+| Тип | Разрешено | Запрещено |
+| --- | --------- | --------- |
+| Smoke / benchmark | stdout; `tmp/bridge/` (IPC); `tmp/smoke/`, `tmp/bench/` через `project_paths` | `games/.../checkpoints/`, новые `scripts/*_smoke*.py` |
+| Train | `games/.../checkpoints/` (явный train) | короткий `train_ppo` «для проверки» с `smoke_*` именами |
+| Inference | `games/.../logs/` (явный inference) | — |
+
+API карантина: `artifact_quarantine_dir()`, `artifact_session()`, `cleanup_artifact_quarantine()` в `src/project_paths.py`.
+
+## Smoke после правок bridge/env
+
+**Entry point:** `scripts/run_smoke.py` (фасад над скриптами ниже; не `train_ppo`).
+
+```bash
+./.venv/Scripts/python.exe scripts/run_smoke.py
+./.venv/Scripts/python.exe scripts/run_smoke.py --suite bridge,env
+```
+
+Отдельные скрипты (если нужен один тест):
+
+- `scripts/smoke_bridge.py`
+- `scripts/smoke_env.py`
+- `scripts/test_parallel_env.py`
+
+Не использовать `--log` в `smoke_env` без необходимости (пишет в `games/.../logs/`).
+
+## Конец сессии (обязательно)
+
+1. `cleanup_artifact_quarantine("smoke")` и `cleanup_artifact_quarantine("bench")` при создании tmp-сессий.
+2. `cleanup_mission_smoke_checkpoints(mission_dir(...))` — удалить ошибочные `smoke_*` в checkpoints.
+3. Удалить одноразовые скрипты, созданные только для отладки.
+4. `find_stray_smoke_artifacts(mission)` должен быть пуст; иначе удалить найденное.
+
+Детали: `docs/DESIGN.md` § «Гигиена артефактов».

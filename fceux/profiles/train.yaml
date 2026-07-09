@@ -1,0 +1,11 @@
+profile: train
+lua_script: fceux/lua/bridge.lua
+turbo: true
+headless: true
+sound: false
+movie_record: false
+ipc: true
+frame_skip: 4
+no_focus: true
+obs_format: raw
+ipc_transport: v1

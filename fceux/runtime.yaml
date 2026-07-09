@@ -1,0 +1,8 @@
+# Единый контракт FCEUX для всего проекта. Не редактировать per-game.
+fceux_version: "2.6.6"
+port: win32                    # classic win64 Binary (НЕ Qt/SDL)
+platform: windows
+home: fceux/portable           # от корня репозитория; полный дистрибутив
+binary: fceux/portable/fceux64.exe
+download_page: https://fceux.com/web/download.html
+# Переопределение: переменная окружения FCEUX_HOME → каталог portable

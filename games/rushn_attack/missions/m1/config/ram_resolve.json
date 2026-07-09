@@ -1,0 +1,41 @@
+{
+  "frame_count": 5909,
+  "fields": [
+    {
+      "field": "room",
+      "address": "0x000C",
+      "confidence": 1.0,
+      "note": "auto"
+    },
+    {
+      "field": "x",
+      "address": "0x01EE",
+      "confidence": 1.0,
+      "note": "auto"
+    },
+    {
+      "field": "y",
+      "address": "0x020D",
+      "confidence": 1.0,
+      "note": "auto"
+    },
+    {
+      "field": "hp",
+      "address": "0x0461",
+      "confidence": 0.86,
+      "note": "auto"
+    },
+    {
+      "field": "lives",
+      "address": "0x0017",
+      "confidence": 0.9,
+      "note": "auto"
+    },
+    {
+      "field": "checkpoint",
+      "address": "0x01FB",
+      "confidence": 0.9,
+      "note": "auto"
+    }
+  ]
+}

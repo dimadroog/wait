@@ -1,0 +1,33 @@
+# Heuristics сборки эталона (Strategy → src/playthrough_build.py)
+# Игро-специфично; новая игра — свой phase0.yaml + ссылка в game.yaml
+
+transition_rooms:
+  - "0xFF"
+  - "0x13"
+  - "0x05"
+  - "0x04"
+  - "0x03"
+  - "0x02"
+  - "0x01"
+
+checkpoint_names:
+  - start
+  - first_screen
+  - ladder
+  - mid_mission
+  - late_mission
+
+segment_count: 5
+
+checkpoint_heuristics:
+  - kind: first_non_transition_room
+  - kind: first_room
+    room: "0x0C"
+  - kind: first_room
+    room: "0x08"
+  - kind: first_room
+    room: "0x12"
+  - kind: first_room_min_y
+    room: "0x00"
+    min_y: 60
+    after_first_room: "0x12"
