@@ -18,7 +18,7 @@ from fm2_export import (  # noqa: E402
     patch_savestate_movie_guid,
     read_fm2_guid,
 )
-from inference_config import INFERENCE_FM2_GUID  # noqa: E402
+from fm2_export import INFERENCE_FM2_GUID  # noqa: E402
 
 _MISSION = Path(__file__).resolve().parents[1] / "games" / "rushn_attack" / "missions" / "m1"
 _INFERENCE_CP0 = _MISSION / "states" / "inference_cp0.fc0"
@@ -71,7 +71,6 @@ def test_export_episode_fm2_embedded(tmp_path: Path, inference_cp0: Path) -> Non
     export_episode_fm2_from_steps(
         steps,
         out,
-        embed_savestate=True,
         save_state_path=inference_cp0,
     )
     assert fm2_has_embedded_savestate(out)
@@ -87,7 +86,6 @@ def test_embed_export_timing_and_size(inference_cp0: Path, tmp_path: Path) -> No
     export_episode_fm2_from_steps(
         [{"action": "right"}],
         out,
-        embed_savestate=True,
         save_state_path=inference_cp0,
     )
     elapsed = time.perf_counter() - t0

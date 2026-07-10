@@ -9,7 +9,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
-from inference_config import inference_save_state_for  # noqa: E402
+from inference_states import inference_save_state_for  # noqa: E402
 from mission_states import save_fm2_states  # noqa: E402
 from phase0_config import load_phase0_config, transition_rooms_from_config  # noqa: E402
 from playthrough_build import (  # noqa: E402

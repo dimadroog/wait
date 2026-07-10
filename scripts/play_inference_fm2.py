@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Проигрывание inference FM2 или playlist.json с save state и achievement overlay."""
+"""Проигрывание self-contained inference FM2 или playlist.json с achievement overlay."""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,6 @@ sys.path.insert(0, str(_REPO / "src"))
 
 from fceux_helpers import fceux_sound_off  # noqa: E402
 from fm2_export import fm2_has_embedded_savestate  # noqa: E402
-from inference_config import resolve_inference_save_state  # noqa: E402
 from project_paths import mission_dir, parse_fm2_rom_basename, repo_root, resolve_fceux_binary, resolve_rom  # noqa: E402
 
 
@@ -41,32 +40,16 @@ def _overlay_hold_frames(overlay_path: Path, default: int = 180) -> int:
         return default
 
 
+def _require_embedded_fm2(fm2: Path) -> None:
+    if not fm2_has_embedded_savestate(fm2):
+        raise SystemExit(f"FM2 missing embedded savestate (self-contained required): {fm2}")
+
+
 def _stage_rom(rom: Path, staging: Path, rom_base: str) -> Path:
     staged_rom = staging / rom_base
     for name in (rom_base, rom_base + ".nes", rom.name):
         shutil.copy2(rom, staging / name)
     return staged_rom
-
-
-def _resolve_external_save_state(
-    fm2: Path,
-    mission: Path,
-    *,
-    save_state_arg: str | None,
-    sidecar: Path,
-) -> tuple[Path | None, str | None]:
-    """Внешний .fc0 для split-клипа; None если savestate вшит в FM2."""
-    if fm2_has_embedded_savestate(fm2):
-        return None, None
-    save_state_rel = save_state_arg
-    if not save_state_rel and sidecar.is_file():
-        meta = json.loads(sidecar.read_text(encoding="utf-8"))
-        save_state_rel = meta.get("save_state")
-    save_state_rel = save_state_rel or resolve_inference_save_state(mission, cp_index=0)
-    save_state = mission / save_state_rel
-    if not save_state.is_file():
-        raise SystemExit(f"Save state not found: {save_state}")
-    return save_state, save_state_rel
 
 
 def _resolve_input_path(path: Path, game: str, mission: str) -> Path:
@@ -76,27 +59,22 @@ def _resolve_input_path(path: Path, game: str, mission: str) -> Path:
     return candidate.resolve() if candidate.is_file() else path.resolve()
 
 
-def _stage_single_clip(
+def _stage_clip(
     fm2: Path,
     rom: Path,
-    save_state: Path | None,
     overlay_path: Path | None,
     staging: Path,
-) -> tuple[Path, Path, Path | None, Path | None]:
+) -> tuple[Path, Path, Path | None]:
     staging.mkdir(parents=True, exist_ok=True)
     staged_fm2 = staging / fm2.name
     shutil.copy2(fm2, staged_fm2)
     rom_base = parse_fm2_rom_basename(fm2)
     staged_rom = _stage_rom(rom, staging, rom_base)
-    staged_state: Path | None = None
-    if save_state is not None:
-        staged_state = staging / save_state.name
-        shutil.copy2(save_state, staged_state)
     staged_overlay: Path | None = None
     if overlay_path and overlay_path.is_file():
         staged_overlay = staging / overlay_path.name
         shutil.copy2(overlay_path, staged_overlay)
-    return staged_fm2, staged_rom, staged_state, staged_overlay
+    return staged_fm2, staged_rom, staged_overlay
 
 
 def _run_fceux_clip(
@@ -106,10 +84,8 @@ def _run_fceux_clip(
     staging: Path,
     staged_fm2: Path,
     staged_rom: Path,
-    staged_state: Path | None,
     env: dict[str, str],
     turbo: bool,
-    no_save_state: bool,
     timeout: float,
 ) -> None:
     cmd = [
@@ -123,8 +99,6 @@ def _run_fceux_clip(
     ]
     if turbo:
         cmd.extend(["-nothrottle", "1"])
-    if not no_save_state and staged_state is not None:
-        cmd.extend(["-loadstate", staged_state.name])
     cmd.extend(["-playmovie", staged_fm2.name, staged_rom.name])
 
     with fceux_sound_off(fceux.parent):
@@ -140,22 +114,14 @@ def _run_fceux_clip(
 
 
 def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
-    mission = mission_dir(args.game, args.mission)
+    _require_embedded_fm2(fm2)
     sidecar = fm2.with_suffix(".overlay.json")
     overlay_path = Path(args.overlay) if args.overlay else sidecar
 
-    save_state, save_state_rel = _resolve_external_save_state(
-        fm2,
-        mission,
-        save_state_arg=args.save_state,
-        sidecar=sidecar,
-    )
-    embedded = fm2_has_embedded_savestate(fm2)
-
     rom = resolve_rom(args.game)
     staging = repo_root() / "tmp" / "play_fm2" / "staging"
-    staged_fm2, staged_rom, staged_state, staged_overlay = _stage_single_clip(
-        fm2, rom, save_state, overlay_path if overlay_path.is_file() else None, staging
+    staged_fm2, staged_rom, staged_overlay = _stage_clip(
+        fm2, rom, overlay_path if overlay_path.is_file() else None, staging
     )
 
     portable_dup = repo_root() / "fceux" / "portable" / "movies" / fm2.name
@@ -182,11 +148,7 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
     overlay_hold = _overlay_hold_frames(overlay_path if overlay_path.is_file() else sidecar)
     timeout = max(args.timeout, (frames + overlay_hold) / 30.0 + 10.0)
 
-    print(
-        f"Playing {fm2.name} ({frames} frames), "
-        f"save_state={'embedded' if embedded else save_state_rel}",
-        flush=True,
-    )
+    print(f"Playing {fm2.name} ({frames} frames), save_state=embedded", flush=True)
     if overlay_path.is_file():
         print(f"Overlay: {overlay_path}")
 
@@ -196,16 +158,13 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
         staging=staging,
         staged_fm2=staged_fm2,
         staged_rom=staged_rom,
-        staged_state=None if (args.no_save_state or embedded) else staged_state,
         env=env,
         turbo=args.turbo,
-        no_save_state=args.no_save_state,
         timeout=timeout,
     )
 
 
 def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
-    mission = mission_dir(args.game, args.mission)
     logs_dir = playlist_path.parent
     playlist = json.loads(playlist_path.read_text(encoding="utf-8"))
     clips = playlist.get("clips") or []
@@ -218,91 +177,52 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
 
-    staged_clips: list[dict] = []
+    fceux = resolve_fceux_binary()
+    lua = repo_root() / "fceux" / "lua" / "achievement_overlay.lua"
     total_timeout = 0.0
 
     for clip in clips:
         fm2 = logs_dir / clip["fm2"]
         if not fm2.is_file():
             raise SystemExit(f"FM2 not found for playlist: {fm2}")
+        _require_embedded_fm2(fm2)
         overlay_name = clip.get("overlay") or fm2.with_suffix(".overlay.json").name
         overlay_path = logs_dir / overlay_name
-        embedded = fm2_has_embedded_savestate(fm2)
-        staged_state: Path | None = None
-        save_state_rel: str | None = None
-        if not embedded:
-            save_state_rel = clip.get("save_state")
-            if save_state_rel is None:
-                save_state_rel = resolve_inference_save_state(mission, cp_index=0)
-            save_state = mission / save_state_rel
-            if not save_state.is_file():
-                raise SystemExit(f"Save state not found: {save_state}")
-            staged_state = staging / Path(save_state_rel).name
-            shutil.copy2(save_state, staged_state)
-
-        staged_fm2 = staging / fm2.name
-        shutil.copy2(fm2, staged_fm2)
-        rom_base = parse_fm2_rom_basename(fm2)
-        if not (staging / rom_base).is_file():
-            _stage_rom(rom, staging, rom_base)
-        staged_overlay = staging / overlay_path.name
-        if overlay_path.is_file():
-            shutil.copy2(overlay_path, staged_overlay)
-
+        _stage_clip(fm2, rom, overlay_path if overlay_path.is_file() else None, staging)
         frames = _count_fm2_frames(fm2)
-        hold = _overlay_hold_frames(overlay_path if overlay_path.is_file() else staged_overlay)
+        hold = _overlay_hold_frames(overlay_path)
         total_timeout += (frames + hold) / 30.0 + 5.0
 
-        staged_clips.append(
-            {
-                "idx": clip.get("idx", len(staged_clips) + 1),
-                "slug": clip.get("slug", ""),
-                "block_label": clip.get("block_label", ""),
-                "fm2": staged_fm2.name,
-                "overlay": staged_overlay.name if staged_overlay.is_file() else overlay_name,
-                "save_state": staged_state.name if staged_state else None,
-            }
-        )
-
-    staged_manifest = staging / "playlist.json"
-    staged_manifest.write_text(
-        json.dumps({"date": playlist.get("date", ""), "clips": staged_clips}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-    fceux = resolve_fceux_binary()
-    lua = repo_root() / "fceux" / "lua" / "achievement_playlist.lua"
     timeout = max(args.timeout, total_timeout + 10.0)
-
     print(
-        f"Playlist {playlist_path.name}: {len(staged_clips)} clip(s), "
+        f"Playlist {playlist_path.name}: {len(clips)} clip(s), "
         f"timeout ~{total_timeout:.0f}s",
         flush=True,
     )
 
-    for clip in staged_clips:
-        clip_idx = int(clip["idx"])
-        staged_fm2 = staging / clip["fm2"]
-        staged_state = staging / clip["save_state"] if clip.get("save_state") else None
-        embedded = fm2_has_embedded_savestate(staged_fm2)
-        rom_base = parse_fm2_rom_basename(staged_fm2)
-        staged_rom = staging / rom_base
+    for clip_idx, clip in enumerate(clips, start=1):
+        fm2 = logs_dir / clip["fm2"]
+        overlay_name = clip.get("overlay") or fm2.with_suffix(".overlay.json").name
+        overlay_path = logs_dir / overlay_name
+        staged_fm2 = staging / fm2.name
+        staged_rom = staging / parse_fm2_rom_basename(fm2)
+        staged_overlay = staging / overlay_name
 
         env = os.environ.copy()
-        env["WAIT_PLAYLIST_CONFIG"] = str(staged_manifest.resolve())
-        env["WAIT_PLAYLIST_CLIP_IDX"] = str(clip_idx)
+        if staged_overlay.is_file():
+            env["WAIT_ACHIEVEMENT_OVERLAY"] = str(staged_overlay.resolve())
+        elif overlay_path.is_file():
+            env["WAIT_ACHIEVEMENT_OVERLAY"] = str(overlay_path.resolve())
         if clip.get("block_label"):
             env["WAIT_BLOCK_LABEL"] = str(clip["block_label"])
 
         frames = _count_fm2_frames(staged_fm2)
-        overlay_path = staging / clip["overlay"]
-        hold = _overlay_hold_frames(overlay_path)
+        hold = _overlay_hold_frames(overlay_path if overlay_path.is_file() else staged_overlay)
         clip_timeout = max(30.0, (frames + hold) / 30.0 + 10.0)
 
         print(
-            f"  clip {clip_idx}/{len(staged_clips)}: {clip['fm2']} "
-            f"({clip.get('block_label', '')}) "
-            f"save_state={'embedded' if embedded else clip.get('save_state')}",
+            f"  clip {clip_idx}/{len(clips)}: {clip['fm2']} "
+            f"({clip.get('block_label', '')})",
             flush=True,
         )
         _run_fceux_clip(
@@ -311,29 +231,21 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
             staging=staging,
             staged_fm2=staged_fm2,
             staged_rom=staged_rom,
-            staged_state=None if (args.no_save_state or embedded) else staged_state,
             env=env,
             turbo=args.turbo,
-            no_save_state=args.no_save_state,
-            timeout=clip_timeout,
+            timeout=min(clip_timeout, timeout),
         )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Play inference FM2 or playlist.json with overlay")
+    parser = argparse.ArgumentParser(description="Play self-contained inference FM2 or playlist.json")
     parser.add_argument(
         "input",
         help="путь к .fm2 или .playlist.json (напр. logs/20260705_playlist.json)",
     )
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
-    parser.add_argument(
-        "--save-state",
-        default=None,
-        help="states/inference_cp0.fc0 (default: sidecar или inference_cp0; только single FM2)",
-    )
     parser.add_argument("--overlay", default=None, help="путь к .overlay.json (single FM2)")
-    parser.add_argument("--no-save-state", action="store_true", help="без loadstate")
     parser.add_argument("--turbo", action="store_true", help="макс. скорость (без throttle)")
     parser.add_argument("--timeout", type=float, default=120.0, help="минимальный timeout (сек)")
     args = parser.parse_args()
