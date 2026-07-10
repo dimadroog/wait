@@ -26,8 +26,8 @@ def make_env(
     **kwargs,
 ) -> gym.Env:
     """Фабрика Rush'n Attack: BaseNesEnv + CheckpointRewardWrapper."""
-    cfg = _load_env_config()
-    actions = tuple(cfg.get("actions") or [])
+    env_config = _load_env_config()
+    actions = tuple(env_config.get("actions") or [])
     lives = cfg.get("lives") or {}
     env = BaseNesEnv(
         game_id=game_id,

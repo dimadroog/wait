@@ -227,7 +227,7 @@ def write_routes_yaml(
             "trigger": {"flag": "mission_complete"},
         }
     )
-    doc = {
+    routes_yaml = {
         "game": game_id,
         "mission": mission_id.replace("m", "") if mission_id.startswith("m") else mission_id,
         "checkpoints": checkpoints,
@@ -242,7 +242,7 @@ def write_routes_yaml(
         },
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    path.write_text(yaml.dump(routes_yaml, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def write_manifest_yaml(
@@ -279,7 +279,7 @@ def write_manifest_yaml(
                 "save_state": f"states/cp{i}.fc0",
             }
         )
-    doc = {
+    manifest_yaml = {
         "playthrough_id": Path(fm2_rel).stem,
         "game": game_id,
         "mission": mission_id.replace("m", "") if mission_id.startswith("m") else mission_id,
@@ -293,12 +293,12 @@ def write_manifest_yaml(
         "segments": seg_rows,
     }
     if gameplay_start_frame is not None:
-        doc["inference"] = {
+        manifest_yaml["inference"] = {
             "gameplay_start_frame": gameplay_start_frame,
             "save_state": "states/inference_cp0.fc0",
         }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    path.write_text(yaml.dump(manifest_yaml, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def save_state_plan(segments: list[dict]) -> list[dict]:

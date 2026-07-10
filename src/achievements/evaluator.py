@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from log_utils import RETENTION_HOURS, load_jsonl_window
+from jsonl_logs import RETENTION_HOURS, load_jsonl_window
 from project_paths import load_yaml, repo_root
 
 
@@ -67,14 +67,14 @@ def evaluate_records(
     config: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Вернуть копии записей с заполненным tags[]."""
-    cfg = config or load_achievements_config()
-    noms = _nomination_by_slug(cfg)
+    achievements_config = config or load_achievements_config()
+    noms = _nomination_by_slug(achievements_config)
     out = [dict(r) for r in records]
 
     # instant rules
     for record in out:
         tags: list[str] = []
-        for nom in cfg.get("nominations") or []:
+        for nom in achievements_config.get("nominations") or []:
             if nom.get("type") != "instant":
                 continue
             if _matches_instant(record, nom.get("condition") or {}):
@@ -143,8 +143,8 @@ def write_tagged_attempts(attempts_path: Path, records: list[dict[str, Any]]) ->
 
 
 def tier_for_slug(slug: str, config: dict[str, Any] | None = None) -> str:
-    cfg = config or load_achievements_config()
-    for nom in cfg.get("nominations") or []:
+    achievements_config = config or load_achievements_config()
+    for nom in achievements_config.get("nominations") or []:
         if nom.get("slug") == slug:
             return str(nom.get("tier", "gold"))
     return "gold"
@@ -157,8 +157,8 @@ def overlay_payload(
     show_frames: int = 180,
 ) -> dict[str, Any]:
     """JSON для tmp/bridge/inference/overlay.json."""
-    cfg = config or load_achievements_config()
-    noms = _nomination_by_slug(cfg)
+    achievements_config = config or load_achievements_config()
+    noms = _nomination_by_slug(achievements_config)
     achievements = []
     for slug in record.get("tags") or []:
         nom = noms.get(slug, {})
@@ -168,7 +168,7 @@ def overlay_payload(
                 "slug": slug,
                 "title": str(nom.get("title", slug)),
                 "label": str(nom.get("label") or nom.get("title", slug)),
-                "tier": str(nom.get("tier", tier_for_slug(slug, cfg))),
+                "tier": str(nom.get("tier", tier_for_slug(slug, achievements_config))),
             }
         )
     achievements.sort(key=lambda a: a["idx"])

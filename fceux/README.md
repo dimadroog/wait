@@ -35,7 +35,7 @@ fceux/
 | `train` | `lua/bridge.lua` | вкл | скрыто | PPO, N parallel env |
 | `inference` | `lua/bridge.lua` | выкл | да | Эфир, OBS capture |
 
-Launcher (`src/env/`, Phase 1) читает `runtime.yaml` + `profiles/<mode>.yaml`.
+Launcher (`src/env/`) читает `runtime.yaml` + `profiles/<mode>.yaml`.
 
 ## Согласованность
 

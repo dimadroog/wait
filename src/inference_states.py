@@ -15,8 +15,8 @@ def gameplay_start_frame(mission: Path) -> int | None:
     manifest = mission / "config" / "playthrough_manifest.yaml"
     if not manifest.is_file():
         return None
-    data = load_yaml(manifest)
-    inference = data.get("inference") or {}
+    manifest_yaml = load_yaml(manifest)
+    inference = manifest_yaml.get("inference") or {}
     frame = inference.get("gameplay_start_frame")
     return int(frame) if frame is not None else None
 
@@ -25,8 +25,8 @@ def resolve_inference_reset_state(mission: Path, *, cp_index: int = 0) -> str:
     """Путь относительно mission для inference env reset и FM2 embed."""
     manifest = mission / "config" / "playthrough_manifest.yaml"
     if manifest.is_file() and cp_index == 0:
-        data = load_yaml(manifest)
-        inference = data.get("inference") or {}
+        manifest_yaml = load_yaml(manifest)
+        inference = manifest_yaml.get("inference") or {}
         rel = inference.get("save_state")
         if rel:
             path = mission / rel

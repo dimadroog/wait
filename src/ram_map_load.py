@@ -13,9 +13,9 @@ def load_ram_addresses(mission: Path) -> dict[str, int]:
         raise FileNotFoundError(
             f"ram_resolve.json not found: {path}. Run ram_scout.py first."
         )
-    data = json.loads(path.read_text(encoding="utf-8"))
+    ram_resolve = json.loads(path.read_text(encoding="utf-8"))
     addrs: dict[str, int] = {}
-    for field in data.get("fields", []):
+    for field in ram_resolve.get("fields", []):
         addr = field.get("address")
         if addr:
             addrs[field["field"]] = int(addr, 16)

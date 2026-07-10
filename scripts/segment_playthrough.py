@@ -54,7 +54,7 @@ def build_demos(mission: Path) -> list[Path]:
             continue
         obs = np.zeros((n, 4, 84, 84), dtype=np.float32)
         act = np.array(actions, dtype=np.int64)
-        meta = json.dumps(
+        segment_meta_json = json.dumps(
             {
                 "segment_id": seg["id"],
                 "mission": mission.name,
@@ -64,7 +64,7 @@ def build_demos(mission: Path) -> list[Path]:
             }
         )
         out = demos_dir / f"{seg['id']}.npz"
-        np.savez_compressed(out, obs=obs, actions=act, meta=np.array(meta))
+        np.savez_compressed(out, obs=obs, actions=act, meta=np.array(segment_meta_json))
         written.append(out)
     return written
 

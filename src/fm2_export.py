@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Iterator
 
-from log_utils import iter_jsonl
+from jsonl_logs import iter_jsonl
 from project_paths import repo_root
 
 # Отдельный GUID от эталона (clear.fm2); стабильный для всех inference-movie.

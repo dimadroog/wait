@@ -1,4 +1,4 @@
-"""PPO training на CPU (Phase 2)."""
+"""PPO training на CPU."""
 from __future__ import annotations
 
 import argparse
@@ -35,8 +35,8 @@ POLICY_KWARGS = {"normalize_images": False}  # obs уже float [0,1], channel-f
 def _default_save_state(mission: Path) -> str:
     manifest = mission / "config" / "playthrough_manifest.yaml"
     if manifest.is_file():
-        doc = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-        segments = doc.get("segments") or []
+        manifest = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+        segments = manifest.get("segments") or []
         if segments:
             return str(segments[0].get("save_state", "states/cp0.fc0"))
     return "states/cp0.fc0"

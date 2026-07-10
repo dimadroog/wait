@@ -13,8 +13,8 @@ from project_paths import game_dir, load_yaml
 
 def import_game_env(game_id: str) -> ModuleType:
     """Импортирует games/<game_id>/env/ как Python-пакет."""
-    meta = load_yaml(game_dir(game_id) / "game.yaml")
-    pkg_name = meta.get("env_package", "env")
+    game_yaml = load_yaml(game_dir(game_id) / "game.yaml")
+    pkg_name = game_yaml.get("env_package", "env")
     pkg_dir = game_dir(game_id) / pkg_name
     init_py = pkg_dir / "__init__.py"
     if not init_py.is_file():
@@ -46,8 +46,8 @@ def make_env(
     **kwargs,
 ) -> gym.Env:
     """Фабрика: env из games/<game_id>/env/, mission из game.yaml если не задана."""
-    meta = load_yaml(game_dir(game_id) / "game.yaml")
-    mission = mission_id or meta.get("default_mission", "m1")
+    game_yaml = load_yaml(game_dir(game_id) / "game.yaml")
+    mission = mission_id or game_yaml.get("default_mission", "m1")
     mod = import_game_env(game_id)
     if not hasattr(mod, "make_env"):
         raise AttributeError(f"games/{game_id}/env/__init__.py must define make_env()")

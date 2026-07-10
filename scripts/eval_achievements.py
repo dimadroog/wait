@@ -14,7 +14,7 @@ from achievements.evaluator import (  # noqa: E402
     load_achievements_config,
     write_tagged_attempts,
 )
-from log_utils import dated_log_path  # noqa: E402
+from jsonl_logs import dated_log_path  # noqa: E402
 from project_paths import mission_dir  # noqa: E402
 
 

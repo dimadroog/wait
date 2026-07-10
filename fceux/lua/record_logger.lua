@@ -1,2 +1,2 @@
--- Запись эталона: FM2 + human_playthrough.jsonl + save states (Phase 0 stub)
+-- Запись эталона: FM2 + human_playthrough.jsonl + save states
 -- Контракт: docs/ML_CONCEPT.md §7

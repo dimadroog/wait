@@ -35,8 +35,8 @@ def _game_id_from_mission(mission: Path) -> str:
 
 def _load_human_actions(mission: Path, frame_start: int, frame_end: int) -> list[int]:
     human_path = mission / "reference" / "human_playthrough.jsonl"
-    cfg = load_yaml(game_dir(_game_id_from_mission(mission)) / "env_config.yaml")
-    action_strings = tuple(cfg.get("actions") or [])
+    env_config = load_yaml(game_dir(_game_id_from_mission(mission)) / "env_config.yaml")
+    action_strings = tuple(env_config.get("actions") or [])
     by_frame: dict[int, str] = {}
     with human_path.open(encoding="utf-8") as f:
         for line in f:
@@ -71,19 +71,19 @@ def load_demo_dataset(
     obs_parts: list[np.ndarray] = []
     act_parts: list[np.ndarray] = []
     for path in paths:
-        data = np.load(path, allow_pickle=True)
-        meta_raw = data["meta"]
-        meta: dict[str, Any] = json.loads(str(meta_raw.item() if hasattr(meta_raw, "item") else meta_raw))
-        if require_real_obs and meta.get("obs_stub"):
+        segment_npz = np.load(path, allow_pickle=True)
+        meta_raw = segment_npz["meta"]
+        segment_meta: dict[str, Any] = json.loads(str(meta_raw.item() if hasattr(meta_raw, "item") else meta_raw))
+        if require_real_obs and segment_meta.get("obs_stub"):
             print(f"skip {path.name}: obs_stub (пересоберите demos с реальными obs)")
             continue
 
-        seg_id = meta.get("segment_id") or path.stem
+        seg_id = segment_meta.get("segment_id") or path.stem
         seg = seg_by_id.get(seg_id, {})
-        frame_start = int(meta.get("frame_start") or seg.get("frame_start", 0))
-        frame_end = int(meta.get("frame_end") or seg.get("frame_end", 0))
+        frame_start = int(segment_meta.get("frame_start") or seg.get("frame_start", 0))
+        frame_end = int(segment_meta.get("frame_end") or seg.get("frame_end", 0))
         actions = _load_human_actions(mission, frame_start, frame_end)
-        obs = np.asarray(data["obs"], dtype=np.float32)
+        obs = np.asarray(segment_npz["obs"], dtype=np.float32)
         n = min(len(actions), obs.shape[0])
         if n == 0:
             continue

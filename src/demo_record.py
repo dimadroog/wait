@@ -90,7 +90,7 @@ def write_demo_npz(
     mission_id: str,
     frame_skip: int,
 ) -> None:
-    meta = json.dumps(
+    segment_meta_json = json.dumps(
         {
             "segment_id": seg["id"],
             "mission": mission_id,
@@ -102,7 +102,7 @@ def write_demo_npz(
         ensure_ascii=False,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, obs=obs, actions=actions, meta=np.array(meta))
+    np.savez_compressed(path, obs=obs, actions=actions, meta=np.array(segment_meta_json))
 
 
 def default_record_workers(n_segments: int) -> int:

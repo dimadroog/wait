@@ -11,7 +11,7 @@ sys.path.insert(0, str(_REPO / "src"))
 
 from fm2_export import default_fm2_template, export_fm2  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
-from log_utils import dated_log_path  # noqa: E402
+from jsonl_logs import dated_log_path  # noqa: E402
 from project_paths import mission_dir  # noqa: E402
 
 

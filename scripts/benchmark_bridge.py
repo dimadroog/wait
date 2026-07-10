@@ -101,10 +101,10 @@ def _bench_single(
         for i in range(step_warmup + step_samples):
             t_step = time.perf_counter()
             t_ipc = time.perf_counter()
-            data = bridge.step("right")
+            bridge_response = bridge.step("right")
             ipc_ms = (time.perf_counter() - t_ipc) * 1000.0
             t_dec = time.perf_counter()
-            bridge.decode_obs_from_response(data)
+            bridge.decode_obs_from_response(bridge_response)
             dec_ms = (time.perf_counter() - t_dec) * 1000.0
             total_ms = (time.perf_counter() - t_step) * 1000.0
             if i >= step_warmup:
@@ -155,8 +155,8 @@ def _parallel_worker(
             bridge.cache_state(Path(save_state).name)
             t0 = time.perf_counter()
             for _ in range(steps):
-                data = bridge.step("right")
-                bridge.decode_obs_from_response(data)
+                bridge_response = bridge.step("right")
+                bridge.decode_obs_from_response(bridge_response)
             elapsed = time.perf_counter() - t0
         out_q.put((rank, elapsed, None))
     except Exception as e:

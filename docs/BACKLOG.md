@@ -1155,7 +1155,9 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 - [x] Docstrings и комментарии в `src/`, `scripts/`, `tests/` — без номеров фаз roadmap
 - [x] Шаблон `ram_map.md` / `ram_resolve.py` — «сборка эталона», не «Phase 0»
 - [x] `docs/SCRIPTS.md`: секция «Эталон и RAM» вместо «Phase 0 — данные и RAM»
-- [x] `grep -ri 'phase0\\|Phase 0' src scripts tests games` — пусто (кроме CHANGELOG/git при необходимости)
+- [x] `log_utils.py` → `jsonl_logs.py`; `fceux_helpers.py` → `fceux_launch.py`
+- [x] Переменные `data`/`doc`/`meta`/`cfg` → доменные имена (кроме Gymnasium `info`, npz-ключ `meta`, wire `data: bytes`)
+- [x] `grep -riE 'phase0|Phase [0-9]' src scripts tests games fceux` — пусто
 
 #### B — RAM scout: убрать fallback `logs/ram_*` (этап 2, миграция done)
 

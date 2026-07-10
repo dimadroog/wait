@@ -44,7 +44,7 @@ def _stage_fm2(fm2: Path, rom: Path, staging: Path) -> tuple[Path, Path]:
 @contextmanager
 def _fceux_sound_off(fceux_dir: Path):
     """Временно выключает звук в fceux.cfg (parallel-safe)."""
-    from fceux_helpers import fceux_sound_off
+    from fceux_launch import fceux_sound_off
 
     with fceux_sound_off(fceux_dir):
         yield

@@ -5,8 +5,8 @@ from project_paths import game_dir, load_yaml
 
 
 def load_etalon_build_config(game_id: str) -> dict:
-    meta = load_yaml(game_dir(game_id) / "game.yaml")
-    rel = meta.get("etalon_build_config", "etalon_build.yaml")
+    game_yaml = load_yaml(game_dir(game_id) / "game.yaml")
+    rel = game_yaml.get("etalon_build_config", "etalon_build.yaml")
     path = game_dir(game_id) / rel
     if not path.is_file():
         raise FileNotFoundError(

@@ -1,4 +1,4 @@
-"""Общие утилиты для dated-логов inference (ML_CONCEPT §8)."""
+"""Dated JSONL-логи inference: пути, retention, append/load."""
 from __future__ import annotations
 
 import json

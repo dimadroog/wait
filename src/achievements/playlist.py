@@ -20,7 +20,7 @@ from fm2_export import export_fm2, fm2_has_embedded_savestate, write_fm2_sidecar
 
 from inference_states import resolve_inference_reset_state
 
-from log_utils import utc_date_prefix
+from jsonl_logs import utc_date_prefix
 
 from project_paths import mission_dir, repo_root
 
@@ -208,15 +208,15 @@ def build_playlist(
 
     """
 
-    cfg = config or load_achievements_config()
+    achievements_config = config or load_achievements_config()
 
-    records = evaluate_attempts_file(attempts_path, config=cfg)
+    records = evaluate_attempts_file(attempts_path, config=achievements_config)
 
     date_prefix = utc_date_prefix()
 
-    noms = _nomination_index(cfg)
+    noms = _nomination_index(achievements_config)
 
-    broadcast = cfg.get("broadcast_order") or list(noms.keys())
+    broadcast = achievements_config.get("broadcast_order") or list(noms.keys())
 
     mission_root = mission_dir(game, mission)
 
@@ -310,7 +310,7 @@ def build_playlist(
 
                 record=record,
 
-                config=cfg,
+                config=achievements_config,
 
             )
 

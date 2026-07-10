@@ -5,7 +5,7 @@ import json
 import shutil
 from pathlib import Path
 
-from fceux_helpers import run_fceux_movie
+from fceux_launch import run_fceux_movie
 from project_paths import load_yaml, parse_fm2_rom_basename, repo_root
 
 

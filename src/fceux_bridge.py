@@ -1,4 +1,4 @@
-"""Python ↔ FCEUX IPC (Phase 1)."""
+"""Python ↔ FCEUX IPC."""
 from __future__ import annotations
 
 import json
@@ -178,11 +178,11 @@ def decode_gd_screenshot(path: Path, width: int = 84, height: int = 84) -> np.nd
     """GD-скриншот FCEUX (gui.gdscreenshot) → grayscale width×height."""
     import cv2
 
-    data = path.read_bytes()
+    gd_bytes = path.read_bytes()
     expected = GD_HEADER_BYTES + NES_WIDTH * NES_HEIGHT * 4
-    if len(data) != expected:
-        raise FceuxBridgeError(f"Bad GD obs size {len(data)}, expected {expected}")
-    rgba = np.frombuffer(data[GD_HEADER_BYTES:], dtype=np.uint8).reshape(NES_HEIGHT, NES_WIDTH, 4)
+    if len(gd_bytes) != expected:
+        raise FceuxBridgeError(f"Bad GD obs size {len(gd_bytes)}, expected {expected}")
+    rgba = np.frombuffer(gd_bytes[GD_HEADER_BYTES:], dtype=np.uint8).reshape(NES_HEIGHT, NES_WIDTH, 4)
     gray = (0.299 * rgba[:, :, 0] + 0.587 * rgba[:, :, 1] + 0.114 * rgba[:, :, 2]).astype(np.uint8)
     return cv2.resize(gray, (width, height), interpolation=cv2.INTER_AREA)
 
@@ -210,7 +210,7 @@ class FceuxBridge:
         self.show_window = show_window
         self.fm2_template = fm2_template
         if no_focus is None:
-            from fceux_helpers import fceux_no_focus_enabled
+            from fceux_launch import fceux_no_focus_enabled
 
             no_focus = fceux_no_focus_enabled() and not show_window
         self.no_focus = no_focus
@@ -228,14 +228,14 @@ class FceuxBridge:
     def _resolve_obs_format(self, obs_format: str | None) -> str:
         if obs_format:
             return obs_format.strip().lower()
-        from fceux_helpers import fceux_obs_format
+        from fceux_launch import fceux_obs_format
 
         return fceux_obs_format(show_window=self.show_window)
 
     def _resolve_ipc_transport(self, ipc_transport: str | None) -> str:
         if ipc_transport:
             return ipc_transport.strip().lower()
-        from fceux_helpers import fceux_ipc_transport
+        from fceux_launch import fceux_ipc_transport
 
         return fceux_ipc_transport(show_window=self.show_window)
 
@@ -307,9 +307,9 @@ class FceuxBridge:
 
     def _write_config(self) -> Path:
         self.ipc_dir.mkdir(parents=True, exist_ok=True)
-        cfg = self.session_root / "config.json"
+        lua_config_path = self.session_root / "config.json"
         ram_hex = {k: f"0x{v:04X}" for k, v in self._ram_addrs.items()}
-        cfg.write_text(
+        lua_config_path.write_text(
             json.dumps(
                 {
                     "ipc_dir": self.ipc_dir.resolve().as_posix(),
@@ -322,7 +322,7 @@ class FceuxBridge:
             ),
             encoding="utf-8",
         )
-        return cfg
+        return lua_config_path
 
     def _clear_ipc(self) -> None:
         self.ipc_dir.mkdir(parents=True, exist_ok=True)
@@ -370,7 +370,7 @@ class FceuxBridge:
             "-lua",
             str(lua.resolve()),
         ]
-        from fceux_helpers import fceux_no_focus_cmdline, fceux_sound_off, win32_popen_kwargs
+        from fceux_launch import fceux_no_focus_cmdline, fceux_sound_off, win32_popen_kwargs
 
         if self.no_focus:
             cmd.extend(fceux_no_focus_cmdline())
@@ -476,25 +476,25 @@ class FceuxBridge:
             try:
                 if use_v2:
                     raw = _read_file_retry(resp_path, binary=True)
-                    data = decode_response_v2(raw)
+                    response = decode_response_v2(raw)
                 else:
                     text = _read_file_retry(resp_path, binary=False)
-                    data = json.loads(text)
+                    response = json.loads(text)
             except (JSONDecodeError, ValueError, PermissionError, OSError):
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            if data.get("seq") != seq:
-                stale = data.get("seq")
+            if response.get("seq") != seq:
+                stale = response.get("seq")
                 if isinstance(stale, int) and stale < seq:
                     _safe_unlink(resp_path)
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            if not data.get("ok", False):
-                raise FceuxBridgeError(data.get("error", f"{cmd} failed"))
+            if not response.get("ok", False):
+                raise FceuxBridgeError(response.get("error", f"{cmd} failed"))
             _safe_unlink(resp_path)
-            return data
+            return response
 
         raise FceuxBridgeError(f"IPC timeout for {cmd} ({timeout}s)")
 
@@ -504,12 +504,12 @@ class FceuxBridge:
     def step(self, action: str = "") -> dict:
         return self.request("STEP", action, timeout=max(DEFAULT_TIMEOUT, 15.0))
 
-    def decode_obs_from_response(self, data: dict) -> np.ndarray:
+    def decode_obs_from_response(self, bridge_response: dict) -> np.ndarray:
         """Obs из STEP (obs_file или inline v2) или отдельный GET_OBS."""
-        w, h = int(data.get("w", 84)), int(data.get("h", 84))
-        if data.get("obs_inline"):
-            raw = data.get("_obs_bytes", b"")
-            if data.get("format") == "gd":
+        w, h = int(bridge_response.get("w", 84)), int(bridge_response.get("h", 84))
+        if bridge_response.get("obs_inline"):
+            raw = bridge_response.get("_obs_bytes", b"")
+            if bridge_response.get("format") == "gd":
                 import cv2
 
                 expected = GD_HEADER_BYTES + NES_WIDTH * NES_HEIGHT * 4
@@ -521,10 +521,10 @@ class FceuxBridge:
             if len(raw) != w * h:
                 raise FceuxBridgeError(f"Bad inline obs size: {len(raw)} != {w}x{h}")
             return np.frombuffer(raw, dtype=np.uint8).reshape(h, w)
-        if not data.get("obs_file"):
+        if not bridge_response.get("obs_file"):
             raise FceuxBridgeError("Response missing obs_file")
-        path = Path(str(data["obs_file"]))
-        if data.get("format") == "gd":
+        path = Path(str(bridge_response["obs_file"]))
+        if bridge_response.get("format") == "gd":
             last_err: Exception | None = None
             for _ in range(IPC_RETRIES):
                 try:
@@ -538,7 +538,7 @@ class FceuxBridge:
             if last_err:
                 raise last_err
             raise FceuxBridgeError(f"Obs file not ready: {path}")
-        if data.get("format") == "raw":
+        if bridge_response.get("format") == "raw":
             last_err = None
             for _ in range(IPC_RETRIES):
                 try:
@@ -572,8 +572,8 @@ class FceuxBridge:
         return self.request("GET_RAM")
 
     def get_obs(self) -> np.ndarray:
-        data = self.request("GET_OBS", timeout=max(DEFAULT_TIMEOUT, 15.0))
-        return self.decode_obs_from_response(data)
+        bridge_response = self.request("GET_OBS", timeout=max(DEFAULT_TIMEOUT, 15.0))
+        return self.decode_obs_from_response(bridge_response)
 
     def turbo(self, on: bool = True) -> dict:
         return self.request("TURBO", "on" if on else "off")

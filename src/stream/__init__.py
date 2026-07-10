@@ -1,1 +1,1 @@
-"""Локальный inference (Phase 2)."""
+"""Локальный inference."""

@@ -14,7 +14,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
-from fceux_helpers import fceux_sound_off  # noqa: E402
+from fceux_launch import fceux_sound_off  # noqa: E402
 from fm2_export import fm2_has_embedded_savestate  # noqa: E402
 from project_paths import mission_dir, parse_fm2_rom_basename, repo_root, resolve_fceux_binary, resolve_rom  # noqa: E402
 

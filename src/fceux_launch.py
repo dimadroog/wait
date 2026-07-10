@@ -1,4 +1,4 @@
-"""Общие хелперы запуска FCEUX."""
+"""Запуск FCEUX: профили, subprocess, headless sound-off."""
 from __future__ import annotations
 
 import json
@@ -123,11 +123,11 @@ def _fceux_cfg_lock(fceux_dir: Path):
 
 def ensure_fceux_sound_off(fceux_dir: Path) -> None:
     """Выключить sound в fceux.cfg (идемпотентно, без restore — безопасно для parallel)."""
-    cfg = fceux_dir / "fceux.cfg"
-    if not cfg.is_file():
+    fceux_cfg_path = fceux_dir / "fceux.cfg"
+    if not fceux_cfg_path.is_file():
         return
     with _fceux_cfg_lock(fceux_dir):
-        original = cfg.read_text(encoding="utf-8", errors="replace")
+        original = fceux_cfg_path.read_text(encoding="utf-8", errors="replace")
         if re.search(r'"sound"\s+0\b', original):
             return
         patched = (
@@ -135,7 +135,7 @@ def ensure_fceux_sound_off(fceux_dir: Path) -> None:
             if '"sound"' in original
             else original.rstrip() + '\n"sound" 0\n'
         )
-        cfg.write_text(patched, encoding="utf-8")
+        fceux_cfg_path.write_text(patched, encoding="utf-8")
 
 
 @contextmanager

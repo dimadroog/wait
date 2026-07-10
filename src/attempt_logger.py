@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from log_utils import append_jsonl, dated_log_path
+from jsonl_logs import append_jsonl, dated_log_path
 
 
 class AttemptLogger:

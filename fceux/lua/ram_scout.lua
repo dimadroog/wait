@@ -1,4 +1,4 @@
--- RAM scout: лог RAM при проигрывании FM2 (Phase 0)
+-- RAM scout: лог RAM при проигрывании FM2 (сборка эталона)
 -- Конфиг: tmp/ram_scout/config.json (output_jsonl, done_flag)
 
 local RAM_START = 0x0000

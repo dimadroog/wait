@@ -21,10 +21,10 @@ from achievements.playlist import build_playlist  # noqa: E402
 from attempt_logger import AttemptLogger  # noqa: E402
 from env.loader import make_env  # noqa: E402
 from fm2_export import export_episode_fm2_from_steps, write_fm2_artifacts  # noqa: E402
-from fceux_helpers import load_fceux_profile  # noqa: E402
+from fceux_launch import load_fceux_profile  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
 from inference_input_logger import InferenceInputLogger  # noqa: E402
-from log_utils import dated_log_path, load_jsonl_window, utc_date_prefix  # noqa: E402
+from jsonl_logs import dated_log_path, load_jsonl_window, utc_date_prefix  # noqa: E402
 from project_paths import mission_dir, repo_root  # noqa: E402
 
 

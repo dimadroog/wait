@@ -127,8 +127,8 @@ def resolve_mission_fm2(fm2_arg: str | Path) -> tuple[Path, str, Path]:
 
 
 def resolve_rom(game_id: str) -> Path:
-    meta = load_yaml(game_dir(game_id) / "game.yaml")
-    rom_rel = meta.get("rom_file", "rom/game.nes")
+    game_yaml = load_yaml(game_dir(game_id) / "game.yaml")
+    rom_rel = game_yaml.get("rom_file", "rom/game.nes")
     rom = game_dir(game_id) / rom_rel
     if not rom.is_file():
         raise FileNotFoundError(f"ROM not found: {rom}")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Запуск PPO по tasks/train_task.json или с CLI-аргументами (Phase 2).
+# Запуск PPO по tasks/train_task.json или с CLI-аргументами.
 # Дефолты train (BACKLOG 1.1–1.8): fceux/profiles/train.yaml + train_ppo --n-envs 8.
 set -euo pipefail
 

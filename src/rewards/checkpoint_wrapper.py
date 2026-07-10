@@ -75,17 +75,17 @@ class CheckpointRewardWrapper(gym.Wrapper):
     ) -> None:
         super().__init__(env)
         self.routes_path = Path(routes_path)
-        doc = load_yaml(self.routes_path)
+        routes = load_yaml(self.routes_path)
         self._checkpoints: list[dict[str, Any]] = sorted(
-            doc.get("checkpoints") or [],
+            routes.get("checkpoints") or [],
             key=lambda c: int(c["id"]),
         )
-        rewards_root = doc.get("rewards") or {}
+        rewards_root = routes.get("rewards") or {}
         self._rewards = dict(rewards_root.get(profile) or rewards_root.get("default") or {})
         if reward_overrides:
             self._rewards.update(reward_overrides)
         self._profile = profile
-        self._heuristics = dict(doc.get("heuristics") or {})
+        self._heuristics = dict(routes.get("heuristics") or {})
 
         self.best_checkpoint = -1
         self._achieved: set[int] = set()

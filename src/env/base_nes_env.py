@@ -63,8 +63,8 @@ class BaseNesEnv(gym.Env):
     def _default_save_state(self) -> str:
         manifest = self.mission / "config" / "playthrough_manifest.yaml"
         if manifest.is_file():
-            doc = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-            segments = doc.get("segments") or []
+            manifest = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+            segments = manifest.get("segments") or []
             if segments:
                 return str(segments[0].get("save_state", "states/cp0.fc0"))
         return "states/cp0.fc0"
@@ -120,7 +120,7 @@ class BaseNesEnv(gym.Env):
         state = str(opts.get("save_state", self.save_state))
 
         bridge = self._ensure_bridge()
-        data = bridge.reset_to_state(state)
+        bridge_response = bridge.reset_to_state(state)
         if not self.turbo:
             # bridge.lua стартует в nothrottle; TURBO on после reset избыточен и гоняет IPC
             bridge.turbo(False)
@@ -130,13 +130,13 @@ class BaseNesEnv(gym.Env):
         self._episode_start_lives = None
         self._prev_lives = None
 
-        gray = bridge.decode_obs_from_response(data)
+        gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
 
         ram = {
-            k: data[k]
+            k: bridge_response[k]
             for k in ("room", "x", "y", "hp", "lives", "checkpoint", "frame")
-            if k in data
+            if k in bridge_response
         }
         if not ram:
             ram = bridge.get_ram()

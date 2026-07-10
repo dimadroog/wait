@@ -1,4 +1,4 @@
--- IPC bridge: Python ↔ FCEUX (Phase 1)
+-- IPC bridge: Python ↔ FCEUX
 -- Конфиг: WAIT_FCEUX_BRIDGE_CONFIG → JSON (ipc_dir, frame_skip, ram_addrs)
 -- Протокол: ipc_dir/request.json → ipc_dir/response.json; ready.flag при старте
 

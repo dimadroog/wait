@@ -31,13 +31,13 @@ def _update_manifest_inference(mission: Path, gameplay_frame: int) -> None:
     manifest_path = mission / "config" / "playthrough_manifest.yaml"
     if not manifest_path.is_file():
         raise SystemExit(f"Manifest not found: {manifest_path}. Run build_playthrough.py first.")
-    doc = load_yaml(manifest_path)
-    doc["inference"] = {
+    manifest_yaml = load_yaml(manifest_path)
+    manifest_yaml["inference"] = {
         "gameplay_start_frame": gameplay_frame,
         "save_state": inference_save_state_for(0),
     }
     manifest_path.write_text(
-        yaml.dump(doc, allow_unicode=True, sort_keys=False),
+        yaml.dump(manifest_yaml, allow_unicode=True, sort_keys=False),
         encoding="utf-8",
     )
 
