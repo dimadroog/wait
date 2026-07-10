@@ -14,27 +14,31 @@
 
 **Правило:** задачи внутри этапа — по номеру; между этапами **Train** и **Inference** зависимостей нет (можно вести параллельно). **Phase 0** — только между прогонами train.
 
+**Принцип (разработка):** обратная совместимость со старыми артефактами и split-контрактами **не поддерживаем** — тестовые данные пересобираются; приоритет — прозрачность кода и минимум артефактов. Чистка legacy-веток — в **3.3** (inference/replay) и **4.4** (bridge/RAM/именование).
+
 ### Полный аудит
 
 **Цель:** закрыть все открытые этапы BACKLOG и финально подтвердить train end-to-end.
 
 **Правило (обязательно):** любой **e2e train** (`benchmark_train.py`, `train_ppo` на 8 `SubprocVecEnv`, длинный train «первая модель») — **только в конце аудита**, после кода, smoke и pytest. Между правками — tier 0–2 ([1.9](#19-train-стабильность-end-to-end-8-env-reset-ipc)), не полный PPO.
 
-| Шаг | Этап | Статус | Что проверяем |
-| --- | ---- | ------ | ------------- |
-| 1 | **[2]** Phase 0 — раскладка scout / `ram_resolve` | done | миграция путей, smoke `ram_scout` / `build_playthrough` / `smoke_env` |
-| 2 | **[3.0]** gameplay save state после intro | done | `inference_cp0` = кадр 18, room `0x00` |
-| 3 | **[3.1]** self-contained FM2 | done | ROM + один `.fm2` без внешнего `-loadstate` |
-| 4 | **[3.2]** playlist self-contained клипы | todo | `play_inference_fm2.py`, split + embedded |
-| 5 | **[3.3]** убрать `inference_config.py` | todo | `grep inference_config` чисто, replay без регрессий |
-| 6 | **[4.4]** рефакторинг: именование и долг в коде | todo | см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
-| 7 | **[4.1–4.3]** гигиена (регрессия) | done | `run_smoke.py`, `pytest tests/smoke/` — быстро |
-| **8** | **[5.0]** финальный e2e train | todo | **последний шаг** — только после **4.4** |
+
+| Шаг   | Этап                                              | Статус | Что проверяем                                                         |
+| ----- | ------------------------------------------------- | ------ | --------------------------------------------------------------------- |
+| 1     | **[2]** Phase 0 — раскладка scout / `ram_resolve` | done   | миграция путей, smoke `ram_scout` / `build_playthrough` / `smoke_env` |
+| 2     | **[3.0]** gameplay save state после intro         | done   | `inference_cp0` = кадр 18, room `0x00`                                |
+| 3     | **[3.1]** self-contained FM2                      | done   | ROM + один `.fm2` без внешнего `-loadstate`                           |
+| 4     | **[3.2]** playlist self-contained клипы           | done   | embed в плейлисте; чистка split → **3.3**                             |
+| 5     | **[3.3]** inference без legacy + `inference_config` | todo   | только embedded FM2; удалить split-ветки и модуль                   |
+| 6     | **[4.4]** рефакторинг: именование и техдолг в коде   | todo   | etalon naming; RAM fallback; IPC v2 — см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
+| 7     | **[4.1–4.3]** гигиена (регрессия)                 | done   | `run_smoke.py`, `pytest tests/smoke/` — быстро                        |
+| **8** | **[5.0]** финальный e2e train                     | todo   | **последний шаг** — только после **4.4**                              |
+
 
 Этапы **1.1–1.9**, **4.1–4.3** и закрытые шаги аудита — done; при регрессии в шагах 3.x–4.4 — быстрые smoke/pytest, **не** e2e train.
 
-**Следующий шаг аудита (на 2026-07-10):** **[3.2]** playlist self-contained клипы.  
-**Перед [5.0]:** обязательно закрыть **[4.4]** (рефакторинг именования).
+**Следующий шаг аудита (на 2026-07-10):** **[3.3]** inference без legacy (embedded-only replay, убрать `inference_config.py`).  
+**Перед [5.0]:** обязательно закрыть **[4.4]** (именование + RAM fallback + IPC v2).
 
 ---
 
@@ -58,12 +62,12 @@
 | **3.0** | Inference: save state после intro (gameplay start)   | high      | Phase 0 (`reference/clear.fm2`, `human_playthrough.jsonl`) | 1.x, 2                         |
 | **3.1** | Inference: self-contained FM2                        | medium    | **3.0 (рекомендуется)**                                    | 1.x, 2                         |
 | **3.2** | Playlist и replay: self-contained FM2 клипы          | medium    | 3.1, **3.0 (рекомендуется)**                               | 1.x, 2                         |
-| **3.3** | Inference: убрать `src/inference_config.py`          | low       | 3.1, 3.2                                                   | 1.x, 2                         |
+| **3.3** | Inference: без legacy replay + убрать `inference_config.py` | low       | 3.1, 3.2                                                   | 1.x, 2                         |
 | **4.1** | Smoke: единый `run_smoke.py` (Facade)                | medium    | —                                                          | 1.x, 3.x                       |
 | **4.2** | Train: `--smoke` / без `runs/` для коротких прогонов | low       | 1.1 (рекомендуется), **1.9 (рекомендуется — e2e stable)**  | 1.x                            |
 | **4.3** | Тесты: pytest smoke + `conftest` cleanup             | low       | 4.1 (рекомендуется)                                        | 1.x, 3.x                       |
 | **4.4** | Рефакторинг: именование и техдолг в коде             | medium    | **3.3**; DESIGN § именование                               | — (**перед 5.0**)              |
-| **5.0** | **Аудит: финальный e2e train**                       | high      | **3.0–3.3**, **4.4**; 4.3 (рекомендуется)                 | — (**последний шаг аудита**)   |
+| **5.0** | **Аудит: финальный e2e train**                       | high      | **3.0–3.3**, **4.4**; 4.3 (рекомендуется)                  | — (**последний шаг аудита**)   |
 
 
 ```mermaid
@@ -91,7 +95,7 @@ flowchart LR
     I0[3.0 gameplay state]
     I1[3.1 embed savestate]
     I2[3.2 playlist]
-    I3[3.3 убрать inference_config]
+    I3[3.3 inference без legacy]
     I0 --> I1 --> I2 --> I3
   end
   subgraph audit [Аудит — в конце]
@@ -123,7 +127,7 @@ flowchart LR
 
 **Эфир / inference-демо:** **3.0** → 3.1 → 3.2 → 3.3. **3.0 обязателен до осмысленного inference/плейлиста** (сейчас `inference_cp0` / `cp0` = кадр 1 эталона, intro + ложная смерть по `lives`). Train не блокирует; без эталона (Phase 0) кадр gameplay не определить.
 
-**Чистка репозитория (Phase 0):** этап 2 между прогонами train (или с fallback на старые пути). Не совмещать с активным train без fallback.
+**Чистка репозитория (Phase 0):** этап 2 закрыт; fallback `logs/ram_*` — удалить в **[4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e)**.
 
 ---
 
@@ -148,15 +152,15 @@ flowchart LR
 | 1.8  | `src/bridge_ipc.py`, `src/fceux_bridge.py`, `fceux/lua/bridge.lua`                                                                                                                           |
 | 1.9  | `src/fceux_bridge.py`, `src/env/base_nes_env.py`, `scripts/test_parallel_env.py`, `scripts/benchmark_train.py` (новый), `scripts/smoke_bridge.py`, `scripts/smoke_env.py`, `docs/SCRIPTS.md` |
 | 2    | `scripts/ram_scout.py`, `src/ram_map_load.py`, `scripts/build_playthrough.py`                                                                                                                |
-| 3.0  | `scripts/build_inference_states.py`, `reference/human_playthrough.jsonl`, `src/inference_config.py`, `src/stream/run_inference.py` |
+| 3.0  | `scripts/build_inference_states.py`, `reference/human_playthrough.jsonl`, `src/inference_config.py`, `src/stream/run_inference.py`                                                           |
 | 3.1  | `src/fm2_export.py`, `scripts/export_fm2.py`, `src/stream/run_inference.py`                                                                                                                  |
-| 3.2  | `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`                                                                                                 |
-| 3.3  | `src/inference_config.py`, `src/fm2_export.py`                                                                                                                                               |
+| 3.2  | `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`, `fceux/lua/achievement_overlay.lua`                                                           |
+| 3.3  | `src/inference_config.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`, `scripts/export_fm2.py`, `src/achievements/playlist.py`                                                     |
 | 4.1  | `scripts/run_smoke.py`, `scripts/smoke_*.py`, `scripts/test_parallel_env.py`, `docs/DESIGN.md`                                                                                               |
 | 4.2  | `src/train/train_ppo.py`, `docs/SCRIPTS.md`                                                                                                                                                  |
 | 4.3  | `tests/conftest.py`, `tests/smoke/`, `requirements.txt` (pytest)                                                                                                                             |
-| 4.4  | `docs/DESIGN.md`, `src/phase0_config.py` → `etalon_build_config.py`, `games/.../phase0.yaml`, docstrings `src/`, `docs/SCRIPTS.md` |
-| 5.0  | `scripts/benchmark_train.py`, `src/train/train_ppo.py`, `docs/SCRIPTS.md` — **только после 4.4** |
+| 4.4  | `docs/DESIGN.md`, `src/phase0_config.py` → `etalon_build_config.py`, `src/project_paths.py`, `src/bridge_ipc.py`, `src/fceux_bridge.py`, `games/.../phase0.yaml`, `docs/SCRIPTS.md`          |
+| 5.0  | `scripts/benchmark_train.py`, `src/train/train_ppo.py`, `docs/SCRIPTS.md` — **только после 4.4**                                                                                             |
 
 
 **Параллельные треки:** Train (1.x) и Inference (3.x) — параллельно; Phase 0 (2) — не во время active train, параллельно с 3.x OK. **1.5–1.9** меняют bridge/env — не во время active train (как этап 2); 1.5 (benchmark bridge) и **5.0** (e2e train) — только между прогонами train / **в конце аудита**.
@@ -584,7 +588,7 @@ flowchart LR
 - [x] Оценка: named pipe / localhost socket vs файлы на Windows (FCEUX Lua `io` ограничения — **нет socket/pipe в std API**)
 - [x] PoC: замена `request.json`/`response.json` на `request.v2`/`response.v2` с length-prefix (`WQST`/`WAIT`)
 - [x] Obs: inline в response v2 вместо отдельного `obs_*.raw` (не shared mem — file PoC)
-- [x] Fallback на v1 (default; env `WAIT_FCEUX_IPC=v1|v2`)
+- [x] Fallback на v1 (default; env `WAIT_FCEUX_IPC=v1|v2`) — v2 PoC; **удалить код v2 в 4.4** §C
 - [x] Benchmark vs post-1.7 baseline — **v2 медленнее**, default остаётся v1
 - [x] Документация протокола v2 (`src/bridge_ipc.py`, `SCRIPTS.md`)
 
@@ -607,7 +611,7 @@ flowchart LR
 
 ### Вердикт (2026-07-07)
 
-**Не включаем v2 по умолчанию.** PoC замер: ms/step n=1 **26.7 vs 16.6** (+61%); parallel n=8 v2 — таймауты/частичные чтения. Узкое место — не JSON metadata, а `gdscreenshot` + эмуляция; inline obs в Lua string concat + один большой write не быстрее отдельного `obs_*.raw`. True pipes/shm — отдельный native proxy, ROI низкий при ~21 env-steps/s после 1.7.
+**Не включаем v2 по умолчанию.** PoC замер: ms/step n=1 **26.7 vs 16.6** (+61%). Код v2 оставлен как reference — **удалить в 4.4** §C (на этапе разработки обратная совместимость не нужна).
 
 ### Заметки
 
@@ -678,8 +682,8 @@ flowchart LR
 #### Фаза C — финальный gate (один прогон после A+B)
 
 - [x] **train-smoke:** `train_ppo.py --n-envs 8 --timesteps 2048` (SubprocVecEnv) — завершается без IPC timeout / worker crash
-- [x] **`benchmark_train.py`:** env-steps/s; сравнение с `benchmark_bridge.py` и историческим ~0.5 env-step/s (4 env, pre-1.x)
-- [x] **`docs/SCRIPTS.md`:** таблица «bridge vs e2e train fps», % до/после 1.x (с оговоркой методики)
+- [x] `**benchmark_train.py`:** env-steps/s; сравнение с `benchmark_bridge.py` и историческим ~0.5 env-step/s (4 env, pre-1.x)
+- [x] `**docs/SCRIPTS.md`:** таблица «bridge vs e2e train fps», % до/после 1.x (с оговоркой методики)
 - [x] **Регрессия:** `smoke_bridge` / `smoke_env` / `benchmark_bridge` без регрессии (parallel n=8 — только после cleanup; n=1 OK)
 
 
@@ -734,7 +738,7 @@ flowchart LR
 ## [2] Phase 0: разнести RAM scout и inference-логи по каталогам
 
 **Статус:** done  
-**Вердикт (2026-07-09):** пути в `project_paths` (`reference/scout/`, `config/ram_resolve.json`); fallback + `DeprecationWarning` на `logs/ram_*`; m1 мигрирован (старые копии в `logs/` сохранены).  
+**Вердикт (2026-07-09):** пути в `project_paths` (`reference/scout/`, `config/ram_resolve.json`); m1 мигрирован. Fallback `logs/ram_*` + `DeprecationWarning` — **временно**; удалить в **[4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e)** §B.  
 **Этап:** 2  
 **Приоритет:** low  
 **Зависит от:** — (не во время active train без fallback)  
@@ -749,7 +753,7 @@ flowchart LR
 - [x] `load_ram_addresses` + env без регрессий
 - [x] `logs/` — только `YYYYMMDD_*` inference
 - [x] M1: миграция файлов; старые `logs/ram_*` удалены после проверки (2026-07-09)
-- [x] (опц.) deprecation warning на `logs/ram_*`
+- [x] (временно) deprecation warning на `logs/ram_*` — снять в **4.4** §B
 - [x] `.gitignore`, `SCRIPTS.md`, `ML_CONCEPT.md`, `ram_map.md`
 - [x] Smoke: `ram_scout`, `build_playthrough`, `smoke_env`
 
@@ -792,7 +796,7 @@ games/…/missions/m1/
 1. Обновить пути записи/чтения в скриптах и `src/` (см. файлы выше).
 2. Перенести существующие файлы m1 вручную или скриптом миграции (без удаления старых до проверки).
 3. Обновить ссылки в `ram_map.md`, `.gitignore`, `SCRIPTS.md`, `ML_CONCEPT.md`.
-4. Опционально: fallback на старые пути `logs/ram_*` с deprecation warning на один релиз.
+4. ~~Опционально: fallback на старые пути `logs/ram_*`~~ — сделано временно; **удалить в 4.4** §B.
 
 
 
@@ -808,7 +812,7 @@ games/…/missions/m1/
 
 ### Заметки
 
-- **Не трогать во время активного train** — env читает `ram_resolve.json` по текущему пути; миграцию делать между прогонами или с fallback на старый путь.
+- Миграцию между прогонами train; fallback `logs/ram_*` снимается в **4.4** §B.
 - `ram_scout.jsonl` и `ram_scout_candidates.json` остаются вне git (как сейчас); `ram_resolve.json` — в git (конфиг миссии).
 - Inference-демо и плейлисты **не** переносить — `logs/` для них корректен по `ML_CONCEPT.md`.
 - Не конфликтует с этапом 3 (другие файлы и каталоги).
@@ -883,7 +887,7 @@ games/…/missions/m1/
 
 ### Контекст
 
-Раньше демо inference требовало несколько артефактов: `.fm2` (только input), `.overlay.json` (save_state + achievements), внешний `states/inference_cp*.fc0`, плюс `play_inference_fm2.py` для staging и `-loadstate`. С 3.1 inference-клип с embedded savestate открывается в FCEUX как **ROM + один `.fm2`** (Load ROM → Play Movie).
+Раньше демо inference требовало несколько артефактов: `.fm2` (только input), `.overlay.json` (save_state + achievements), внешний `states/inference_cp*.fc0`, плюс `play_inference_fm2.py` для staging и `-loadstate`. С 3.1 inference-клип с embedded savestate открывается в FCEUX как **ROM + один** `.fm2` (Load ROM → Play Movie).
 
 Формат FM2 (FCEUX) поддерживает ключ `savestate` — hex-blob FCS в заголовке; при его наличии movie стартует не с power-on. ROM по-прежнему отдельный (`romFilename` / `romChecksum` в заголовке).
 
@@ -912,7 +916,7 @@ games/…/missions/m1/
 - Save state привязан к `emuVersion` FCEUX — использовать ту же portable-сборку, что при записи `cp*.fc0`.
 - Achievement-overlay (трофеи) остаётся вне FM2; `comment` / `subtitle` в заголовке — опционально, не делали.
 - **Не трогать** `train_ppo.py` и bridge train-сессий — задача только inference/export.
-- `play_inference_fm2.py` и плейлист без embed — legacy/split; без `-loadstate` для embedded клипов — задача **3.2**.
+- Split-compat в `play_inference_fm2` / плейлисте — снять в **3.3**.
 - Блокирует 3.2 и 3.3 (playlist и удаление `inference_config` опираются на embed).
 
 ---
@@ -921,112 +925,118 @@ games/…/missions/m1/
 
 ## [3.2] Playlist и replay: self-contained FM2 клипы
 
-**Статус:** todo  
+**Статус:** done  
+**Вердикт (2026-07-10):** embed в плейлисте и replay без `-loadstate` для embedded FM2; `save_state: null` в manifest. **Split-ветки оставлены временно** — полная чистка в **3.3** (без обратной совместимости).  
 **Этап:** 3.2  
 **Приоритет:** medium  
 **Зависит от:** 3.1  
-**Файлы:** `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`, `docs/SCRIPTS.md`  
+**Файлы:** `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`, `tests/test_playlist_embed.py`, `docs/SCRIPTS.md`  
 **Контекст в чат:** эта секция + `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`  
 **Предусловие:** 3.1 готов.
 
 ### Чеклист сессии
 
-- [ ] `build_playlist` — клипы с embedded `savestate`
-- [ ] Manifest: `save_state: null` = embedded; split-клипы работают
-- [ ] `play_inference_fm2.py` — без `-loadstate` если `savestate` в FM2
-- [ ] `.overlay.json` + `.play.cmd` без смены контракта
-- [ ] `docs/SCRIPTS.md` — состав клипа плейлиста
-
-
+- [x] `build_playlist` — клипы с embedded `savestate`; on-demand `export_fm2` с embed
+- [x] `play_inference_fm2.py` — без `-loadstate` если `savestate` в FM2
+- [x] Manifest: `save_state: null` для embedded клипов
+- [x] `docs/SCRIPTS.md` — состав клипа плейлиста
+- [ ] ~~обратная совместимость split~~ — **не делаем**; снять в **3.3**
 
 ### Контекст
 
-`build_playlist` копирует или генерирует FM2, **всегда** создаёт `.overlay.json` и кладёт `save_state` в `YYYYMMDD_playlist.json`. `play_inference_fm2.py` при проигрывании плейлиста всегда передаёт `-loadstate` с внешним `.fc0`. Если episode-FM2 станут self-contained, плейлист без доработки останется на split-схеме и может двойно грузить state.
+Плейлист: FM2-копии по номинациям, `.overlay.json`, `YYYYMMDD_playlist.json`. После 3.1 episode-FM2 self-contained; без доработки плейлист оставался на split-схеме (внешний `.fc0`, двойной loadstate).
 
-### Задача
+**Целевое разделение (финал — в 3.3):**
 
-1. `build_playlist` — при копировании/экспорте сохранять embedded `savestate` в клипах плейлиста (`logs/YYYYMMDD_{idx}_{slug}_{seq}.fm2`); `export_fm2` в ветке on-demand — с `--embed-savestate` (из 3.1).
-2. **Manifest** — поле `save_state` сделать опциональным (`null` = embedded); обратная совместимость со старыми split-клипами.
-3. `play_inference_fm2.py` — если FM2 содержит `savestate` в заголовке, **не** передавать `-loadstate` (single FM2 и playlist clip); иначе — текущее поведение (split).
-4. **Overlay** — `.overlay.json` по-прежнему для Lua achievements; лаунчер `.play.cmd` без изменений контракта.
+| Слой | Артефакт | Кто читает |
+| ---- | -------- | ---------- |
+| Replay | `.fm2` (embedded `savestate`) | FCEUX `-playmovie` |
+| Achievements | `.overlay.json` (без `save_state`) | Lua overlay |
+| Порядок эфира | `playlist.json` + `.play.cmd` | только Python |
 
+### Задача (выполнено в 3.2)
 
+1. `build_playlist` — embedded `savestate` в `logs/YYYYMMDD_{idx}_{slug}_{seq}.fm2`.
+2. `play_inference_fm2.py` — пропуск `-loadstate` при embedded FM2.
+3. Manifest — `save_state: null` для embedded клипов.
 
 ### Критерий готовности
 
-- [ ] Плейлист из self-contained клипов проигрывается через `play_inference_fm2.py` без ошибок GUID/loadstate.
-- [ ] Старые split-клипы (fm2 + внешний `save_state` в manifest) продолжают работать.
-- [ ] `docs/SCRIPTS.md`: состав артефакта клипа в плейлисте (fm2 + overlay, без обязательного `.fc0`).
-
-
+- [x] Плейлист из self-contained клипов проигрывается без ошибок GUID/loadstate.
+- [x] `docs/SCRIPTS.md`: клип = fm2 + overlay.
 
 ### Заметки
 
-- Один клип для эфира: self-contained `.fm2` + `.overlay.json`; ROM — общий для всего плейлиста в staging.
+- Один клип для эфира: `.fm2` + `.overlay.json`; ROM — общий в staging.
 - Номинации и `config/achievements.yaml` не меняются.
-- Блокирует 3.3 (упрощение `resolve_inference_save_state` после стабильного embed в плейлисте).
+- Остаток без split-compat, чистый overlay, единый Lua — **3.3**.
+- Блокирует 3.3.
 
 ---
 
 
 
-## [3.3] Inference: убрать `src/inference_config.py`
+## [3.3] Inference: без legacy replay + убрать `inference_config.py`
 
 **Статус:** todo  
 **Этап:** 3.3  
 **Приоритет:** low  
 **Зависит от:** 3.1, 3.2  
-**Файлы:** `src/inference_config.py` (удалить), `src/fm2_export.py`, `src/stream/run_inference.py`, `scripts/play_inference_fm2.py`, `src/achievements/playlist.py`, `docs/SCRIPTS.md`  
-**Контекст в чат:** эта секция + `src/inference_config.py`, `src/fm2_export.py`  
+**Файлы:** `src/inference_config.py` (удалить), `src/fm2_export.py`, `src/stream/run_inference.py`, `scripts/play_inference_fm2.py`, `scripts/export_fm2.py`, `src/achievements/playlist.py`, `fceux/lua/achievement_overlay.lua`, `docs/SCRIPTS.md`  
+**Контекст в чат:** эта секция + `src/inference_config.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`  
 **Предусловие:** 3.1 и 3.2 готовы.
+
+**Принцип:** без обратной совместимости со split-клипами (fm2 + внешний `.fc0`). FM2 без embedded `savestate` → ошибка, не fallback.
 
 ### Чеклист сессии
 
-- [ ] `INFERENCE_FM2_GUID` → `fm2_export.py`
-- [ ] `resolve_inference_save_state` → упростить/перенести/убрать
-- [ ] Импорты: `run_inference`, `play_inference_fm2`, `playlist`
-- [ ] Удалить `src/inference_config.py`
+- [ ] `INFERENCE_FM2_GUID` → `fm2_export.py`; убрать `inference_fm2_guid()`
+- [ ] `resolve_inference_save_state` → **удалить** (не fallback на `states/cp0.fc0`)
+- [ ] `play_inference_fm2.py` — убрать split-ветки (`_resolve_external_save_state`, копирование `.fc0`); только embedded
+- [ ] `playlist.py` — overlay без `save_state`; manifest без поля `save_state`
+- [ ] `fm2_export.py` — убрать `save_state` из sidecar; embed всегда при экспорте
+- [ ] Убрать `--no-embed-savestate` (`run_inference.py`); `export_fm2.py` — embed по умолчанию
+- [ ] Lua — объединить overlay-скрипты; Python: `WAIT_ACHIEVEMENT_OVERLAY` + `WAIT_BLOCK_LABEL`; удалить `achievement_playlist.lua`
+- [ ] Удалить `src/inference_config.py`; перенести `gameplay_start_frame` / `inference_save_state_for` при необходимости
 - [ ] `grep inference_config` — чисто
 - [ ] Train/env не затронуты
 - [ ] `docs/SCRIPTS.md`
 
-
-
 ### Контекст
 
-`src/inference_config.py` — тонкая обёртка (~24 строки) после удаления `config/inference.yaml` и bootstrap-скриптов. Содержит:
+`src/inference_config.py` — обёртка после удаления `config/inference.yaml`. Содержит GUID, `resolve_inference_save_state()` (в т.ч. fallback на train `cp0`), helpers для `build_inference_states`.
 
+После 3.2 в коде остались split-ветки: sidecar/manifest с `save_state`, два Lua-скрипта, opt-out embed. Цель 3.3 — один контракт: **embedded FM2 + чистый overlay**.
 
-| Символ                                        | Потребители                                       |
-| --------------------------------------------- | ------------------------------------------------- |
-| `INFERENCE_FM2_GUID` / `inference_fm2_guid()` | `fm2_export.build_fm2_header`                     |
-| `resolve_inference_save_state()`              | `run_inference`, `play_inference_fm2`, `playlist` |
-
-
-Отдельный модуль избыточен: GUID — свойство FM2-экспорта; выбор save state — свойство replay/inference-запуска. На train не влияет (env читает `states/cp0.fc0` из manifest / CLI).
+| Символ | Сейчас | Действие |
+| ------ | ------ | -------- |
+| `INFERENCE_FM2_GUID` | `inference_config` | → `fm2_export.py` |
+| `resolve_inference_save_state()` | replay/export/playlist | удалить |
+| `gameplay_start_frame()` | `build_inference_states` | оставить (перенести в manifest helper) |
+| `inference_save_state_for()` | `build_inference_states` | оставить |
 
 ### Задача
 
-1. `INFERENCE_FM2_GUID` → константа в `src/fm2_export.py` (рядом с `build_fm2_header`); убрать `inference_fm2_guid()` — использовать константу напрямую.
-2. `resolve_inference_save_state` → перенести в `src/fm2_export.py` или убрать: после 3.1–3.2 self-contained клипы не требуют внешнего state; для split-клипов — минимальный fallback `states/cp0.fc0` из manifest.
-3. **Импорты** — обновить `run_inference.py`, `play_inference_fm2.py`, `playlist.py`; удалить `src/inference_config.py`.
-4. **Документация** — в `SCRIPTS.md` ссылаться на `fm2_export.INFERENCE_FM2_GUID`, не на `inference_config`.
-
-
+1. GUID → константа в `fm2_export.py`.
+2. Replay/export — только self-contained FM2; внешний state не резолвить.
+3. Overlay/manifest — achievements only; `block_label` в manifest.
+4. Lua — один скрипт; manifest не парсится в Lua.
+5. Удалить `inference_config.py`; обновить импорты и тесты.
 
 ### Критерий готовности
 
-- [ ] `src/inference_config.py` удалён; `grep inference_config` по репо — только история в git / BACKLOG.
-- [ ] Экспорт и replay inference (включая плейлист) работают без регрессий.
+- [ ] `src/inference_config.py` удалён; `grep inference_config` — только git/BACKLOG.
+- [ ] Плейлист и single FM2 replay без `-loadstate` и без `.fc0` в staging.
+- [ ] `.overlay.json` и manifest без `save_state`.
+- [ ] Один Lua overlay; `achievement_playlist.lua` удалён.
 - [ ] Train / `train_ppo.py` / env не затронуты.
 - [ ] `docs/SCRIPTS.md` обновлён.
 
-
-
 ### Заметки
 
-- Делать **только после** 3.1 и 3.2 — иначе придётся дважды менять сигнатуры и импорты.
-- Не плодить новый конфиг-файл для GUID — константа в `fm2_export.py` достаточна.
+- Train env по-прежнему читает `states/cp0.fc0` из manifest — отдельный контракт, не трогать.
+- «Голый» FM2 без Lua — replay OK, трофеев нет (ожидаемо).
+- Не плодить новый конфиг для GUID.
 
 ---
 
@@ -1126,16 +1136,18 @@ Smoke-скрипты не дают autouse cleanup и CI exit code из коро
 **Приоритет:** medium  
 **Зависит от:** **3.3** (рекомендуется — после стабилизации inference API); DESIGN § [Именование в коде](DESIGN.md#2-игровая-логика--strategy-в-yaml)  
 **Блокирует:** **[5.0]** (e2e train — только после этого этапа)  
-**Файлы:** см. чеклист; ориентир — `grep` по `phase0`, `Phase 0` в `src/`, `scripts/`, `tests/`, `games/`  
+**Файлы:** см. чеклист; ориентир — `grep` по `phase0`, `Phase 0`, `logs/ram_`, `ipc_transport.*v2`, `request.v2`  
 **Контекст в чат:** эта секция + `docs/DESIGN.md`
 
 ### Контекст
 
 Roadmap ML («Phase 0», «Phase 1»…) — документация планирования (`ML_CONCEPT.md`).  
-Идентификаторы в коде должны отражать **предметную область** (эталон, playthrough, inference), иначе путаются план и runtime.  
-Текущий техдолг: `phase0_config`, `phase0.yaml`, docstrings «Phase 0» в `src/`, заголовок «Phase 0» в `SCRIPTS.md`.
+Идентификаторы в коде должны отражать **предметную область** (эталон, playthrough, inference).  
+Дополнительно: после этапа **[2]** остались legacy-fallback'и (RAM paths, IPC v2 PoC) — на этапе разработки обратная совместимость не нужна; удалить для прозрачности.
 
 ### Чеклист сессии
+
+#### A — именование эталона
 
 - [ ] `phase0_config.py` → `etalon_build_config.py`; функции `load_etalon_build_config`, `*_from_etalon_build`
 - [ ] `games/<game>/phase0.yaml` → `etalon_build.yaml`; `game.yaml`: `etalon_build_config`
@@ -1144,13 +1156,31 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 - [ ] Шаблон `ram_map.md` / `ram_resolve.py` — «сборка эталона», не «Phase 0»
 - [ ] `docs/SCRIPTS.md`: секция «Эталон и RAM» вместо «Phase 0 — данные и RAM»
 - [ ] `grep -ri 'phase0\\|Phase 0' src scripts tests games` — пусто (кроме CHANGELOG/git при необходимости)
+
+#### B — RAM scout: убрать fallback `logs/ram_*` (этап 2, миграция done)
+
+- [ ] `project_paths.resolve_ram_scout_jsonl` / `resolve_ram_resolve_json` — только целевые пути (`reference/scout/`, `config/`); без `DeprecationWarning` и `tuple[Path, bool]`
+- [ ] Упростить вызовы в `build_playthrough.py`, `ram_map_load.py` (убрать `_legacy`)
+- [ ] `docs/SCRIPTS.md` — без упоминания fallback на `logs/ram_*`
+
+#### C — Bridge IPC v2: удалить PoC (вердикт 1.8 — не включаем)
+
+- [ ] Удалить v2-транспорт: `bridge_ipc.py` (encode/decode v2), ветки `request.v2`/`response.v2` в `fceux_bridge.py` и `bridge.lua`
+- [ ] Убрать `WAIT_FCEUX_IPC=v2`, `ipc_transport: v2` из профилей/доков; оставить только v1 JSON files
+- [ ] `benchmark_bridge.py` — без флага `--ipc v2` (если есть)
+- [ ] `docs/SCRIPTS.md` — убрать секцию IPC v2 PoC или свернуть в историю 1.8
+
+#### D — smoke
+
 - [ ] Быстрые тесты: `pytest tests/test_gameplay_start.py`, `smoke_bridge`, `smoke_env` (без e2e train)
-- [ ] Длинные прогоны (полный `pytest tests/smoke/`, `benchmark_train`) — **не здесь**; только в **[5.0]**
+- [ ] Длинные прогоны (`pytest tests/smoke/`, `benchmark_train`) — **не здесь**; только в **[5.0]**
 
 ### Критерий готовности
 
 - [ ] DESIGN § именование соблюдено в коде и конфигах плагина.
 - [ ] Нет идентификаторов `phaseN_*` / `phaseN.yaml` в коде и `games/`.
+- [ ] Нет fallback на `logs/ram_scout.jsonl` / `logs/ram_resolve.json` в runtime.
+- [ ] Нет IPC v2 в коде и профилях (только v1).
 - [ ] Inference / playthrough / train smoke (tier 0–2) без регрессий.
 - [ ] **[5.0]** разблокирован.
 
@@ -1159,6 +1189,8 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 - `ML_CONCEPT.md` §11 roadmap **не переименовывать** — там «Phase N» уместен как план.
 - BACKLOG-секции `[2] Phase 0` — исторические названия задач; не путать с именами в коде.
 - Награды по умолчанию в `write_routes_yaml` — отдельный кандидат на вынос в YAML (не блокер 4.4).
+- **Не трогать:** train `obs_format: raw` vs inference `gd` — разные профили, не legacy-compat.
+- **Не трогать:** `decode_obs` ветка `format: gd` для inference-профиля — не то же самое, что IPC v2.
 
 ---
 

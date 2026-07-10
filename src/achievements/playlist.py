@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from achievements.evaluator import evaluate_attempts_file, load_achievements_config, overlay_payload
-from fm2_export import export_fm2, write_fm2_sidecar
+from fm2_export import export_fm2, fm2_has_embedded_savestate, write_fm2_sidecar
 from inference_config import resolve_inference_save_state
 from log_utils import utc_date_prefix
 from project_paths import repo_root
@@ -30,6 +30,16 @@ def _block_label(nom: dict[str, Any]) -> str:
     return str(nom.get("label") or nom.get("title", ""))
 
 
+def _strip_save_state_from_overlay(overlay_path: Path) -> None:
+    if not overlay_path.is_file():
+        return
+    payload = json.loads(overlay_path.read_text(encoding="utf-8"))
+    if "save_state" not in payload:
+        return
+    del payload["save_state"]
+    overlay_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _copy_overlay_sidecar(
     src_fm2: Path,
     dest_fm2: Path,
@@ -40,13 +50,23 @@ def _copy_overlay_sidecar(
 ) -> Path:
     """Скопировать или собрать .overlay.json рядом с FM2 в плейлисте."""
     dest_overlay = dest_fm2.with_suffix(".overlay.json")
+    embedded = fm2_has_embedded_savestate(dest_fm2)
     src_overlay = src_fm2.with_suffix(".overlay.json")
     if src_overlay.is_file():
         shutil.copy2(src_overlay, dest_overlay)
+        if embedded:
+            _strip_save_state_from_overlay(dest_overlay)
         return dest_overlay
-    save_state = str(record.get("save_state") or default_save_state)
+    save_state = None if embedded else str(record.get("save_state") or default_save_state)
     payload = overlay_payload(record, config=config)
     return write_fm2_sidecar(dest_fm2, save_state=save_state, overlay=payload)
+
+
+def _manifest_save_state(dest_fm2: Path, overlay_path: Path, default_save_state: str) -> str | None:
+    if fm2_has_embedded_savestate(dest_fm2):
+        return None
+    overlay_meta = json.loads(overlay_path.read_text(encoding="utf-8"))
+    return str(overlay_meta.get("save_state") or default_save_state)
 
 
 def write_playlist_manifest(
@@ -103,6 +123,7 @@ def build_playlist(
         logs_dir.parent,
         cp_index=0,
     )
+    embed_save_state_path = logs_dir.parent / default_save_state
 
     by_slug: dict[str, list[dict[str, Any]]] = {slug: [] for slug in noms}
     for record in records:
@@ -136,6 +157,8 @@ def build_playlist(
                     inference_inputs_path,
                     dest,
                     episode=int(record.get("episode", 0)),
+                    embed_savestate=embed_save_state_path.is_file(),
+                    save_state_path=embed_save_state_path if embed_save_state_path.is_file() else None,
                 )
             else:
                 continue
@@ -146,8 +169,7 @@ def build_playlist(
                 config=cfg,
                 default_save_state=default_save_state,
             )
-            overlay_meta = json.loads(overlay_path.read_text(encoding="utf-8"))
-            save_state = str(overlay_meta.get("save_state") or default_save_state)
+            save_state = _manifest_save_state(dest, overlay_path, default_save_state)
             paths.append(dest)
             clip_seq += 1
             manifest_clips.append(
