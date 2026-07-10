@@ -49,17 +49,6 @@ def fceux_obs_format(*, profile_name: str = "train", show_window: bool = False) 
     return str(profile.get("obs_format", "raw")).strip().lower()
 
 
-def fceux_ipc_transport(*, profile_name: str = "train", show_window: bool = False) -> str:
-    """IPC transport: env WAIT_FCEUX_IPC → profile (default v1). v2 — только PoC/benchmark."""
-    env_val = os.environ.get("WAIT_FCEUX_IPC")
-    if env_val:
-        return env_val.strip().lower()
-    if show_window:
-        profile_name = "inference"
-    profile = load_fceux_profile(profile_name)
-    return str(profile.get("ipc_transport", "v1")).strip().lower()
-
-
 def fceux_frame_skip(profile_name: str = "train") -> int:
     profile = load_fceux_profile(profile_name)
     return int(profile.get("frame_skip", 4))

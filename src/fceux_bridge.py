@@ -15,7 +15,6 @@ import numpy as np
 
 from fm2_export import default_fm2_template
 from project_paths import parse_fm2_rom_basename, repo_root, resolve_fceux_binary, resolve_rom
-from bridge_ipc import decode_response_v2, encode_request_v2
 from ram_map_load import load_ram_addresses
 
 GD_HEADER_BYTES = 11
@@ -201,7 +200,6 @@ class FceuxBridge:
         fm2_template: Path | None = None,
         no_focus: bool | None = None,
         obs_format: str | None = None,
-        ipc_transport: str | None = None,
     ) -> None:
         self.mission = mission.resolve()
         self.game_id = game_id
@@ -215,7 +213,6 @@ class FceuxBridge:
             no_focus = fceux_no_focus_enabled() and not show_window
         self.no_focus = no_focus
         self.obs_format = self._resolve_obs_format(obs_format)
-        self.ipc_transport = self._resolve_ipc_transport(ipc_transport)
         self.session_root = repo_root() / "tmp" / "bridge" / session_id
         self.staging = self.session_root / "staging"
         self.ipc_dir = self.session_root / "ipc"
@@ -231,13 +228,6 @@ class FceuxBridge:
         from fceux_launch import fceux_obs_format
 
         return fceux_obs_format(show_window=self.show_window)
-
-    def _resolve_ipc_transport(self, ipc_transport: str | None) -> str:
-        if ipc_transport:
-            return ipc_transport.strip().lower()
-        from fceux_launch import fceux_ipc_transport
-
-        return fceux_ipc_transport(show_window=self.show_window)
 
     def is_running(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
@@ -317,7 +307,6 @@ class FceuxBridge:
                     "ram_addrs": ram_hex,
                     "no_focus": self.no_focus,
                     "obs_format": self.obs_format,
-                    "ipc_transport": self.ipc_transport,
                 }
             ),
             encoding="utf-8",
@@ -326,7 +315,7 @@ class FceuxBridge:
 
     def _clear_ipc(self) -> None:
         self.ipc_dir.mkdir(parents=True, exist_ok=True)
-        for name in ("request.json", "response.json", "request.v2", "response.v2", "ready.flag"):
+        for name in ("request.json", "response.json", "ready.flag"):
             _safe_unlink(self.ipc_dir / name)
         for obs in list(self.ipc_dir.glob("obs_*.raw")) + list(self.ipc_dir.glob("obs_*.gd")):
             _safe_unlink(obs)
@@ -444,14 +433,9 @@ class FceuxBridge:
         if self._proc is None or self._proc.poll() is not None:
             raise FceuxBridgeError("FCEUX bridge is not running")
         seq = self._next_seq()
-        use_v2 = self.ipc_transport == "v2"
-        req_path = self.ipc_dir / ("request.v2" if use_v2 else "request.json")
-        resp_path = self.ipc_dir / ("response.v2" if use_v2 else "response.json")
-
-        if use_v2:
-            payload = encode_request_v2(seq, cmd, arg)
-        else:
-            payload = json.dumps({"seq": seq, "cmd": cmd, "arg": arg}).encode("utf-8")
+        req_path = self.ipc_dir / "request.json"
+        resp_path = self.ipc_dir / "response.json"
+        payload = json.dumps({"seq": seq, "cmd": cmd, "arg": arg}).encode("utf-8")
 
         _safe_unlink(resp_path)
 
@@ -474,12 +458,8 @@ class FceuxBridge:
                 continue
 
             try:
-                if use_v2:
-                    raw = _read_file_retry(resp_path, binary=True)
-                    response = decode_response_v2(raw)
-                else:
-                    text = _read_file_retry(resp_path, binary=False)
-                    response = json.loads(text)
+                text = _read_file_retry(resp_path, binary=False)
+                response = json.loads(text)
             except (JSONDecodeError, ValueError, PermissionError, OSError):
                 time.sleep(POLL_INTERVAL)
                 continue
@@ -505,22 +485,8 @@ class FceuxBridge:
         return self.request("STEP", action, timeout=max(DEFAULT_TIMEOUT, 15.0))
 
     def decode_obs_from_response(self, bridge_response: dict) -> np.ndarray:
-        """Obs из STEP (obs_file или inline v2) или отдельный GET_OBS."""
+        """Obs из STEP (obs_file) или отдельный GET_OBS."""
         w, h = int(bridge_response.get("w", 84)), int(bridge_response.get("h", 84))
-        if bridge_response.get("obs_inline"):
-            raw = bridge_response.get("_obs_bytes", b"")
-            if bridge_response.get("format") == "gd":
-                import cv2
-
-                expected = GD_HEADER_BYTES + NES_WIDTH * NES_HEIGHT * 4
-                if len(raw) != expected:
-                    raise FceuxBridgeError(f"Bad inline GD obs size {len(raw)}, expected {expected}")
-                rgba = np.frombuffer(raw[GD_HEADER_BYTES:], dtype=np.uint8).reshape(NES_HEIGHT, NES_WIDTH, 4)
-                gray = (0.299 * rgba[:, :, 0] + 0.587 * rgba[:, :, 1] + 0.114 * rgba[:, :, 2]).astype(np.uint8)
-                return cv2.resize(gray, (w, h), interpolation=cv2.INTER_AREA)
-            if len(raw) != w * h:
-                raise FceuxBridgeError(f"Bad inline obs size: {len(raw)} != {w}x{h}")
-            return np.frombuffer(raw, dtype=np.uint8).reshape(h, w)
         if not bridge_response.get("obs_file"):
             raise FceuxBridgeError("Response missing obs_file")
         path = Path(str(bridge_response["obs_file"]))

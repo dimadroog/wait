@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import json
 import multiprocessing as mp
-import os
 import platform
 import statistics
 import sys
@@ -21,7 +20,7 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from fceux_bridge import FceuxBridge, bridge_load_lock  # noqa: E402
-from project_paths import artifact_quarantine_dir, cleanup_artifact_quarantine, mission_dir  # noqa: E402
+from project_paths import artifact_quarantine_dir, mission_dir  # noqa: E402
 
 
 @dataclass
@@ -47,14 +46,6 @@ class AggregateMetrics:
     parallel_wall_s: float | None = None
 
 
-def _percentile(values: list[float], p: float) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    idx = min(len(ordered) - 1, max(0, int(round((p / 100.0) * (len(ordered) - 1)))))
-    return ordered[idx]
-
-
 def _bench_single(
     mission: Path,
     game_id: str,
@@ -65,22 +56,18 @@ def _bench_single(
     step_warmup: int,
     step_samples: int,
     reset_samples: int,
-    ipc_transport: str,
 ) -> SingleBridgeMetrics:
-    # --- cold start ---
     t0 = time.perf_counter()
     with FceuxBridge(
         mission,
         game_id,
         frame_skip=frame_skip,
         session_id=session_id,
-        ipc_transport=ipc_transport,
     ) as bridge:
         bridge.start(load_state=save_state)
         bridge.cache_state(Path(save_state).name)
         cold_start_ms = (time.perf_counter() - t0) * 1000.0
 
-        # --- hot reset (LOAD_OBS under lock) ---
         reset_times: list[float] = []
         reset_ipc_times: list[float] = []
         state_name = Path(save_state).name
@@ -94,7 +81,6 @@ def _bench_single(
             reset_times.append((time.perf_counter() - t_reset) * 1000.0)
             reset_ipc_times.append(ipc_ms)
 
-        # --- step + decode ---
         step_ipc_times: list[float] = []
         decode_times: list[float] = []
         total_times: list[float] = []
@@ -138,9 +124,7 @@ def _parallel_worker(
     save_state: str,
     frame_skip: int,
     steps: int,
-    ipc_transport: str,
 ) -> None:
-    os.environ["WAIT_FCEUX_IPC"] = ipc_transport
     mission = Path(mission_s)
     session_id = f"bench_{rank}"
     try:
@@ -149,7 +133,6 @@ def _parallel_worker(
             game_id,
             frame_skip=frame_skip,
             session_id=session_id,
-            ipc_transport=ipc_transport,
         ) as bridge:
             bridge.start(load_state=save_state)
             bridge.cache_state(Path(save_state).name)
@@ -171,7 +154,6 @@ def _bench_parallel(
     save_state: str,
     frame_skip: int,
     steps_per_env: int,
-    ipc_transport: str,
 ) -> tuple[float, float]:
     """Wall-clock aggregate env-steps/s with n_envs parallel FCEUX processes."""
     if n_envs <= 1:
@@ -182,7 +164,7 @@ def _bench_parallel(
     procs = [
         ctx.Process(
             target=_parallel_worker,
-            args=(out_q, str(mission), game_id, rank, save_state, frame_skip, steps_per_env, ipc_transport),
+            args=(out_q, str(mission), game_id, rank, save_state, frame_skip, steps_per_env),
         )
         for rank in range(n_envs)
     ]
@@ -214,10 +196,10 @@ def _resolve_save_state(mission: Path, arg: str | None) -> str:
     raise FileNotFoundError(f"No save state in {mission / 'states'}")
 
 
-def _print_table(metrics: AggregateMetrics, *, ipc_transport: str) -> None:
+def _print_table(metrics: AggregateMetrics) -> None:
     s = metrics.single
     print()
-    print(f"=== FCEUX bridge benchmark (ipc={ipc_transport}, n_envs={metrics.n_envs}) ===")
+    print(f"=== FCEUX bridge benchmark (n_envs={metrics.n_envs}) ===")
     print(f"  cold_start_ms       {s.cold_start_ms:8.1f}")
     print(f"  hot_reset_ms        {s.hot_reset_ms:8.1f}  (LOAD_OBS IPC {s.hot_reset_load_ms:.1f})")
     print(f"  step_total_ms       {s.step_total_ms:8.1f}  (IPC {s.step_ipc_ms:.1f} + decode {s.step_decode_ms:.1f})")
@@ -234,7 +216,6 @@ def _print_table(metrics: AggregateMetrics, *, ipc_transport: str) -> None:
 def run_benchmark(args: argparse.Namespace) -> dict:
     mission = mission_dir(args.game, args.mission)
     save_state = _resolve_save_state(mission, args.save_state)
-    ipc = args.ipc.strip().lower()
 
     single = _bench_single(
         mission,
@@ -245,7 +226,6 @@ def run_benchmark(args: argparse.Namespace) -> dict:
         step_warmup=args.step_warmup,
         step_samples=args.step_samples,
         reset_samples=args.reset_samples,
-        ipc_transport=ipc,
     )
 
     parallel_eps: float | None = None
@@ -258,7 +238,6 @@ def run_benchmark(args: argparse.Namespace) -> dict:
             save_state=save_state,
             frame_skip=args.frame_skip,
             steps_per_env=args.parallel_steps,
-            ipc_transport=ipc,
         )
 
     agg = AggregateMetrics(
@@ -270,7 +249,7 @@ def run_benchmark(args: argparse.Namespace) -> dict:
         parallel_env_steps_per_s=parallel_eps,
         parallel_wall_s=parallel_wall,
     )
-    _print_table(agg, ipc_transport=ipc)
+    _print_table(agg)
 
     host = {
         "platform": platform.platform(),
@@ -278,13 +257,12 @@ def run_benchmark(args: argparse.Namespace) -> dict:
         "python": platform.python_version(),
         "date": time.strftime("%Y-%m-%d"),
     }
-    report = {
+    return {
         "host": host,
         "game": args.game,
         "mission": args.mission,
         "frame_skip": args.frame_skip,
         "save_state": save_state,
-        "ipc_transport": ipc,
         "metrics": asdict(agg),
         "notes": {
             "bottleneck_hypothesis": "IPC+gdscreenshot+file obs (not torch/PPO)",
@@ -292,7 +270,6 @@ def run_benchmark(args: argparse.Namespace) -> dict:
             "priority_if_reset_dominates": "1.6 before 1.7" if single.reset_step_ratio > 1.0 else "1.7 may help more",
         },
     }
-    return report
 
 
 def main() -> None:
@@ -307,12 +284,6 @@ def main() -> None:
     parser.add_argument("--step-samples", type=int, default=30)
     parser.add_argument("--reset-samples", type=int, default=10)
     parser.add_argument("--parallel-steps", type=int, default=20, help="steps per env in parallel phase")
-    parser.add_argument(
-        "--ipc",
-        default="v1",
-        choices=("v1", "v2"),
-        help="IPC transport (v2: binary length-prefix + inline obs; env WAIT_FCEUX_IPC)",
-    )
     parser.add_argument("--json-out", default=None, help="write report JSON (default: tmp/bench/)")
     args = parser.parse_args()
 

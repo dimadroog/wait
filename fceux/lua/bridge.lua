@@ -22,7 +22,6 @@ local function read_config()
   local frame_skip_s = text:match('"frame_skip"%s*:%s*(%d+)')
   local no_focus_s = text:match('"no_focus"%s*:%s*(true|false)')
   local obs_format = text:match('"obs_format"%s*:%s*"([^"]+)"') or "gd"
-  local ipc_transport = text:match('"ipc_transport"%s*:%s*"([^"]+)"') or "v1"
   if not ipc_dir then
     error("Invalid bridge config: ipc_dir missing")
   end
@@ -35,13 +34,12 @@ local function read_config()
     end
   end
 
-  return ipc_dir, tonumber(frame_skip_s) or 4, ram_addrs, no_focus_s == "true", obs_format, ipc_transport
+  return ipc_dir, tonumber(frame_skip_s) or 4, ram_addrs, no_focus_s == "true", obs_format
 end
 
-local IPC_DIR, FRAME_SKIP, RAM_ADDRS, NO_FOCUS, OBS_FORMAT, IPC_TRANSPORT = read_config()
-local USE_V2 = IPC_TRANSPORT == "v2"
-local REQ_PATH = IPC_DIR .. (USE_V2 and "/request.v2" or "/request.json")
-local RESP_PATH = IPC_DIR .. (USE_V2 and "/response.v2" or "/response.json")
+local IPC_DIR, FRAME_SKIP, RAM_ADDRS, NO_FOCUS, OBS_FORMAT = read_config()
+local REQ_PATH = IPC_DIR .. "/request.json"
+local RESP_PATH = IPC_DIR .. "/response.json"
 local READY_PATH = IPC_DIR .. "/ready.flag"
 
 local save_slot = 9
@@ -157,67 +155,7 @@ local function write_ready()
   end
 end
 
-local function u16le(n)
-  return string.char(n % 256, math.floor(n / 256) % 256)
-end
-
-local function u32le(n)
-  return string.char(
-    n % 256,
-    math.floor(n / 256) % 256,
-    math.floor(n / 65536) % 256,
-    math.floor(n / 16777216) % 256
-  )
-end
-
-local function fields_to_json(fields)
-  local parts = {"{"}
-  local first = true
-  for k, v in pairs(fields) do
-    if k ~= "obs_file" then
-      if not first then
-        parts[#parts + 1] = ","
-      end
-      first = false
-      if type(v) == "number" then
-        parts[#parts + 1] = string.format('"%s":%s', k, v)
-      elseif type(v) == "boolean" then
-        parts[#parts + 1] = string.format('"%s":%s', k, v and "true" or "false")
-      else
-        parts[#parts + 1] = string.format('"%s":"%s"', k, tostring(v):gsub('"', '\\"'))
-      end
-    end
-  end
-  parts[#parts + 1] = "}"
-  return table.concat(parts)
-end
-
-local function write_response_v2(seq, ok, fields, obs_bytes)
-  local json = fields_to_json(fields)
-  local obs = obs_bytes or ""
-  local payload = "WAIT"
-    .. u32le(seq)
-    .. string.char(ok and 1 or 0)
-    .. u16le(#json)
-    .. json
-    .. u32le(#obs)
-    .. obs
-  local tmp = RESP_PATH .. ".tmp"
-  local f = io.open(tmp, "wb")
-  if not f then
-    error("Cannot write response tmp: " .. tmp)
-  end
-  f:write(payload)
-  f:close()
-  os.remove(RESP_PATH)
-  os.rename(tmp, RESP_PATH)
-end
-
-local function write_response(seq, ok, fields, obs_bytes)
-  if USE_V2 then
-    write_response_v2(seq, ok, fields, obs_bytes)
-    return
-  end
+local function write_response(seq, ok, fields)
   local parts = {string.format('{"seq":%d,"ok":%s', seq, ok and "true" or "false")}
   for k, v in pairs(fields) do
     if type(v) == "number" then
@@ -237,22 +175,8 @@ local function write_response(seq, ok, fields, obs_bytes)
   f:close()
 end
 
-local function read_request_v2(data)
-  if #data < 11 or data:sub(1, 4) ~= "WQST" then
-    return nil
-  end
-  local b1, b2, b3, b4, cmd_len, arg_len_hi, arg_len_lo = data:byte(5, 11)
-  local seq = b1 + b2 * 256 + b3 * 65536 + b4 * 16777216
-  local arg_len = arg_len_hi + arg_len_lo * 256
-  local pos = 12
-  local cmd = data:sub(pos, pos + cmd_len - 1)
-  pos = pos + cmd_len
-  local arg = data:sub(pos, pos + arg_len - 1)
-  return {seq = seq, cmd = cmd, arg = arg}
-end
-
 local function read_request()
-  local f = io.open(REQ_PATH, USE_V2 and "rb" or "r")
+  local f = io.open(REQ_PATH, "r")
   if not f then
     return nil
   end
@@ -260,9 +184,6 @@ local function read_request()
   f:close()
   if not text or text == "" then
     return nil
-  end
-  if USE_V2 then
-    return read_request_v2(text)
   end
   local seq = tonumber(text:match('"seq"%s*:%s*(%d+)'))
   local cmd = text:match('"cmd"%s*:%s*"([^"]+)"')
@@ -328,25 +249,8 @@ local function gd_to_raw_gray(shot, w, h)
   return table.concat(parts)
 end
 
-local function capture_obs_bytes(skip_advance)
-  FCEU.setrenderplanes(true, true)
-  if not skip_advance then
-    emu.frameadvance()
-  end
-  local shot = gui.gdscreenshot()
-  FCEU.setrenderplanes(false, false)
-  local use_raw = OBS_FORMAT == "raw"
-  if use_raw then
-    return gd_to_raw_gray(shot, OBS_W, OBS_H), "raw"
-  end
-  return shot, "gd"
-end
-
 local function capture_obs(seq, skip_advance)
   local use_raw = OBS_FORMAT == "raw"
-  if USE_V2 then
-    return capture_obs_bytes(skip_advance)
-  end
   local ext = use_raw and "raw" or "gd"
   local path = IPC_DIR .. "/obs_" .. seq .. "." .. ext
   FCEU.setrenderplanes(true, true)
@@ -396,15 +300,10 @@ local function load_cached_state(key)
 end
 
 local function response_with_obs(seq, cmd, extra)
-  local path_or_bytes, fmt = capture_obs(seq, false)
+  local path, fmt = capture_obs(seq, false)
   local ram = read_ram()
   ram.cmd = cmd
-  local obs_bytes = nil
-  if USE_V2 then
-    obs_bytes = path_or_bytes
-  else
-    ram.obs_file = path_or_bytes
-  end
+  ram.obs_file = path
   ram.format = fmt
   ram.w = OBS_W
   ram.h = OBS_H
@@ -413,25 +312,20 @@ local function response_with_obs(seq, cmd, extra)
       ram[k] = v
     end
   end
-  write_response(seq, true, ram, obs_bytes)
+  write_response(seq, true, ram)
 end
 
 local function finish_obs(req)
-  local path_or_bytes, fmt = capture_obs(req.seq, false)
+  local path, fmt = capture_obs(req.seq, false)
   if req.cmd == "LOAD_OBS" then
     local ram = read_ram()
     ram.cmd = "LOAD_OBS"
     ram.key = req.arg
-    local obs_bytes = nil
-    if USE_V2 then
-      obs_bytes = path_or_bytes
-    else
-      ram.obs_file = path_or_bytes
-    end
+    ram.obs_file = path
     ram.format = fmt
     ram.w = OBS_W
     ram.h = OBS_H
-    write_response(req.seq, true, ram, obs_bytes)
+    write_response(req.seq, true, ram)
   else
     local fields = {
       cmd = "GET_OBS",
@@ -440,14 +334,9 @@ local function finish_obs(req)
       src_h = NES_H,
       w = OBS_W,
       h = OBS_H,
+      obs_file = path,
     }
-    local obs_bytes = nil
-    if USE_V2 then
-      obs_bytes = path_or_bytes
-    else
-      fields.obs_file = path_or_bytes
-    end
-    write_response(req.seq, true, fields, obs_bytes)
+    write_response(req.seq, true, fields)
   end
   clear_request()
   obs_pending = nil
@@ -458,19 +347,14 @@ emu.registerbefore(function()
 end)
 
 local function finish_step()
-  local path_or_bytes, fmt = capture_obs(step_req.seq, true)
+  local path, fmt = capture_obs(step_req.seq, true)
   local ram = read_ram()
   ram.cmd = "STEP"
-  local obs_bytes = nil
-  if USE_V2 then
-    obs_bytes = path_or_bytes
-  else
-    ram.obs_file = path_or_bytes
-  end
+  ram.obs_file = path
   ram.format = fmt
   ram.w = OBS_W
   ram.h = OBS_H
-  write_response(step_req.seq, true, ram, obs_bytes)
+  write_response(step_req.seq, true, ram)
   clear_request()
   stepping = false
   step_req = nil

@@ -23,16 +23,16 @@
 **Правило (обязательно):** любой **e2e train** (`benchmark_train.py`, `train_ppo` на 8 `SubprocVecEnv`, длинный train «первая модель») — **только в конце аудита**, после кода, smoke и pytest. Между правками — tier 0–2 ([1.9](#19-train-стабильность-end-to-end-8-env-reset-ipc)), не полный PPO.
 
 
-| Шаг   | Этап                                              | Статус | Что проверяем                                                         |
-| ----- | ------------------------------------------------- | ------ | --------------------------------------------------------------------- |
-| 1     | **[2]** Phase 0 — раскладка scout / `ram_resolve` | done   | миграция путей, smoke `ram_scout` / `build_playthrough` / `smoke_env` |
-| 2     | **[3.0]** gameplay save state после intro         | done   | `inference_cp0` = кадр 18, room `0x00`                                |
-| 3     | **[3.1]** self-contained FM2                      | done   | ROM + один `.fm2` без внешнего `-loadstate`                           |
-| 4     | **[3.2]** playlist self-contained клипы           | done   | embed в плейлисте; чистка split → **3.3**                             |
-| 5     | **[3.3]** inference без legacy + `inference_config` | done   | только embedded FM2; `inference_states.py`                          |
-| 6     | **[4.4]** рефакторинг: именование и техдолг в коде   | todo   | etalon naming; RAM fallback; IPC v2 — см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
-| 7     | **[4.1–4.3]** гигиена (регрессия)                 | done   | `run_smoke.py`, `pytest tests/smoke/` — быстро                        |
-| **8** | **[5.0]** финальный e2e train                     | todo   | **последний шаг** — только после **4.4**                              |
+| Шаг   | Этап                                                | Статус | Что проверяем                                                                                   |
+| ----- | --------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------- |
+| 1     | **[2]** Phase 0 — раскладка scout / `ram_resolve`   | done   | миграция путей, smoke `ram_scout` / `build_playthrough` / `smoke_env`                           |
+| 2     | **[3.0]** gameplay save state после intro           | done   | `inference_cp0` = кадр 18, room `0x00`                                                          |
+| 3     | **[3.1]** self-contained FM2                        | done   | ROM + один `.fm2` без внешнего `-loadstate`                                                     |
+| 4     | **[3.2]** playlist self-contained клипы             | done   | embed в плейлисте; чистка split → **3.3**                                                       |
+| 5     | **[3.3]** inference без legacy + `inference_config` | done   | только embedded FM2; `inference_states.py`                                                      |
+| 6     | **[4.4]** рефакторинг: именование и техдолг в коде  | todo   | etalon naming; RAM fallback; IPC v2 — см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
+| 7     | **[4.1–4.3]** гигиена (регрессия)                   | done   | `run_smoke.py`, `pytest tests/smoke/` — быстро                                                  |
+| **8** | **[5.0]** финальный e2e train                       | todo   | **последний шаг** — только после **4.4**                                                        |
 
 
 Этапы **1.1–1.9**, **4.1–4.3** и закрытые шаги аудита — done; при регрессии в шагах 3.x–4.4 — быстрые smoke/pytest, **не** e2e train.
@@ -41,32 +41,30 @@
 
 ---
 
-
-
 ## Порядок выполнения
 
 
-| Этап    | Задача                                               | Приоритет | Зависит от                                                 | Параллельно с                  |
-| ------- | ---------------------------------------------------- | --------- | ---------------------------------------------------------- | ------------------------------ |
-| **1.1** | Train: сохранение при остановке и автовозобновление  | high      | —                                                          | —                              |
-| **1.2** | Train: FCEUX без перехвата фокуса (эксперимент)      | medium    | —                                                          | 3.x                            |
-| **1.3** | Train: дефолты PPO под i7-3770                       | medium    | 1.1 (рекомендуется), **1.2 (рекомендуется)**               | 3.x                            |
-| **1.4** | Train: прогресс обучения в % в консоли               | low       | 1.1                                                        | 3.x                            |
-| **1.5** | Train: FCEUX IPC — профилирование (baseline)         | medium    | **1.3 (рекомендуется)**, 1.2 (рекомендуется)               | 3.x                            |
-| **1.6** | Train: FCEUX IPC — round-trips и `load_lock`         | medium    | 1.5                                                        | 3.x                            |
-| **1.7** | Train: FCEUX IPC — fast obs (без GD-файла)           | medium    | 1.5, **1.2 (обязательно)**                                 | 3.x                            |
-| **1.8** | Train: FCEUX IPC — pipes/shared mem (опц.)           | low       | 1.7                                                        | 3.x                            |
-| **1.9** | Train: стабильность e2e (8 env, reset IPC)           | high      | **1.8**, 1.3 (рекомендуется)                               | 3.x                            |
-| **2**   | Phase 0: разнести RAM scout и inference-логи         | low       | —                                                          | 3.x (не во время active train) |
-| **3.0** | Inference: save state после intro (gameplay start)   | high      | Phase 0 (`reference/clear.fm2`, `human_playthrough.jsonl`) | 1.x, 2                         |
-| **3.1** | Inference: self-contained FM2                        | medium    | **3.0 (рекомендуется)**                                    | 1.x, 2                         |
-| **3.2** | Playlist и replay: self-contained FM2 клипы          | medium    | 3.1, **3.0 (рекомендуется)**                               | 1.x, 2                         |
+| Этап    | Задача                                                      | Приоритет | Зависит от                                                 | Параллельно с                  |
+| ------- | ----------------------------------------------------------- | --------- | ---------------------------------------------------------- | ------------------------------ |
+| **1.1** | Train: сохранение при остановке и автовозобновление         | high      | —                                                          | —                              |
+| **1.2** | Train: FCEUX без перехвата фокуса (эксперимент)             | medium    | —                                                          | 3.x                            |
+| **1.3** | Train: дефолты PPO под i7-3770                              | medium    | 1.1 (рекомендуется), **1.2 (рекомендуется)**               | 3.x                            |
+| **1.4** | Train: прогресс обучения в % в консоли                      | low       | 1.1                                                        | 3.x                            |
+| **1.5** | Train: FCEUX IPC — профилирование (baseline)                | medium    | **1.3 (рекомендуется)**, 1.2 (рекомендуется)               | 3.x                            |
+| **1.6** | Train: FCEUX IPC — round-trips и `load_lock`                | medium    | 1.5                                                        | 3.x                            |
+| **1.7** | Train: FCEUX IPC — fast obs (без GD-файла)                  | medium    | 1.5, **1.2 (обязательно)**                                 | 3.x                            |
+| **1.8** | Train: FCEUX IPC — pipes/shared mem (опц.)                  | low       | 1.7                                                        | 3.x                            |
+| **1.9** | Train: стабильность e2e (8 env, reset IPC)                  | high      | **1.8**, 1.3 (рекомендуется)                               | 3.x                            |
+| **2**   | Phase 0: разнести RAM scout и inference-логи                | low       | —                                                          | 3.x (не во время active train) |
+| **3.0** | Inference: save state после intro (gameplay start)          | high      | Phase 0 (`reference/clear.fm2`, `human_playthrough.jsonl`) | 1.x, 2                         |
+| **3.1** | Inference: self-contained FM2                               | medium    | **3.0 (рекомендуется)**                                    | 1.x, 2                         |
+| **3.2** | Playlist и replay: self-contained FM2 клипы                 | medium    | 3.1, **3.0 (рекомендуется)**                               | 1.x, 2                         |
 | **3.3** | Inference: без legacy replay + убрать `inference_config.py` | low       | 3.1, 3.2                                                   | 1.x, 2                         |
-| **4.1** | Smoke: единый `run_smoke.py` (Facade)                | medium    | —                                                          | 1.x, 3.x                       |
-| **4.2** | Train: `--smoke` / без `runs/` для коротких прогонов | low       | 1.1 (рекомендуется), **1.9 (рекомендуется — e2e stable)**  | 1.x                            |
-| **4.3** | Тесты: pytest smoke + `conftest` cleanup             | low       | 4.1 (рекомендуется)                                        | 1.x, 3.x                       |
-| **4.4** | Рефакторинг: именование и техдолг в коде             | medium    | **3.3**; DESIGN § именование                               | — (**перед 5.0**)              |
-| **5.0** | **Аудит: финальный e2e train**                       | high      | **3.0–3.3**, **4.4**; 4.3 (рекомендуется)                  | — (**последний шаг аудита**)   |
+| **4.1** | Smoke: единый `run_smoke.py` (Facade)                       | medium    | —                                                          | 1.x, 3.x                       |
+| **4.2** | Train: `--smoke` / без `runs/` для коротких прогонов        | low       | 1.1 (рекомендуется), **1.9 (рекомендуется — e2e stable)**  | 1.x                            |
+| **4.3** | Тесты: pytest smoke + `conftest` cleanup                    | low       | 4.1 (рекомендуется)                                        | 1.x, 3.x                       |
+| **4.4** | Рефакторинг: именование и техдолг в коде                    | medium    | **3.3**; DESIGN § именование                               | — (**перед 5.0**)              |
+| **5.0** | **Аудит: финальный e2e train**                              | high      | **3.0–3.3**, **4.4**; 4.3 (рекомендуется)                  | — (**последний шаг аудита**)   |
 
 
 ```mermaid
@@ -110,8 +108,6 @@ flowchart LR
 
 
 
-
-
 ### Дорожные карты по цели
 
 **Полный аудит (текущая цель):** **[2]** → **3.0** → 3.1 → 3.2 → 3.3 → **[4.4]** → **[5.0] e2e train**. Подробности — [§ Полный аудит](#полный-аудит).
@@ -126,11 +122,9 @@ flowchart LR
 
 **Эфир / inference-демо:** **3.0** → 3.1 → 3.2 → 3.3. **3.0 обязателен до осмысленного inference/плейлиста** (сейчас `inference_cp0` / `cp0` = кадр 1 эталона, intro + ложная смерть по `lives`). Train не блокирует; без эталона (Phase 0) кадр gameplay не определить.
 
-**Чистка репозитория (Phase 0):** этап 2 закрыт; fallback `logs/ram_*` — удалить в **[4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e)**.
+**Чистка репозитория (Phase 0):** этап 2 закрыт; fallback `logs/ram_`* — удалить в **[4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e)**.
 
 ---
-
-
 
 ## Чеклист: шпаргалка
 
@@ -153,8 +147,8 @@ flowchart LR
 | 2    | `scripts/ram_scout.py`, `src/ram_map_load.py`, `scripts/build_playthrough.py`                                                                                                                |
 | 3.0  | `scripts/build_inference_states.py`, `reference/human_playthrough.jsonl`, `src/inference_states.py`, `src/stream/run_inference.py`                                                           |
 | 3.1  | `src/fm2_export.py`, `scripts/export_fm2.py`, `src/stream/run_inference.py`                                                                                                                  |
-| 3.2  | `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`, `fceux/lua/achievement_overlay.lua`                                                           |
-| 3.3  | `src/inference_states.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`                                                     |
+| 3.2  | `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`, `fceux/lua/achievement_overlay.lua`                                                            |
+| 3.3  | `src/inference_states.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`                                                                         |
 | 4.1  | `scripts/run_smoke.py`, `scripts/smoke_*.py`, `scripts/test_parallel_env.py`, `docs/DESIGN.md`                                                                                               |
 | 4.2  | `src/train/train_ppo.py`, `docs/SCRIPTS.md`                                                                                                                                                  |
 | 4.3  | `tests/conftest.py`, `tests/smoke/`, `requirements.txt` (pytest)                                                                                                                             |
@@ -165,8 +159,6 @@ flowchart LR
 **Параллельные треки:** Train (1.x) и Inference (3.x) — параллельно; Phase 0 (2) — не во время active train, параллельно с 3.x OK. **1.5–1.9** меняют bridge/env — не во время active train (как этап 2); 1.5 (benchmark bridge) и **5.0** (e2e train) — только между прогонами train / **в конце аудита**.
 
 ---
-
-
 
 ## [1.1] Train: сохранение при остановке и автовозобновление
 
@@ -188,8 +180,6 @@ flowchart LR
 - [x] `docs/SCRIPTS.md` — `--resume`, прерывание
 - [x] Smoke: Ctrl+C → resume → дотренировать до target
 
-
-
 ### Контекст
 
 Сейчас `model.save(checkpoint_out)` вызывается только после полного `model.learn()`. Промежуточные чекпоинты — раз в `--save-every` (50k шагов). При Ctrl+C, kill или сбое прогресс теряется. `ML_CONCEPT.md` описывает finetune как `PPO.load` + continue, но автоматики при stop/start нет.
@@ -202,16 +192,12 @@ flowchart LR
 4. **Не повторять BC** при resume, если веса уже из checkpoint.
 5. **Sidecar** `*.train.json` рядом с zip: `target_timesteps`, `game`, `mission`, `n_envs`, `save_state`, timestamps.
 
-
-
 ### Критерий готовности
 
 - [x] Остановка Ctrl+C сохраняет `.zip` с корректным `num_timesteps`.
 - [x] Повторный запуск с `--resume` продолжает обучение до `target_timesteps`, не с нуля.
 - [x] Нормальное завершение по-прежнему пишет финальный `checkpoint_out`.
 - [x] `docs/SCRIPTS.md` документирует `--resume` и поведение при прерывании.
-
-
 
 ### Заметки
 
@@ -220,8 +206,6 @@ flowchart LR
 - Блокирует осмысленную реализацию процента в 1.4 (нужен `target_timesteps` и resume).
 
 ---
-
-
 
 ## [1.2] Train: FCEUX без перехвата фокуса (эксперимент)
 
@@ -248,8 +232,6 @@ flowchart LR
 - [x] `docs/SCRIPTS.md` — что включено, что не гарантируется
 - [x] **Вердикт:** принят → 1.3 (`n_envs=8`) разблокирован
 
-
-
 ### Контекст
 
 При train `SubprocVecEnv` поднимает несколько `fceux64.exe` (stagger 5 с на rank). `show_window=False` и `CREATE_NO_WINDOW` **не** прячут GUI FCEUX на Windows — окно появляется и может забирать фокус при каждом старте. FCEUX не имеет true headless; кадры идут через `gui.gdscreenshot()` в `bridge.lua`.
@@ -275,8 +257,6 @@ flowchart LR
 3. Прогнать train-smoke: `train_ppo.py --n-envs 4 --timesteps 500 --dummy-vec` (или минимальный прогон) — убедиться, что obs/reward не сломались.
 4. Зафиксировать результат в `docs/SCRIPTS.md`: что включено, что не гарантируется.
 
-
-
 ### Критерии приёмки (эксперимент считается успешным, если все выполнены)
 
 - [x] При запуске **4** env подряд (как при train) фокус **остаётся** в окне, где был до старта (терминал/IDE) — субъективно и/или без всплывания FCEUX на передний план.
@@ -285,8 +265,6 @@ flowchart LR
 - [x] Нет падения fps train >10% относительно baseline без эксперимента (грубый замер на 1–2 мин).
 - [x] Поведение документировано; при провале критериев — явная пометка «не решено», `n_envs=8` (1.3) откладывается или идёт с override.
 
-
-
 ### Заметки
 
 - **Не трогать** inference-профиль (`headless: false`) и `play_inference_fm2.py` — эксперимент только для train/bridge headless.
@@ -294,8 +272,6 @@ flowchart LR
 - Параллельно с этапом 3 (inference) — можно, файлы почти не пересекаются.
 
 ---
-
-
 
 ## [1.3] Train: дефолты PPO под i7-3770 (16 GB ОЗУ)
 
@@ -316,8 +292,6 @@ flowchart LR
 - [x] `docs/SCRIPTS.md` — пример «первая модель»
 - [x] Не перезапускать уже идущий train
 
-
-
 ### Контекст
 
 Сейчас дефолты `--n-envs 4`, `--threads 4`. На целевом железе (i7-3770, 4 ядра / 8 потоков, 16 GB ОЗУ) замеры показали:
@@ -325,8 +299,6 @@ flowchart LR
 - train ~0.5 env-step/с при 4 env; CPU часто простаивает из‑за IPC Python↔FCEUX;
 - footprint train ~~500–900 MB — запас по ОЗУ большой (~~10 GB доступно);
 - `ML_CONCEPT.md` планирует 4–8 `SubprocVecEnv` и `torch.set_num_threads(4–6)`.
-
-
 
 ### Задача
 
@@ -347,8 +319,6 @@ flowchart LR
 - [x] `./scripts/train_local.sh` без аргументов стартует с `n_envs=8`, `threads=2`.
 - [x] В `docs/SCRIPTS.md` пример «первая модель» согласован с новыми дефолтами (или явно документирован override).
 
-
-
 ### Заметки
 
 - Не перезапускать уже идущие прогоны — смена дефолтов влияет только на новые запуски.
@@ -357,8 +327,6 @@ flowchart LR
 - Если bottleneck останется на `bridge_load_lock` при коротких эпизодах (`ep_len_mean≈2`) — см. **1.5–1.6**, не откат дефолтов.
 
 ---
-
-
 
 ## [1.4] Train: прогресс обучения в процентах в консоли
 
@@ -379,8 +347,6 @@ flowchart LR
 - [x] `--progress` (tqdm) не сломан; `--no-progress-pct` (опц.)
 - [x] `docs/SCRIPTS.md` — UX по умолчанию
 
-
-
 ### Контекст
 
 При `model.learn()` сейчас в консоль попадают только стартовая строка (`timesteps=…`) и периодический лог SB3 (`verbose=1`: reward, `ep_len_mean`, fps). Явного **процента** от `target_timesteps` нет. Флаг `--progress` включает progress bar (tqdm+rich), но он opt-in и не даёт простой однострочный «42%» в обычном терминале без rich.
@@ -394,8 +360,6 @@ flowchart LR
 3. **Поведение по умолчанию** — включено без отдельного флага (или `--no-progress-pct` для отключения); не ломать существующий `--progress` (tqdm).
 4. При **resume** (1.1) — процент от полного `target_timesteps`, не от оставшегося окна.
 
-
-
 ### Критерий готовности
 
 - [x] Во время `train_local.sh` / `train_ppo.py` в консоли виден растущий процент до 100%.
@@ -403,16 +367,12 @@ flowchart LR
 - [x] Лог SB3 (`verbose=1`) и чекпоинты по `--save-every` работают как раньше.
 - [x] В `docs/SCRIPTS.md` кратко описан вывод (если меняется UX по умолчанию).
 
-
-
 ### Заметки
 
 - Не требовать tqdm/rich для базового процента — только stdlib + callback SB3.
 - Throttling обязателен: при `n_envs=8` (1.3) rollout'ы частые, печать каждого шага забьёт терминал.
 
 ---
-
-
 
 ## [1.5] Train: FCEUX IPC — профилирование (baseline)
 
@@ -433,8 +393,6 @@ flowchart LR
 - [x] Подтвердить гипотезу: bottleneck — IPC + `gdscreenshot` + файловый obs, не PPO/torch
 - [x] При `ep_len_mean≈2`: отдельная строка «reset/step ratio» — нужен ли приоритет 1.6 над 1.7
 
-
-
 ### Контекст
 
 Сейчас train ~**0.5 env-step/с** при 4 env; CPU простаивает в ожидании Python↔FCEUX. Протокол: файлы `request.json` / `response.json` (`POLL_INTERVAL=0.01`), на каждый step — `gui.gdscreenshot()` → `.gd` ~246 KB → Python grayscale+resize 84×84. Hot reset: глобальный `bridge_load_lock` сериализует `LOAD` + `GET_OBS` между env.
@@ -447,15 +405,11 @@ flowchart LR
 2. Прогнать на целевом железе после **1.3** (или с явным `--n-envs 8` override).
 3. Записать цифры «до оптимизаций» и рекомендацию: что делать первым — 1.6 или 1.7.
 
-
-
 ### Критерий готовности
 
 - [x] `benchmark_bridge.py` запускается одной командой, печатает таблицу метрик.
 - [x] Baseline зафиксирован для `n_envs=8`, `frame_skip=4` (или документирован override).
 - [x] В backlog/SCRIPTS явно: узкое место step vs reset при типичном `ep_len_mean`.
-
-
 
 ### Заметки
 
@@ -464,8 +418,6 @@ flowchart LR
 - Turbo/nothrottle уже включён в `bridge.lua` — в отчёте не путать с «ещё не включённым throttle».
 
 ---
-
-
 
 ## [1.6] Train: FCEUX IPC — round-trips и `load_lock`
 
@@ -487,8 +439,6 @@ flowchart LR
 - [x] `benchmark_bridge.py`: прирост ≥10% env-steps/s **или** ≥15% снижение ms/reset *(−21% / −34% ms/reset)*
 - [x] `docs/SCRIPTS.md` — изменения протокола (если есть)
 
-
-
 ### Контекст
 
 Дешёвые оптимизации без смены формата obs: меньше JSON round-trips, меньше latency polling, ослабление сериализации при 8 env. Особенно важно при коротких эпизодах, когда reset доминирует над step.
@@ -499,15 +449,11 @@ flowchart LR
 2. Уменьшить overhead polling (измерить до/после).
 3. Пересмотреть `bridge_load_lock` — не держать lock на два IPC, если obs в одной команде; исследовать, нужен ли глобальный lock при per-session `ipc_dir`.
 
-
-
 ### Критерий готовности
 
 - [x] Hot reset — один IPC round-trip (или документировано, почему два неизбежны).
 - [x] Benchmark 1.5: измеримый выигрыш на reset и/или суммарный env-steps/s.
 - [x] Smoke train: obs `(4,84,84)`, hot reset без рестарта процесса.
-
-
 
 ### Заметки
 
@@ -516,8 +462,6 @@ flowchart LR
 - Если 1.2 ещё не принят — smoke на видимом окне; после 1.2 — повторить с `WAIT_FCEUX_NO_FOCUS`.
 
 ---
-
-
 
 ## [1.7] Train: FCEUX IPC — fast obs (без GD-файла)
 
@@ -540,8 +484,6 @@ flowchart LR
 - [x] Train-smoke: `--n-envs 4 --timesteps 500` — reward/obs OK
 - [x] `docs/SCRIPTS.md` + кратко в `ML_CONCEPT.md` (контракт IPC)
 
-
-
 ### Контекст
 
 Главная стоимость step: `FCEU.setrenderplanes` + `gui.gdscreenshot()` + запись ~246 KB + `cv2.resize` в Python. Цель — один компактный буфер на step и меньше работы на границе Lua↔Python.
@@ -552,16 +494,12 @@ flowchart LR
 2. Сохранить корректность stack `(4,84,84)` в `BaseNesEnv`.
 3. Прогнать приёмку 1.2 (не чёрный кадр при свёрнутом окне).
 
-
-
 ### Критерий готовности
 
 - [x] Step использует fast obs по умолчанию в train-профиле.
 - [x] Benchmark: существенный выигрыш ms/step vs 1.5 baseline.
 - [x] Критерии 1.2 по obs не нарушены (если 1.2 принят).
 - [x] `smoke_bridge` / `smoke_env` зелёные.
-
-
 
 ### Заметки
 
@@ -570,8 +508,6 @@ flowchart LR
 - **Не начинать** до **1.2**, если minimize — целевой режим train: иначе риск чёрных кадров обнаружится поздно.
 
 ---
-
-
 
 ## [1.8] Train: FCEUX IPC — pipes / shared memory (опционально)
 
@@ -591,8 +527,6 @@ flowchart LR
 - [x] Benchmark vs post-1.7 baseline — **v2 медленнее**, default остаётся v1
 - [x] Документация протокола v2 (`src/bridge_ipc.py`, `SCRIPTS.md`)
 
-
-
 ### Контекст
 
 После 1.7 останется overhead JSON + fs notify/poll. Имеет смысл только если benchmark показывает, что IPC latency всё ещё ≥15–20% step time.
@@ -606,8 +540,6 @@ flowchart LR
 - [x] PoC на Windows + smoke; измеримый выигрыш **или** явное «не делаем» с цифрами в SCRIPTS.
 - [x] Train по умолчанию может остаться на v1, если выигрыш <10%.
 
-
-
 ### Вердикт (2026-07-07)
 
 **Не включаем v2 по умолчанию.** PoC замер: ms/step n=1 **26.7 vs 16.6** (+61%). Код v2 оставлен как reference — **удалить в 4.4** §C (на этапе разработки обратная совместимость не нужна).
@@ -618,8 +550,6 @@ flowchart LR
 - Параллельно с 3.x осторожно: общий `bridge.lua`.
 
 ---
-
-
 
 ## [1.9] Train: стабильность end-to-end (8 env, reset IPC)
 
@@ -661,22 +591,16 @@ flowchart LR
 
 ### Чеклист сессии
 
-
-
 #### Фаза A — правки (между пунктами — tier 0; после блока — tier 1)
 
 - [x] `reset_to_state` **cold path:** после `start(load_state)` + `cache_state` — `load_obs(key)` вместо `GET_OBS` + `GET_RAM` (лишний round-trip; таймауты на `train_7`)
 - [x] **Windows IPC:** `_safe_unlink` best-effort (не fatal); при необходимости — retry read/unlink, без краша worker
 - [x] `bridge_load_lock`**:** таймаут/конкуренция при `ep_len≈2` и 8 env — tier 1 (`test_parallel_env` 8 env, несколько reset) без `IPC timeout` / `FCEUX bridge is not running`
 
-
-
 #### Фаза B — инфраструктура (без полного e2e)
 
 - [x] `scripts/benchmark_train.py`**:** PPO `learn`, `n_envs=8`, JSON в `tmp/bench/`; флаги `--timesteps` (gate vs fps — см. заметки)
 - [x] **Checkpoint path:** абсолютный `tmp/bench/` в benchmark (не `mission/tmp/…`)
-
-
 
 #### Фаза C — финальный gate (один прогон после A+B)
 
@@ -684,8 +608,6 @@ flowchart LR
 - [x] `**benchmark_train.py`:** env-steps/s; сравнение с `benchmark_bridge.py` и историческим ~0.5 env-step/s (4 env, pre-1.x)
 - [x] `**docs/SCRIPTS.md`:** таблица «bridge vs e2e train fps», % до/после 1.x (с оговоркой методики)
 - [x] **Регрессия:** `smoke_bridge` / `smoke_env` / `benchmark_bridge` без регрессии (parallel n=8 — только после cleanup; n=1 OK)
-
-
 
 ### Контекст
 
@@ -708,8 +630,6 @@ flowchart LR
 2. Добавить воспроизводимый **e2e benchmark** (не ручной длинный `train_ppo`).
 3. Зафиксировать цифры в SCRIPTS: bridge vs train, до/после 1.x.
 
-
-
 ### Критерий готовности
 
 - [x] Фаза A: tier 0–1 зелёные (без train-smoke между пунктами).
@@ -717,8 +637,6 @@ flowchart LR
 - [x] `benchmark_train.py` печатает env-steps/s; отчёт в `tmp/bench/`.
 - [x] В SCRIPTS — «e2e train fps» и % vs ~0.5 (или явная оговорка методики: steady-state vs wall-clock).
 - [x] `smoke_bridge` / `smoke_env` / `benchmark_bridge` без регрессии.
-
-
 
 ### Заметки
 
@@ -732,12 +650,10 @@ flowchart LR
 
 ---
 
-
-
 ## [2] Phase 0: разнести RAM scout и inference-логи по каталогам
 
 **Статус:** done  
-**Вердикт (2026-07-09):** пути в `project_paths` (`reference/scout/`, `config/ram_resolve.json`); m1 мигрирован. Fallback `logs/ram_*` + `DeprecationWarning` — **временно**; удалить в **[4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e)** §B.  
+**Вердикт (2026-07-09):** пути в `project_paths` (`reference/scout/`, `config/ram_resolve.json`); m1 мигрирован. Fallback `logs/ram_`* + `DeprecationWarning` — **временно**; удалить в **[4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e)** §B.  
 **Этап:** 2  
 **Приоритет:** low  
 **Зависит от:** — (не во время active train без fallback)  
@@ -755,8 +671,6 @@ flowchart LR
 - [x] (временно) deprecation warning на `logs/ram_*` — снять в **4.4** §B
 - [x] `.gitignore`, `SCRIPTS.md`, `ML_CONCEPT.md`, `ram_map.md`
 - [x] Smoke: `ram_scout`, `build_playthrough`, `smoke_env`
-
-
 
 ### Контекст
 
@@ -797,8 +711,6 @@ games/…/missions/m1/
 3. Обновить ссылки в `ram_map.md`, `.gitignore`, `SCRIPTS.md`, `ML_CONCEPT.md`.
 4. ~~Опционально: fallback на старые пути `logs/ram_*`~~ — сделано временно; **удалить в 4.4** §B.
 
-
-
 ### Критерий готовности
 
 - [x] `ram_scout.py` и `build_playthrough.py` пишут/читают scout-артефакты из `reference/scout/`.
@@ -806,8 +718,6 @@ games/…/missions/m1/
 - [x] `logs/` содержит только inference-артефакты (`YYYYMMDD_*`); scout-файлы там не создаются.
 - [x] Документация и `.gitignore` согласованы с новой схемой.
 - [x] M1: файлы перенесены, `ram_scout` / `build_playthrough` / smoke env проходят на новых путях.
-
-
 
 ### Заметки
 
@@ -817,8 +727,6 @@ games/…/missions/m1/
 - Не конфликтует с этапом 3 (другие файлы и каталоги).
 
 ---
-
-
 
 ## [3.0] Inference: save state после intro (gameplay start)
 
@@ -843,15 +751,11 @@ games/…/missions/m1/
 - [x] `docs/SCRIPTS.md` + `ML_CONCEPT.md` — отличие train `cp0` vs inference `inference_cp0`
 - [x] **Не трогать** `train_ppo.py` / train bridge (env manifest `cp0` — отдельный контракт)
 
-
-
 ### Критерий готовности
 
 - [x] `inference_cp0` = save state на старте gameplay, не на кадре 1 `clear.fm2`.
 - [x] Inference reset без intro-артефактов (lives ≠ 255 на старте).
 - [x] Документация описывает, как пересобрать state после смены эталона.
-
-
 
 ### Заметки
 
@@ -859,8 +763,6 @@ games/…/missions/m1/
 - Train env может продолжать использовать `cp0` из manifest — согласовать явно в доке, не ломать resume.
 
 ---
-
-
 
 ## [3.1] Inference: self-contained FM2 (встроенный save state)
 
@@ -882,8 +784,6 @@ games/…/missions/m1/
 - [x] `docs/SCRIPTS.md` + `ML_CONCEPT.md`
 - [x] **Не трогать** `train_ppo.py` / train bridge
 
-
-
 ### Контекст
 
 Раньше демо inference требовало несколько артефактов: `.fm2` (только input), `.overlay.json` (save_state + achievements), внешний `states/inference_cp*.fc0`, плюс `play_inference_fm2.py` для staging и `-loadstate`. С 3.1 inference-клип с embedded savestate открывается в FCEUX как **ROM + один** `.fm2` (Load ROM → Play Movie).
@@ -898,8 +798,6 @@ games/…/missions/m1/
 4. **Документация** — в `SCRIPTS.md`: «открыть в FCEUX: ROM + один `.fm2`», без `cp0.fc0` для inference-клипов.
 5. ~~**Убрать bootstrap-артефакты**~~ — сделано: `reference/inference_bootstrap.fm2`, `bootstrap_fm2` в конфиге, `scripts/bootstrap_inference_states.py`, `bootstrap_inference_save.lua`, `write_bootstrap_fm2()`. На train не влияет.
 
-
-
 ### Критерий готовности
 
 - [x] Экспортированный FM2 воспроизводится в FCEUX (Load ROM → Play Movie) **без** отдельного `-loadstate` и без `play_inference_fm2.py`.
@@ -907,8 +805,6 @@ games/…/missions/m1/
 - [x] Размер и время экспорта приемлемы (замер на `inference_cp0.fc0`).
 - [x] `docs/SCRIPTS.md` описывает новый поток и отличие от эталона `reference/clear.fm2`.
 - [x] Bootstrap-скрипт и `reference/inference_bootstrap.fm2` удалены; GUID-bound replay — через embed `savestate`.
-
-
 
 ### Заметки
 
@@ -919,8 +815,6 @@ games/…/missions/m1/
 - Блокирует 3.2 и 3.3 (playlist и удаление `inference_config` опираются на embed).
 
 ---
-
-
 
 ## [3.2] Playlist и replay: self-contained FM2 клипы
 
@@ -947,11 +841,13 @@ games/…/missions/m1/
 
 **Целевое разделение (финал — в 3.3):**
 
-| Слой | Артефакт | Кто читает |
-| ---- | -------- | ---------- |
-| Replay | `.fm2` (embedded `savestate`) | FCEUX `-playmovie` |
-| Achievements | `.overlay.json` (без `save_state`) | Lua overlay |
-| Порядок эфира | `playlist.json` + `.play.cmd` | только Python |
+
+| Слой          | Артефакт                           | Кто читает         |
+| ------------- | ---------------------------------- | ------------------ |
+| Replay        | `.fm2` (embedded `savestate`)      | FCEUX `-playmovie` |
+| Achievements  | `.overlay.json` (без `save_state`) | Lua overlay        |
+| Порядок эфира | `playlist.json` + `.play.cmd`      | только Python      |
+
 
 ### Задача (выполнено в 3.2)
 
@@ -972,8 +868,6 @@ games/…/missions/m1/
 - Блокирует 3.3.
 
 ---
-
-
 
 ## [3.3] Inference: без legacy replay + убрать `inference_config.py`
 
@@ -1008,12 +902,14 @@ games/…/missions/m1/
 
 После 3.2 в коде остались split-ветки: sidecar/manifest с `save_state`, два Lua-скрипта, opt-out embed. Цель 3.3 — один контракт: **embedded FM2 + чистый overlay**.
 
-| Символ | Сейчас | Действие |
-| ------ | ------ | -------- |
-| `INFERENCE_FM2_GUID` | `inference_config` | → `fm2_export.py` |
-| `resolve_inference_save_state()` | replay/export/playlist | удалить |
-| `gameplay_start_frame()` | `build_inference_states` | оставить (перенести в manifest helper) |
-| `inference_save_state_for()` | `build_inference_states` | оставить |
+
+| Символ                           | Сейчас                   | Действие                               |
+| -------------------------------- | ------------------------ | -------------------------------------- |
+| `INFERENCE_FM2_GUID`             | `inference_config`       | → `fm2_export.py`                      |
+| `resolve_inference_save_state()` | replay/export/playlist   | удалить                                |
+| `gameplay_start_frame()`         | `build_inference_states` | оставить (перенести в manifest helper) |
+| `inference_save_state_for()`     | `build_inference_states` | оставить                               |
+
 
 ### Задача
 
@@ -1040,8 +936,6 @@ games/…/missions/m1/
 
 ---
 
-
-
 ## [4.1] Smoke: единый `run_smoke.py` (Facade)
 
 **Статус:** done  
@@ -1062,15 +956,11 @@ games/…/missions/m1/
 - [x] exit code 0/1; документация в `SCRIPTS.md`
 - [x] В DESIGN / cursor rule: «после правок — `run_smoke.py`»
 
-
-
 ### Критерий готовности
 
 - [x] Один entry point для smoke; агент не вызывает `train_ppo` для проверки env/bridge.
 
 ---
-
-
 
 ## [4.2] Train: `--smoke` и контроль `checkpoints/runs/`
 
@@ -1090,15 +980,11 @@ games/…/missions/m1/
 - [x] (опц.) `--no-intermediate-checkpoints` — без `CheckpointCallback` / `runs/`
 - [x] `SCRIPTS.md`: отладка train — `--smoke` или явный `tmp/`, не `smoke_*` в missions
 
-
-
 ### Критерий готовности
 
 - [x] Короткий прогон train не оставляет файлов в `games/.../checkpoints/` без явного `--checkpoint-out`.
 
 ---
-
-
 
 ## [4.3] Тесты: pytest smoke + conftest cleanup
 
@@ -1119,15 +1005,11 @@ Smoke-скрипты не дают autouse cleanup и CI exit code из коро
 - [x] `@pytest.mark.requires_fceux` на integration smoke
 - [x] `pytest tests/smoke/` эквивалентен 4.1 по покрытию
 
-
-
 ### Критерий готовности
 
 - [x] `pytest tests/smoke/` проходит локально; после прогона нет stray `smoke_*` в games.
 
 ---
-
-
 
 ## [4.4] Рефакторинг: именование и техдолг в коде (перед e2e)
 
@@ -1167,10 +1049,10 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 
 #### C — Bridge IPC v2: удалить PoC (вердикт 1.8 — не включаем)
 
-- [ ] Удалить v2-транспорт: `bridge_ipc.py` (encode/decode v2), ветки `request.v2`/`response.v2` в `fceux_bridge.py` и `bridge.lua`
-- [ ] Убрать `WAIT_FCEUX_IPC=v2`, `ipc_transport: v2` из профилей/доков; оставить только v1 JSON files
-- [ ] `benchmark_bridge.py` — без флага `--ipc v2` (если есть)
-- [ ] `docs/SCRIPTS.md` — убрать секцию IPC v2 PoC или свернуть в историю 1.8
+- [x] Удалить v2-транспорт: `bridge_ipc.py` (encode/decode v2), ветки `request.v2`/`response.v2` в `fceux_bridge.py` и `bridge.lua`
+- [x] Убрать `WAIT_FCEUX_IPC=v2`, `ipc_transport: v2` из профилей/доков; оставить только v1 JSON files
+- [x] `benchmark_bridge.py` — без флага `--ipc v2` (если есть)
+- [x] `docs/SCRIPTS.md` — убрать секцию IPC v2 PoC или свернуть в историю 1.8
 
 #### D — smoke
 
@@ -1179,10 +1061,10 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 
 ### Критерий готовности
 
-- [ ] DESIGN § именование соблюдено в коде и конфигах плагина.
-- [ ] Нет идентификаторов `phaseN_*` / `phaseN.yaml` в коде и `games/`.
+- [x] DESIGN § именование соблюдено в коде и конфигах плагина.
+- [x] Нет идентификаторов `phaseN_*` / `phaseN.yaml` в коде и `games/`.
 - [x] Нет fallback на `logs/ram_scout.jsonl` / `logs/ram_resolve.json` в runtime.
-- [ ] Нет IPC v2 в коде и профилях (только v1).
+- [x] Нет IPC v2 в коде и профилях (только v1).
 - [ ] Inference / playthrough / train smoke (tier 0–2) без регрессий.
 - [ ] **[5.0]** разблокирован.
 
@@ -1195,8 +1077,6 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 - **Не трогать:** `decode_obs` ветка `format: gd` для inference-профиля — не то же самое, что IPC v2.
 
 ---
-
-
 
 ## [5.0] Аудит: финальный e2e train
 
@@ -1220,8 +1100,6 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 - [ ] `benchmark_train.py` — env-steps/s, отчёт в `tmp/bench/`; сравнение с `benchmark_bridge.py`
 - [ ] (опц.) Длинный train «первая модель» по `SCRIPTS.md` — только после зелёного gate
 - [ ] `cleanup_artifact_quarantine("bench")`; нет stray `smoke_*` в `games/.../checkpoints/`
-
-
 
 ### Критерий готовности
 

@@ -139,15 +139,13 @@ Smoke-тест IPC Python ↔ FCEUX (`FceuxBridge`): load state, ping, step, RAM
 
 **Train fast obs (этап 1.7):** `train.yaml` → `obs_format: raw` (default для headless train); override `WAIT_FCEUX_OBS_FORMAT=gd`. Inference остаётся на `gd`.
 
-**IPC v2 PoC (этап 1.8, опционально):** `WAIT_FCEUX_IPC=v2` — бинарный length-prefix (`request.v2`/`response.v2`, magic `WQST`/`WAIT`) + obs inline в ответе (без `obs_*.raw`). **По умолчанию v1** — v2 медленнее на Windows (см. benchmark). Протокол: `src/bridge_ipc.py`. `train_local.sh` и `fceux/profiles/train.yaml` фиксируют **v1**.
-
 ### Train defaults (проверено 1.1–1.8)
 
 Единый стек без известных проблем на Windows (i7-3770, 8 env):
 
 | Параметр | Значение | Где задано |
 | -------- | -------- | ---------- |
-| IPC transport | **v1** (JSON + `obs_*.raw`) | `train.yaml`, `WAIT_FCEUX_IPC`, `train_local.sh` |
+| IPC | JSON `request.json`/`response.json` + `obs_*.raw` | `fceux/lua/bridge.lua`, `src/fceux_bridge.py` |
 | obs format | **raw** 84×84 | `train.yaml`, `WAIT_FCEUX_OBS_FORMAT` |
 | no-focus | **on** | `train.yaml`, `WAIT_FCEUX_NO_FOCUS` |
 | frame_skip | **4** | `train.yaml`, env default |
@@ -156,7 +154,7 @@ Smoke-тест IPC Python ↔ FCEUX (`FceuxBridge`): load state, ping, step, RAM
 | PPO n_steps / batch | **128 / 256** | `train_ppo.py` |
 | turbo (FCEUX) | **on** | env default (`--no-turbo` для отладки) |
 
-**Не использовать в train:** `WAIT_FCEUX_IPC=v2` (медленнее, нестабилен при n_envs>1). Inference: `obs_format: gd`, `ipc_transport: v1` (`inference.yaml`).
+Inference: `obs_format: gd` (`inference.yaml`).
 
 **Гигиена:** smoke не пишет в `games/.../checkpoints/`; карантин — `tmp/smoke/` ([DESIGN.md](DESIGN.md#гигиена-артефактов)). После правок bridge/env — эти скрипты, не короткий `train_ppo`.
 
@@ -167,9 +165,7 @@ Smoke-тест IPC Python ↔ FCEUX (`FceuxBridge`): load state, ping, step, RAM
 ### IPC benchmark (baseline, этап 1.5)
 
 ```bash
-./.venv/Scripts/python.exe scripts/benchmark_bridge.py --n-envs 1
 ./.venv/Scripts/python.exe scripts/benchmark_bridge.py --n-envs 8
-./.venv/Scripts/python.exe scripts/benchmark_bridge.py --ipc v2 --n-envs 1   # PoC v2
 ```
 
 JSON-отчёт: `tmp/bench/bridge_baseline/baseline_report.json` (или `--json-out`).
@@ -186,11 +182,10 @@ JSON-отчёт: `tmp/bench/bridge_baseline/baseline_report.json` (или `--jso
 | n_envs=8 (**1.7 raw**) | **13.8** | **14.6** | **72.5** | **21.1** | 1.06 |
 | n_envs=1 (**1.8 v1**, повтор) | 16.6 | 16.4 | 60.2 | — | 0.99 |
 | n_envs=8 (**1.8 v1**, повтор) | 22.4 | 21.7 | 44.6 | **21.9** | 0.97 |
-| n_envs=1 (**1.8 v2** PoC) | 26.7 | 26.8 | 37.5 | — | 1.00 |
 
 **1.7 (2026-07-07):** train `obs_format: raw` — downscale/grayscale в Lua → `obs_*.raw` (7 KB); Python без cv2; STEP без лишнего `frameadvance`. ms/step **−16% / −50%** vs 1.5; decode ~0.3 ms.
 
-**1.8 (2026-07-07):** FCEUX Lua без socket/pipe — PoC «v2» = один бинарный response с inline obs. **Не включаем по умолчанию:** ms/step n=1 **+61%** vs v1 (16.6→26.7); parallel n=8 v2 нестабилен. Named pipes / shared memory потребуют native DLL или внешний proxy — ROI не оправдан после 1.7 (~21 env-steps/s).
+**1.8 (2026-07-07):** вердикт — оставить JSON IPC + file obs (v1). PoC бинарного inline-obs (этап 1.8) был медленнее (+61% ms/step n=1) и удалён в **4.4** §C.
 
 Исторический end-to-end train до baseline: ~**0.5 env-step/s** (4 env, BACKLOG) vs ~**1.9** (train-smoke dummy-vec) vs ~**20** (parallel step-only, 8 proc) — разрыв из‑за PPO, `bridge_load_lock` на reset и коротких эпизодов.
 
@@ -215,7 +210,6 @@ JSON-отчёт: `tmp/bench/bridge_baseline/baseline_report.json` (или `--jso
 | `--step-samples` | число STEP замеров (default 30) |
 | `--reset-samples` | число hot reset замеров (default 10) |
 | `--parallel-steps` | steps на env в parallel-фазе (default 20) |
-| `--ipc` | `v1` (default) или `v2` (PoC binary inline obs; env `WAIT_FCEUX_IPC`) |
 
 ### E2E train benchmark (BACKLOG 1.9)
 

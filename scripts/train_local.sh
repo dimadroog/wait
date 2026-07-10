@@ -6,9 +6,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Проверенный IPC-стек train: v1 JSON + obs_*.raw (v2 — только benchmark/PoC).
-export WAIT_FCEUX_IPC="${WAIT_FCEUX_IPC:-v1}"
-
 if [[ -x "./.venv/Scripts/python.exe" ]]; then
   PY="./.venv/Scripts/python.exe"
 elif [[ -x "./.venv/bin/python" ]]; then
