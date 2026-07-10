@@ -1,4 +1,4 @@
-# Phase 0: Python venv
+# Установка Python venv
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot

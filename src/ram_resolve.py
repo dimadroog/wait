@@ -1,4 +1,4 @@
-"""Авто-resolve RAM-полей из ram_scout.jsonl (Phase 0)."""
+"""Авто-resolve RAM-полей из ram_scout.jsonl (сборка эталона)."""
 from __future__ import annotations
 
 import json
@@ -330,7 +330,7 @@ def write_ram_map(
     lines = [
         f"# {game_id} — {mission.name} — RAM map",
         "",
-        "> Phase 0: `ram_scout.py` → авто-resolve ниже.",
+        "> Сборка эталона: `ram_scout.py` → авто-resolve ниже.",
         "",
         "| Адрес | Поле | Тип | Примечание |",
         "| ----- | ---- | --- | ---------- |",

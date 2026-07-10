@@ -11,7 +11,7 @@ sys.path.insert(0, str(_REPO / "src"))
 
 from inference_states import inference_save_state_for  # noqa: E402
 from mission_states import save_fm2_states  # noqa: E402
-from phase0_config import load_phase0_config, transition_rooms_from_config  # noqa: E402
+from etalon_build_config import load_etalon_build_config, transition_rooms_from_etalon_build  # noqa: E402
 from playthrough_build import (  # noqa: E402
     gameplay_start_frame_from_rows,
     inference_save_state_plan,
@@ -65,9 +65,9 @@ def main() -> None:
         raise SystemExit(f"{jsonl} not found. Run build_playthrough.py first.")
 
     rows = load_human_playthrough_rows(jsonl)
-    phase0 = load_phase0_config(game_id)
+    etalon_build = load_etalon_build_config(game_id)
     gameplay_frame = gameplay_start_frame_from_rows(
-        rows, transition_rooms=transition_rooms_from_config(phase0)
+        rows, transition_rooms=transition_rooms_from_etalon_build(etalon_build)
     )
     plan = inference_save_state_plan(gameplay_frame)
     rom = resolve_rom(game_id)

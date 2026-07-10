@@ -1,6 +1,6 @@
 # rushn_attack — m1 — RAM map
 
-> Phase 0: `ram_scout.py` → авто-resolve ниже.
+> Сборка эталона: `ram_scout.py` → авто-resolve ниже.
 
 | Адрес | Поле | Тип | Примечание |
 | ----- | ---- | --- | ---------- |

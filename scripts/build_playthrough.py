@@ -10,7 +10,7 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from mission_states import save_fm2_states  # noqa: E402
-from phase0_config import load_phase0_config, transition_rooms_from_config  # noqa: E402
+from etalon_build_config import load_etalon_build_config, transition_rooms_from_etalon_build  # noqa: E402
 from playthrough_build import (  # noqa: E402
     build_playthrough_artifacts,
     gameplay_start_frame_from_rows,
@@ -56,10 +56,10 @@ def main() -> None:
     frames = load_frames(jsonl)
     print(f"Frames: {len(frames)} from {jsonl}")
 
-    phase0 = load_phase0_config(game_id)
-    rows, segments = build_playthrough_artifacts(mission, game_id, fm2, frames, phase0)
+    etalon_build = load_etalon_build_config(game_id)
+    rows, segments = build_playthrough_artifacts(mission, game_id, fm2, frames, etalon_build)
     gameplay_frame = gameplay_start_frame_from_rows(
-        rows, transition_rooms=transition_rooms_from_config(phase0)
+        rows, transition_rooms=transition_rooms_from_etalon_build(etalon_build)
     )
     print(f"Gameplay start frame: {gameplay_frame}")
     print("Wrote reference/human_playthrough.jsonl")

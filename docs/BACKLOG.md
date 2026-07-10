@@ -1149,13 +1149,13 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 
 #### A — именование эталона
 
-- [ ] `phase0_config.py` → `etalon_build_config.py`; функции `load_etalon_build_config`, `*_from_etalon_build`
-- [ ] `games/<game>/phase0.yaml` → `etalon_build.yaml`; `game.yaml`: `etalon_build_config`
-- [ ] Параметры/переменные `phase0` → `etalon_build` в `playthrough_build.py`, скриптах, тестах
-- [ ] Docstrings и комментарии в `src/`, `scripts/`, `tests/` — без номеров фаз roadmap
-- [ ] Шаблон `ram_map.md` / `ram_resolve.py` — «сборка эталона», не «Phase 0»
-- [ ] `docs/SCRIPTS.md`: секция «Эталон и RAM» вместо «Phase 0 — данные и RAM»
-- [ ] `grep -ri 'phase0\\|Phase 0' src scripts tests games` — пусто (кроме CHANGELOG/git при необходимости)
+- [x] `phase0_config.py` → `etalon_build_config.py`; функции `load_etalon_build_config`, `*_from_etalon_build`
+- [x] `games/<game>/phase0.yaml` → `etalon_build.yaml`; `game.yaml`: `etalon_build_config`
+- [x] Параметры/переменные `phase0` → `etalon_build` в `playthrough_build.py`, скриптах, тестах
+- [x] Docstrings и комментарии в `src/`, `scripts/`, `tests/` — без номеров фаз roadmap
+- [x] Шаблон `ram_map.md` / `ram_resolve.py` — «сборка эталона», не «Phase 0»
+- [x] `docs/SCRIPTS.md`: секция «Эталон и RAM» вместо «Phase 0 — данные и RAM»
+- [x] `grep -ri 'phase0\\|Phase 0' src scripts tests games` — пусто (кроме CHANGELOG/git при необходимости)
 
 #### B — RAM scout: убрать fallback `logs/ram_*` (этап 2, миграция done)
 

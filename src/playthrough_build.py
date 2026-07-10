@@ -1,4 +1,4 @@
-"""Сборка эталона Phase 0 из FM2 + ram_scout.jsonl + ram_resolve."""
+"""Сборка эталона из FM2 + ram_scout.jsonl + ram_resolve."""
 from __future__ import annotations
 
 import json
@@ -7,11 +7,11 @@ from pathlib import Path
 
 import yaml
 
-from phase0_config import (
-    checkpoint_heuristics_from_config,
-    checkpoint_names_from_config,
-    segment_count_from_config,
-    transition_rooms_from_config,
+from etalon_build_config import (
+    checkpoint_heuristics_from_etalon_build,
+    checkpoint_names_from_etalon_build,
+    segment_count_from_etalon_build,
+    transition_rooms_from_etalon_build,
 )
 from project_paths import count_fm2_frames, load_yaml, repo_root
 from ram_map_load import load_ram_addresses
@@ -133,12 +133,12 @@ def checkpoint_triggers(
     frames: list[dict],
     addrs: dict[str, int],
     n: int,
-    phase0: dict,
+    etalon_build: dict,
 ) -> list[dict]:
-    """CP-триггеры по heuristics из phase0.yaml (Strategy)."""
-    transition_rooms = transition_rooms_from_config(phase0)
+    """CP-триггеры по heuristics из etalon_build.yaml (Strategy)."""
+    transition_rooms = transition_rooms_from_etalon_build(etalon_build)
     triggers: list[dict] = []
-    for heuristic in checkpoint_heuristics_from_config(phase0):
+    for heuristic in checkpoint_heuristics_from_etalon_build(etalon_build):
         if len(triggers) >= n:
             break
         trig = _trigger_from_heuristic(heuristic, frames, addrs, transition_rooms)
@@ -193,7 +193,7 @@ def load_human_playthrough_rows(path: Path) -> list[dict]:
 def gameplay_start_frame_from_rows(
     rows: list[dict], *, transition_rooms: frozenset[int]
 ) -> int:
-    """Первый кадр gameplay: room вне transition_rooms (из phase0.yaml)."""
+    """Первый кадр gameplay: room вне transition_rooms (из etalon_build.yaml)."""
     for row in rows:
         room = int(str(row["room"]), 16)
         if room not in transition_rooms:
@@ -212,11 +212,11 @@ def write_routes_yaml(
     segments: list[dict],
     frames,
     addrs,
-    phase0: dict,
+    etalon_build: dict,
 ) -> None:
-    cp_names = checkpoint_names_from_config(phase0)
+    cp_names = checkpoint_names_from_etalon_build(etalon_build)
     checkpoints = []
-    triggers = checkpoint_triggers(frames, addrs, len(segments), phase0)
+    triggers = checkpoint_triggers(frames, addrs, len(segments), etalon_build)
     for i, trigger in enumerate(triggers):
         name = cp_names[i] if i < len(cp_names) else f"segment_{i}"
         checkpoints.append({"id": i, "name": name, "trigger": trigger})
@@ -314,13 +314,13 @@ def build_playthrough_artifacts(
     game_id: str,
     fm2: Path,
     frames: list[dict],
-    phase0: dict,
+    etalon_build: dict,
 ) -> tuple[list[dict], list[dict]]:
     addrs = load_ram_addresses(mission)
     rows = build_human_playthrough(frames, addrs)
-    n_segments = segment_count_from_config(phase0)
+    n_segments = segment_count_from_etalon_build(etalon_build)
     segments = plan_segments(len(frames), n_segments)
-    transition_rooms = transition_rooms_from_config(phase0)
+    transition_rooms = transition_rooms_from_etalon_build(etalon_build)
     gameplay_frame = gameplay_start_frame_from_rows(rows, transition_rooms=transition_rooms)
 
     reference = mission / "reference"
@@ -328,7 +328,7 @@ def build_playthrough_artifacts(
     write_human_jsonl(reference / "human_playthrough.jsonl", rows)
     fm2_rel = fm2.relative_to(mission).as_posix()
     write_routes_yaml(
-        config / "routes.yaml", game_id, mission.name, segments, frames, addrs, phase0
+        config / "routes.yaml", game_id, mission.name, segments, frames, addrs, etalon_build
     )
     write_manifest_yaml(
         config / "playthrough_manifest.yaml",

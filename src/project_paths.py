@@ -1,4 +1,4 @@
-"""Пути репозитория wait/ (Phase 0)."""
+"""Пути репозитория wait/."""
 from __future__ import annotations
 
 import os
@@ -32,7 +32,7 @@ def mission_dir(game_id: str, mission_id: str) -> Path:
 
 
 def mission_scout_dir(mission: Path) -> Path:
-    """Phase 0: ram_scout.jsonl и candidates (вне inference logs/)."""
+    """Каталог ram_scout.jsonl и candidates (вне inference logs/)."""
     return mission / "reference" / "scout"
 
 

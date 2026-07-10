@@ -5,7 +5,7 @@ rom_file: rom/rushn_attack.nes
 env_class: RushnAttackEnv
 env_package: env
 env_config: env_config.yaml
-phase0_config: phase0.yaml
+etalon_build_config: etalon_build.yaml
 emulator:
   runtime: fceux/runtime.yaml
   lua_bridge: fceux/lua/bridge.lua

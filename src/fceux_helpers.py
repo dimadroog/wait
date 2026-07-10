@@ -1,4 +1,4 @@
-"""Общие хелперы запуска FCEUX (Phase 0)."""
+"""Общие хелперы запуска FCEUX."""
 from __future__ import annotations
 
 import json

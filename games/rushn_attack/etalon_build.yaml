@@ -1,5 +1,5 @@
 # Heuristics сборки эталона (Strategy → src/playthrough_build.py)
-# Игро-специфично; новая игра — свой phase0.yaml + ссылка в game.yaml
+# Игро-специфично; новая игра — свой etalon_build.yaml + ссылка в game.yaml
 
 transition_rooms:
   - "0xFF"

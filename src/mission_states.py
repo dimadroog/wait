@@ -1,4 +1,4 @@
-"""Сохранение FCEUX save states по кадрам FM2 (Phase 0 / inference)."""
+"""Сохранение FCEUX save states по кадрам FM2 (сборка эталона / inference)."""
 from __future__ import annotations
 
 import json
