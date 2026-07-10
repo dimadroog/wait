@@ -362,16 +362,24 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 | `--turbo` | override turbo из профиля |
 | `--export-fm2 PATH` | экспорт FM2 последнего эпизода (для одного ep: `--episodes 1`) |
 | `--export-fm2-dir DIR` | FM2 по эпизодам в каталог |
-| `--save-episode-fm2` | `logs/YYYYMMDD_epNNNN.fm2` на каждый эпизод |
+| `--save-episode-fm2` | `logs/YYYYMMDD_epNNNN.fm2` на каждый эпизод (save state вшит по умолчанию) |
+| `--no-embed-savestate` | FM2 без встроенного save state; `save_state` в `.overlay.json` |
 | `--build-playlist` | после прогона — FM2-плейлист по номинациям |
 
 После эпизода overlay пишется в `tmp/bridge/inference/overlay.json` (рисуется в `bridge.lua`).
 
 ### FM2 из inference (без reference/)
 
+**Self-contained FM2:** inference-клип можно открыть в FCEUX как **ROM + один `.fm2`** — Load ROM → Play Movie, без отдельного `-loadstate` и без `play_inference_fm2.py`. Save state вшит в заголовок (`savestate 0x…`) с inference GUID (`inference_config.INFERENCE_FM2_GUID`); GUID эталона `clear.fm2` в `.fc0` патчится при экспорте.
+
 ```bash
+# из jsonl (явный embed)
 ./.venv/Scripts/python.exe scripts/export_fm2.py \
-  -o logs/20260705_m1_v0_ep42.fm2 --episode 42
+  -o logs/20260705_m1_v0_ep42.fm2 --episode 42 --embed-savestate
+
+# через inference (embed по умолчанию при --save-episode-fm2 / --export-fm2)
+./.venv/Scripts/python.exe src/stream/run_inference.py \
+  --checkpoint m1_v0.zip --episodes 1 --save-episode-fm2
 ```
 
 | Аргумент | Описание |
@@ -381,8 +389,14 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 | `--episode` | только один эпизод из jsonl |
 | `--frame-skip` | NES-кадров на env step (default 4) |
 | `--template` | заголовок FM2 (default `fceux/portable/movies/`) |
+| `--embed-savestate` | встроить `states/inference_cp0.fc0` в заголовок FM2 |
+| `--save-state` | путь к `.fc0` для embed или sidecar (без `--embed-savestate`) |
 
-**Важно:** inference FM2 использует отдельный `guid` (`inference_config.INFERENCE_FM2_GUID`, не эталон `clear.fm2`). Reset inference — `states/inference_cp0.fc0` (gameplay start, кадр из `playthrough_manifest.yaml` → `inference.gameplay_start_frame`); train env по-прежнему использует `states/cp0.fc0` из manifest сегментов. Для replay через `play_inference_fm2.py` default — `inference_cp0.fc0` (или sidecar). Корректный GUID-bound replay без внешнего state — задача self-contained FM2 в BACKLOG [3.1].
+**Отличие от эталона:** `reference/clear.fm2` — полное прохождение с power-on и GUID эталона; inference FM2 — короткий клип с gameplay-start state, отдельный GUID, без `length` в заголовке (не FM3).
+
+**Sidecar:** `.overlay.json` остаётся для achievement-overlay (Lua); поле `save_state` опционально — не пишется, если state вшит в FM2.
+
+Reset inference в env/train — `states/inference_cp0.fc0` (gameplay start, кадр из `playthrough_manifest.yaml` → `inference.gameplay_start_frame`); train env по-прежнему использует `states/cp0.fc0` из manifest сегментов.
 
 ### Replay FM2 / плейлист эфира
 
@@ -406,7 +420,7 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 
 Эфирный лаунчер: `logs/YYYYMMDD_playlist.play.cmd` (генерируется `build_playlist`).
 
-На эфире используйте `play_inference_fm2.py` или `.play.cmd` плейлиста. Ручной replay в FCEUX без self-contained FM2 — см. BACKLOG «Inference: self-contained FM2».
+На эфире используйте `play_inference_fm2.py` или `.play.cmd` плейлиста (overlay + legacy split-клипы без embed). Для ручного просмотра inference-клипа с embedded savestate достаточно ROM + `.fm2` в FCEUX.
 
 ### Achievements и плейлист
 

@@ -24,7 +24,7 @@
 | --- | ---- | ------ | ------------- |
 | 1 | **[2]** Phase 0 — раскладка scout / `ram_resolve` | done | миграция путей, smoke `ram_scout` / `build_playthrough` / `smoke_env` |
 | 2 | **[3.0]** gameplay save state после intro | done | `inference_cp0` = кадр 18, room `0x00` |
-| 3 | **[3.1]** self-contained FM2 | todo | ROM + один `.fm2` без внешнего `-loadstate` |
+| 3 | **[3.1]** self-contained FM2 | done | ROM + один `.fm2` без внешнего `-loadstate` |
 | 4 | **[3.2]** playlist self-contained клипы | todo | `play_inference_fm2.py`, split + embedded |
 | 5 | **[3.3]** убрать `inference_config.py` | todo | `grep inference_config` чисто, replay без регрессий |
 | 6 | **[4.4]** рефакторинг: именование и долг в коде | todo | см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
@@ -33,7 +33,7 @@
 
 Этапы **1.1–1.9**, **4.1–4.3** и закрытые шаги аудита — done; при регрессии в шагах 3.x–4.4 — быстрые smoke/pytest, **не** e2e train.
 
-**Следующий шаг аудита (на 2026-07-09):** **[3.1]** self-contained FM2.  
+**Следующий шаг аудита (на 2026-07-10):** **[3.2]** playlist self-contained клипы.  
 **Перед [5.0]:** обязательно закрыть **[4.4]** (рефакторинг именования).
 
 ---
@@ -861,36 +861,36 @@ games/…/missions/m1/
 
 ## [3.1] Inference: self-contained FM2 (встроенный save state)
 
-**Статус:** todo  
+**Статус:** done  
 **Этап:** 3.1  
 **Приоритет:** medium  
 **Зависит от:** **3.0 (рекомендуется)**  
-**Файлы:** `src/fm2_export.py`, `src/stream/run_inference.py`, `scripts/export_fm2.py`, `docs/SCRIPTS.md`, `docs/ML_CONCEPT.md`  
+**Файлы:** `src/fm2_export.py`, `src/stream/run_inference.py`, `scripts/export_fm2.py`, `tests/test_fm2_export.py`, `docs/SCRIPTS.md`, `docs/ML_CONCEPT.md`  
 **Контекст в чат:** эта секция + `src/fm2_export.py`, `scripts/export_fm2.py`, `src/stream/run_inference.py`
 
 ### Чеклист сессии
 
-- [ ] `embed_savestate` в `fm2_export.py` — `savestate 0x…` + inference GUID
-- [ ] CLI `--embed-savestate` в `export_fm2.py` и `run_inference.py`
-- [ ] Sidecar: `save_state` опционален если embedded
-- [ ] FCEUX: Load ROM → Play Movie без `-loadstate`
-- [ ] Нет `length` в заголовке (не FM3)
-- [ ] Замер размера/времени экспорта на `cp0.fc0`
-- [ ] `docs/SCRIPTS.md` + `ML_CONCEPT.md`
-- [ ] **Не трогать** `train_ppo.py` / train bridge
+- [x] `embed_savestate` в `fm2_export.py` — `savestate 0x…` + inference GUID (патч GUID эталона в `.fc0`)
+- [x] CLI: `--embed-savestate` в `export_fm2.py`; в `run_inference.py` embed по умолчанию, `--no-embed-savestate` для opt-out
+- [x] Sidecar: `save_state` опционален если embedded
+- [x] FCEUX: Load ROM → Play Movie без `-loadstate`
+- [x] Нет `length` в заголовке (не FM3)
+- [x] Замер размера/времени экспорта на `inference_cp0.fc0` (~195 KB, < 2 с; `tests/test_fm2_export.py`)
+- [x] `docs/SCRIPTS.md` + `ML_CONCEPT.md`
+- [x] **Не трогать** `train_ppo.py` / train bridge
 
 
 
 ### Контекст
 
-Сейчас демо inference — несколько артефактов: `.fm2` (только input), `.overlay.json` (save_state + achievements), внешний `states/inference_cp*.fc0`, плюс `play_inference_fm2.py` для staging и `-loadstate`. Для просмотра в FCEUX вручную нужны два шага (Load State → Play Movie) и знание про inference GUID.
+Раньше демо inference требовало несколько артефактов: `.fm2` (только input), `.overlay.json` (save_state + achievements), внешний `states/inference_cp*.fc0`, плюс `play_inference_fm2.py` для staging и `-loadstate`. С 3.1 inference-клип с embedded savestate открывается в FCEUX как **ROM + один `.fm2`** (Load ROM → Play Movie).
 
 Формат FM2 (FCEUX) поддерживает ключ `savestate` — hex-blob FCS в заголовке; при его наличии movie стартует не с power-on. ROM по-прежнему отдельный (`romFilename` / `romChecksum` в заголовке).
 
 ### Задача
 
 1. `embed_savestate` **в** `fm2_export.py` — читать `.fc0`, писать строку `savestate 0x…` в заголовок рядом с `guid` (inference GUID из `inference_config.INFERENCE_FM2_GUID`). Метаданные эпизода — в `comment` / `subtitle` (опц.), не дублировать в sidecar то, что уже в FM2.
-2. **CLI** — флаг `--embed-savestate` в `export_fm2.py` и `run_inference.py` (`--save-episode-fm2` + embed по умолчанию или opt-in — зафиксировать при реализации).
+2. **CLI** — `export_fm2.py`: `--embed-savestate` (opt-in); `run_inference.py`: embed по умолчанию при `--save-episode-fm2` / `--export-fm2`, opt-out через `--no-embed-savestate`.
 3. **Sidecar** — `.overlay.json` оставить для achievement-overlay (Lua); поле `save_state` в sidecar становится опциональным, если state вшит.
 4. **Документация** — в `SCRIPTS.md`: «открыть в FCEUX: ROM + один `.fm2`», без `cp0.fc0` для inference-клипов.
 5. ~~**Убрать bootstrap-артефакты**~~ — сделано: `reference/inference_bootstrap.fm2`, `bootstrap_fm2` в конфиге, `scripts/bootstrap_inference_states.py`, `bootstrap_inference_save.lua`, `write_bootstrap_fm2()`. На train не влияет.
@@ -899,20 +899,20 @@ games/…/missions/m1/
 
 ### Критерий готовности
 
-- [ ] Экспортированный FM2 воспроизводится в FCEUX (Load ROM → Play Movie) **без** отдельного `-loadstate` и без `play_inference_fm2.py`.
-- [ ] `guid` в FM2 совпадает с GUID вшитого save state; `length` по-прежнему не пишется (не FM3).
-- [ ] Размер и время экспорта приемлемы (замер на типичном `cp0.fc0`).
-- [ ] `docs/SCRIPTS.md` описывает новый поток и отличие от эталона `reference/clear.fm2`.
-- [x] Bootstrap-скрипт и `reference/inference_bootstrap.fm2` удалены; GUID-bound replay — через embed `savestate` (эта задача).
+- [x] Экспортированный FM2 воспроизводится в FCEUX (Load ROM → Play Movie) **без** отдельного `-loadstate` и без `play_inference_fm2.py`.
+- [x] `guid` в FM2 совпадает с GUID вшитого save state; `length` по-прежнему не пишется (не FM3).
+- [x] Размер и время экспорта приемлемы (замер на `inference_cp0.fc0`).
+- [x] `docs/SCRIPTS.md` описывает новый поток и отличие от эталона `reference/clear.fm2`.
+- [x] Bootstrap-скрипт и `reference/inference_bootstrap.fm2` удалены; GUID-bound replay — через embed `savestate`.
 
 
 
 ### Заметки
 
 - Save state привязан к `emuVersion` FCEUX — использовать ту же portable-сборку, что при записи `cp*.fc0`.
-- Achievement-overlay (трофеи) остаётся вне FM2; для «голого» демо без Lua достаточно `subtitle` в заголовке.
+- Achievement-overlay (трофеи) остаётся вне FM2; `comment` / `subtitle` в заголовке — опционально, не делали.
 - **Не трогать** `train_ppo.py` и bridge train-сессий — задача только inference/export.
-- До завершения 3.1 replay через `play_inference_fm2.py` использует `states/cp0.fc0` (fallback); GUID в FM2 и state могут не совпадать — ограничение снимается embed `savestate`.
+- `play_inference_fm2.py` и плейлист без embed — legacy/split; без `-loadstate` для embedded клипов — задача **3.2**.
 - Блокирует 3.2 и 3.3 (playlist и удаление `inference_config` опираются на embed).
 
 ---

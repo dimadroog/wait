@@ -104,6 +104,11 @@ def run_inference(args: argparse.Namespace) -> None:
                 input_logger.log_step(step=steps - 1, frame=frame, action=action_str)
 
             fm2_path: Path | None = None
+            embed_fm2 = (
+                not args.no_embed_savestate
+                and (args.export_fm2 or args.export_fm2_dir or args.save_episode_fm2)
+            )
+            save_state_path = mission / save_state if embed_fm2 else None
             if args.export_fm2 or args.export_fm2_dir:
                 if args.export_fm2:
                     fm2_path = Path(args.export_fm2)
@@ -112,10 +117,20 @@ def run_inference(args: argparse.Namespace) -> None:
                 else:
                     out_dir = Path(args.export_fm2_dir)
                     fm2_path = out_dir / f"{date_prefix}_{args.mission}_v0_ep{ep:02d}.fm2"
-                export_episode_fm2_from_steps(step_log, fm2_path)
+                export_episode_fm2_from_steps(
+                    step_log,
+                    fm2_path,
+                    embed_savestate=embed_fm2,
+                    save_state_path=save_state_path,
+                )
             elif args.save_episode_fm2:
                 fm2_path = logs_dir / f"{date_prefix}_ep{ep:04d}.fm2"
-                export_episode_fm2_from_steps(step_log, fm2_path)
+                export_episode_fm2_from_steps(
+                    step_log,
+                    fm2_path,
+                    embed_savestate=embed_fm2,
+                    save_state_path=save_state_path,
+                )
 
             record = attempt_logger.log_episode(
                 mission=args.mission.replace("m", ""),
@@ -140,10 +155,12 @@ def run_inference(args: argparse.Namespace) -> None:
             if fm2_path:
                 write_fm2_artifacts(
                     fm2_path,
-                    save_state=save_state,
+                    save_state=None if embed_fm2 else save_state,
                     overlay=overlay,
                 )
                 print(f"  overlay sidecar: {fm2_path.with_suffix('.overlay.json')}")
+                if embed_fm2:
+                    print(f"  embedded savestate: {save_state}")
 
             print(
                 f"episode {ep}: steps={steps} max_cp={last_info.get('max_checkpoint')} "
@@ -201,6 +218,11 @@ def main() -> None:
         "--save-episode-fm2",
         action="store_true",
         help="сохранять FM2 каждого эпизода в logs/YYYYMMDD_epNNNN.fm2",
+    )
+    parser.add_argument(
+        "--no-embed-savestate",
+        action="store_true",
+        help="не встраивать save state в FM2; sidecar save_state для replay",
     )
     parser.add_argument("--build-playlist", action="store_true", help="собрать плейлист после прогона")
     args = parser.parse_args()

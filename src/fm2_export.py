@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -23,7 +24,10 @@ BRIDGE_TO_FM2 = {
 }
 EMPTY_PORT = "........"
 DEFAULT_FRAME_SKIP = 4
-_HEADER_KEYS_STRIP = frozenset({"guid", "length"})
+_HEADER_KEYS_STRIP = frozenset({"guid", "length", "savestate"})
+_GUID_BYTES_RE = re.compile(
+    rb"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"
+)
 
 
 def default_fm2_template(game_id: str = "rushn_attack") -> Path:
@@ -55,10 +59,65 @@ def read_fm2_header(template: Path) -> list[str]:
     return lines
 
 
-def build_fm2_header(template: Path, *, guid: str | None = None) -> list[str]:
+def read_fm2_guid(fm2_path: Path) -> str | None:
+    for line in fm2_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("guid "):
+            parts = line.split(None, 1)
+            return parts[1] if len(parts) > 1 else None
+    return None
+
+
+def fm2_has_embedded_savestate(fm2_path: Path) -> bool:
+    for line in fm2_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("|"):
+            break
+        if line.startswith("savestate "):
+            return True
+    return False
+
+
+def patch_savestate_movie_guid(fcs: bytes, target_guid: str) -> bytes:
+    """Заменить единственный movie GUID в FCS/FCEUX save state на target_guid."""
+    target = target_guid.upper().encode("ascii")
+    if len(target) != 36:
+        raise ValueError(f"invalid GUID length: {target_guid!r}")
+    matches = list(_GUID_BYTES_RE.finditer(fcs))
+    if len(matches) != 1:
+        raise ValueError(f"expected 1 movie GUID in save state, found {len(matches)}")
+    start, end = matches[0].span()
+    if fcs[start:end] == target:
+        return fcs
+    return fcs[:start] + target + fcs[end:]
+
+
+def fc0_to_savestate_hex(
+    save_state_path: Path,
+    *,
+    target_guid: str | None = None,
+) -> str:
+    """FCEUX .fc0/.fcs → строка `0xHEX` для заголовка FM2."""
+    blob = save_state_path.read_bytes()
+    if target_guid:
+        blob = patch_savestate_movie_guid(blob, target_guid)
+    return "0x" + blob.hex().upper()
+
+
+def build_fm2_header(
+    template: Path,
+    *,
+    guid: str | None = None,
+    save_state_path: Path | None = None,
+    embed_savestate: bool = False,
+) -> list[str]:
     """Заголовок FM2: ROM из шаблона + inference GUID. Без length — иначе FCEUX считает файл FM3/TAS Editor."""
     lines = read_fm2_header(template)
-    lines.append(f"guid {guid or inference_fm2_guid()}")
+    eff_guid = guid or inference_fm2_guid()
+    lines.append(f"guid {eff_guid}")
+    if embed_savestate:
+        if save_state_path is None:
+            raise ValueError("save_state_path is required when embed_savestate=True")
+        hex_val = fc0_to_savestate_hex(save_state_path, target_guid=eff_guid)
+        lines.append(f"savestate {hex_val}")
     return lines
 
 
@@ -125,6 +184,8 @@ def export_fm2(
     frame_skip: int = DEFAULT_FRAME_SKIP,
     save_state: str | None = None,
     overlay: dict[str, Any] | None = None,
+    embed_savestate: bool = False,
+    save_state_path: Path | None = None,
 ) -> int:
     """jsonl → .fm2; возвращает число FM2-кадров."""
     tmpl = template or default_fm2_template()
@@ -133,15 +194,20 @@ def export_fm2(
         raise ValueError(f"No rows in {jsonl_path}")
 
     frame_lines = list(iter_episode_frames(rows, episode=episode, frame_skip=frame_skip))
-    header = build_fm2_header(tmpl)
+    header = build_fm2_header(
+        tmpl,
+        embed_savestate=embed_savestate,
+        save_state_path=save_state_path,
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8", newline="\n") as f:
         for line in header:
             f.write(line + "\n")
         for frame_line in frame_lines:
             f.write(frame_line + "\n")
-    if save_state or overlay:
-        write_fm2_sidecar(out_path, save_state=save_state, overlay=overlay)
+    sidecar_save_state = None if embed_savestate else save_state
+    if sidecar_save_state or overlay:
+        write_fm2_sidecar(out_path, save_state=sidecar_save_state, overlay=overlay)
     return len(frame_lines)
 
 
@@ -153,6 +219,8 @@ def export_episode_fm2_from_steps(
     frame_skip: int = DEFAULT_FRAME_SKIP,
     save_state: str | None = None,
     overlay: dict[str, Any] | None = None,
+    embed_savestate: bool = False,
+    save_state_path: Path | None = None,
 ) -> int:
     """In-memory steps [{action}, …] → FM2."""
     tmpl = template or default_fm2_template()
@@ -162,13 +230,18 @@ def export_episode_fm2_from_steps(
         for _ in range(frame_skip):
             frame_lines.append(fm2_frame_line(action))
 
-    header = build_fm2_header(tmpl)
+    header = build_fm2_header(
+        tmpl,
+        embed_savestate=embed_savestate,
+        save_state_path=save_state_path,
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8", newline="\n") as f:
         for line in header:
             f.write(line + "\n")
         for frame_line in frame_lines:
             f.write(frame_line + "\n")
-    if save_state or overlay:
-        write_fm2_sidecar(out_path, save_state=save_state, overlay=overlay)
+    sidecar_save_state = None if embed_savestate else save_state
+    if sidecar_save_state or overlay:
+        write_fm2_sidecar(out_path, save_state=sidecar_save_state, overlay=overlay)
     return len(frame_lines)
