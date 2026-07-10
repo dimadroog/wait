@@ -30,14 +30,14 @@
 | 3     | **[3.1]** self-contained FM2                        | done   | ROM + один `.fm2` без внешнего `-loadstate`                                                     |
 | 4     | **[3.2]** playlist self-contained клипы             | done   | embed в плейлисте; чистка split → **3.3**                                                       |
 | 5     | **[3.3]** inference без legacy + `inference_config` | done   | только embedded FM2; `inference_states.py`                                                      |
-| 6     | **[4.4]** рефакторинг: именование и техдолг в коде  | todo   | etalon naming; RAM fallback; IPC v2 — см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
+| 6     | **[4.4]** рефакторинг: именование и техдолг в коде  | done   | etalon naming; RAM fallback; IPC v2 — см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
 | 7     | **[4.1–4.3]** гигиена (регрессия)                   | done   | `run_smoke.py`, `pytest tests/smoke/` — быстро                                                  |
 | **8** | **[5.0]** финальный e2e train                       | todo   | **последний шаг** — только после **4.4**                                                        |
 
 
 Этапы **1.1–1.9**, **4.1–4.3** и закрытые шаги аудита — done; при регрессии в шагах 3.x–4.4 — быстрые smoke/pytest, **не** e2e train.
 
-**Следующий шаг аудита (на 2026-07-10):** **[4.4]** рефакторинг (именование + RAM fallback + IPC v2).
+**Следующий шаг аудита (на 2026-07-10):** **[5.0]** финальный e2e train.
 
 ---
 
@@ -1013,8 +1013,8 @@ Smoke-скрипты не дают autouse cleanup и CI exit code из коро
 
 ## [4.4] Рефакторинг: именование и техдолг в коде (перед e2e)
 
-**Статус:** todo  
-**Этап:** 4.4  
+**Статус:** done
+**Этап:** 4.4
 **Приоритет:** medium  
 **Зависит от:** **3.3** (рекомендуется — после стабилизации inference API); DESIGN § [Именование в коде](DESIGN.md#2-игровая-логика--strategy-в-yaml)  
 **Блокирует:** **[5.0]** (e2e train — только после этого этапа)  
@@ -1056,8 +1056,8 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 
 #### D — smoke
 
-- [ ] Быстрые тесты: `pytest tests/test_gameplay_start.py`, `smoke_bridge`, `smoke_env` (без e2e train)
-- [ ] Длинные прогоны (`pytest tests/smoke/`, `benchmark_train`) — **не здесь**; только в **[5.0]**
+- [x] Быстрые тесты: `pytest tests/test_gameplay_start.py`, `smoke_bridge`, `smoke_env` (без e2e train)
+- [x] Длинные прогоны (`pytest tests/smoke/`, `benchmark_train`) — **не здесь**; только в **[5.0]**
 
 ### Критерий готовности
 
@@ -1065,8 +1065,8 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 - [x] Нет идентификаторов `phaseN_*` / `phaseN.yaml` в коде и `games/`.
 - [x] Нет fallback на `logs/ram_scout.jsonl` / `logs/ram_resolve.json` в runtime.
 - [x] Нет IPC v2 в коде и профилях (только v1).
-- [ ] Inference / playthrough / train smoke (tier 0–2) без регрессий.
-- [ ] **[5.0]** разблокирован.
+- [x] Inference / playthrough / train smoke (tier 0–2) без регрессий.
+- [x] **[5.0]** разблокирован.
 
 ### Заметки
 

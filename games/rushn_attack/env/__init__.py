@@ -28,7 +28,7 @@ def make_env(
     """Фабрика Rush'n Attack: BaseNesEnv + CheckpointRewardWrapper."""
     env_config = _load_env_config()
     actions = tuple(env_config.get("actions") or [])
-    lives = cfg.get("lives") or {}
+    lives = env_config.get("lives") or {}
     env = BaseNesEnv(
         game_id=game_id,
         mission_id=mission_id,
