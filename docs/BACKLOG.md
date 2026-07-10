@@ -29,7 +29,7 @@
 | 2     | **[3.0]** gameplay save state после intro         | done   | `inference_cp0` = кадр 18, room `0x00`                                |
 | 3     | **[3.1]** self-contained FM2                      | done   | ROM + один `.fm2` без внешнего `-loadstate`                           |
 | 4     | **[3.2]** playlist self-contained клипы           | done   | embed в плейлисте; чистка split → **3.3**                             |
-| 5     | **[3.3]** inference без legacy + `inference_config` | todo   | только embedded FM2; удалить split-ветки и модуль                   |
+| 5     | **[3.3]** inference без legacy + `inference_config` | done   | только embedded FM2; `inference_states.py`                          |
 | 6     | **[4.4]** рефакторинг: именование и техдолг в коде   | todo   | etalon naming; RAM fallback; IPC v2 — см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
 | 7     | **[4.1–4.3]** гигиена (регрессия)                 | done   | `run_smoke.py`, `pytest tests/smoke/` — быстро                        |
 | **8** | **[5.0]** финальный e2e train                     | todo   | **последний шаг** — только после **4.4**                              |
@@ -37,8 +37,7 @@
 
 Этапы **1.1–1.9**, **4.1–4.3** и закрытые шаги аудита — done; при регрессии в шагах 3.x–4.4 — быстрые smoke/pytest, **не** e2e train.
 
-**Следующий шаг аудита (на 2026-07-10):** **[3.3]** inference без legacy (embedded-only replay, убрать `inference_config.py`).  
-**Перед [5.0]:** обязательно закрыть **[4.4]** (именование + RAM fallback + IPC v2).
+**Следующий шаг аудита (на 2026-07-10):** **[4.4]** рефакторинг (именование + RAM fallback + IPC v2).
 
 ---
 
@@ -152,10 +151,10 @@ flowchart LR
 | 1.8  | `src/bridge_ipc.py`, `src/fceux_bridge.py`, `fceux/lua/bridge.lua`                                                                                                                           |
 | 1.9  | `src/fceux_bridge.py`, `src/env/base_nes_env.py`, `scripts/test_parallel_env.py`, `scripts/benchmark_train.py` (новый), `scripts/smoke_bridge.py`, `scripts/smoke_env.py`, `docs/SCRIPTS.md` |
 | 2    | `scripts/ram_scout.py`, `src/ram_map_load.py`, `scripts/build_playthrough.py`                                                                                                                |
-| 3.0  | `scripts/build_inference_states.py`, `reference/human_playthrough.jsonl`, `src/inference_config.py`, `src/stream/run_inference.py`                                                           |
+| 3.0  | `scripts/build_inference_states.py`, `reference/human_playthrough.jsonl`, `src/inference_states.py`, `src/stream/run_inference.py`                                                           |
 | 3.1  | `src/fm2_export.py`, `scripts/export_fm2.py`, `src/stream/run_inference.py`                                                                                                                  |
 | 3.2  | `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`, `fceux/lua/achievement_overlay.lua`                                                           |
-| 3.3  | `src/inference_config.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`, `scripts/export_fm2.py`, `src/achievements/playlist.py`                                                     |
+| 3.3  | `src/inference_states.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`                                                     |
 | 4.1  | `scripts/run_smoke.py`, `scripts/smoke_*.py`, `scripts/test_parallel_env.py`, `docs/DESIGN.md`                                                                                               |
 | 4.2  | `src/train/train_ppo.py`, `docs/SCRIPTS.md`                                                                                                                                                  |
 | 4.3  | `tests/conftest.py`, `tests/smoke/`, `requirements.txt` (pytest)                                                                                                                             |
@@ -978,7 +977,8 @@ games/…/missions/m1/
 
 ## [3.3] Inference: без legacy replay + убрать `inference_config.py`
 
-**Статус:** todo  
+**Статус:** done  
+**Вердикт (2026-07-10):** только embedded FM2; `inference_config.py` удалён; helpers в `inference_states.py`; один Lua overlay.  
 **Этап:** 3.3  
 **Приоритет:** low  
 **Зависит от:** 3.1, 3.2  
@@ -990,17 +990,17 @@ games/…/missions/m1/
 
 ### Чеклист сессии
 
-- [ ] `INFERENCE_FM2_GUID` → `fm2_export.py`; убрать `inference_fm2_guid()`
-- [ ] `resolve_inference_save_state` → **удалить** (не fallback на `states/cp0.fc0`)
-- [ ] `play_inference_fm2.py` — убрать split-ветки (`_resolve_external_save_state`, копирование `.fc0`); только embedded
-- [ ] `playlist.py` — overlay без `save_state`; manifest без поля `save_state`
-- [ ] `fm2_export.py` — убрать `save_state` из sidecar; embed всегда при экспорте
-- [ ] Убрать `--no-embed-savestate` (`run_inference.py`); `export_fm2.py` — embed по умолчанию
-- [ ] Lua — объединить overlay-скрипты; Python: `WAIT_ACHIEVEMENT_OVERLAY` + `WAIT_BLOCK_LABEL`; удалить `achievement_playlist.lua`
-- [ ] Удалить `src/inference_config.py`; перенести `gameplay_start_frame` / `inference_save_state_for` при необходимости
-- [ ] `grep inference_config` — чисто
-- [ ] Train/env не затронуты
-- [ ] `docs/SCRIPTS.md`
+- [x] `INFERENCE_FM2_GUID` → `fm2_export.py`
+- [x] `resolve_inference_save_state` → удалён; `resolve_inference_reset_state` в `inference_states.py`
+- [x] `play_inference_fm2.py` — только embedded; без split/loadstate
+- [x] `playlist.py` — overlay/manifest без `save_state`
+- [x] `fm2_export.py` — sidecar без `save_state`; export всегда embed
+- [x] Убран `--no-embed-savestate`; `export_fm2.py` — embed по умолчанию
+- [x] Lua — `achievement_overlay.lua` + `WAIT_BLOCK_LABEL`; `achievement_playlist.lua` удалён
+- [x] Удалён `src/inference_config.py`
+- [x] `grep inference_config` — только BACKLOG/git
+- [x] Train/env не затронуты
+- [x] `docs/SCRIPTS.md`
 
 ### Контекст
 
@@ -1025,12 +1025,12 @@ games/…/missions/m1/
 
 ### Критерий готовности
 
-- [ ] `src/inference_config.py` удалён; `grep inference_config` — только git/BACKLOG.
-- [ ] Плейлист и single FM2 replay без `-loadstate` и без `.fc0` в staging.
-- [ ] `.overlay.json` и manifest без `save_state`.
-- [ ] Один Lua overlay; `achievement_playlist.lua` удалён.
-- [ ] Train / `train_ppo.py` / env не затронуты.
-- [ ] `docs/SCRIPTS.md` обновлён.
+- [x] `src/inference_config.py` удалён; `grep inference_config` — только git/BACKLOG.
+- [x] Плейлист и single FM2 replay без `-loadstate` и без `.fc0` в staging.
+- [x] `.overlay.json` и manifest без `save_state`.
+- [x] Один Lua overlay; `achievement_playlist.lua` удалён.
+- [x] Train / `train_ppo.py` / env не затронуты.
+- [x] `docs/SCRIPTS.md` обновлён.
 
 ### Заметки
 

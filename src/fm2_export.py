@@ -6,9 +6,11 @@ import re
 from pathlib import Path
 from typing import Any, Iterator
 
-from inference_config import inference_fm2_guid
 from log_utils import iter_jsonl
 from project_paths import repo_root
+
+# Отдельный GUID от эталона (clear.fm2); стабильный для всех inference-movie.
+INFERENCE_FM2_GUID = "B1AEF103-0001-4000-8000-000000000001"
 
 # FCEUX FM2: RLDUTSBA
 FM2_BUTTON_CHARS = "RLDUTSBA"
@@ -111,7 +113,7 @@ def build_fm2_header(
 ) -> list[str]:
     """Заголовок FM2: ROM из шаблона + inference GUID. Без length — иначе FCEUX считает файл FM3/TAS Editor."""
     lines = read_fm2_header(template)
-    eff_guid = guid or inference_fm2_guid()
+    eff_guid = guid or INFERENCE_FM2_GUID
     lines.append(f"guid {eff_guid}")
     if embed_savestate:
         if save_state_path is None:
@@ -153,14 +155,11 @@ def iter_episode_frames(
 def write_fm2_sidecar(
     fm2_path: Path,
     *,
-    save_state: str | None = None,
     overlay: dict[str, Any] | None = None,
 ) -> Path:
-    """Sidecar рядом с FM2: overlay + save_state для replay."""
+    """Sidecar рядом с FM2: achievement overlay для Lua replay."""
     sidecar = fm2_path.with_suffix(".overlay.json")
     payload: dict[str, Any] = dict(overlay or {})
-    if save_state:
-        payload["save_state"] = save_state
     sidecar.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return sidecar
 
@@ -168,11 +167,10 @@ def write_fm2_sidecar(
 def write_fm2_artifacts(
     fm2_path: Path,
     *,
-    save_state: str | None = None,
     overlay: dict[str, Any] | None = None,
 ) -> Path:
-    """Sidecar .overlay.json для корректного replay."""
-    return write_fm2_sidecar(fm2_path, save_state=save_state, overlay=overlay)
+    """Sidecar .overlay.json для achievement replay."""
+    return write_fm2_sidecar(fm2_path, overlay=overlay)
 
 
 def export_fm2(
@@ -182,12 +180,10 @@ def export_fm2(
     template: Path | None = None,
     episode: int | None = None,
     frame_skip: int = DEFAULT_FRAME_SKIP,
-    save_state: str | None = None,
     overlay: dict[str, Any] | None = None,
-    embed_savestate: bool = False,
-    save_state_path: Path | None = None,
+    save_state_path: Path,
 ) -> int:
-    """jsonl → .fm2; возвращает число FM2-кадров."""
+    """jsonl → self-contained .fm2; возвращает число FM2-кадров."""
     tmpl = template or default_fm2_template()
     rows = list(iter_jsonl(jsonl_path))
     if not rows:
@@ -196,7 +192,7 @@ def export_fm2(
     frame_lines = list(iter_episode_frames(rows, episode=episode, frame_skip=frame_skip))
     header = build_fm2_header(
         tmpl,
-        embed_savestate=embed_savestate,
+        embed_savestate=True,
         save_state_path=save_state_path,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -205,9 +201,8 @@ def export_fm2(
             f.write(line + "\n")
         for frame_line in frame_lines:
             f.write(frame_line + "\n")
-    sidecar_save_state = None if embed_savestate else save_state
-    if sidecar_save_state or overlay:
-        write_fm2_sidecar(out_path, save_state=sidecar_save_state, overlay=overlay)
+    if overlay:
+        write_fm2_sidecar(out_path, overlay=overlay)
     return len(frame_lines)
 
 
@@ -217,12 +212,10 @@ def export_episode_fm2_from_steps(
     *,
     template: Path | None = None,
     frame_skip: int = DEFAULT_FRAME_SKIP,
-    save_state: str | None = None,
     overlay: dict[str, Any] | None = None,
-    embed_savestate: bool = False,
-    save_state_path: Path | None = None,
+    save_state_path: Path,
 ) -> int:
-    """In-memory steps [{action}, …] → FM2."""
+    """In-memory steps [{action}, …] → self-contained FM2."""
     tmpl = template or default_fm2_template()
     frame_lines: list[str] = []
     for row in steps:
@@ -232,7 +225,7 @@ def export_episode_fm2_from_steps(
 
     header = build_fm2_header(
         tmpl,
-        embed_savestate=embed_savestate,
+        embed_savestate=True,
         save_state_path=save_state_path,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -241,7 +234,6 @@ def export_episode_fm2_from_steps(
             f.write(line + "\n")
         for frame_line in frame_lines:
             f.write(frame_line + "\n")
-    sidecar_save_state = None if embed_savestate else save_state
-    if sidecar_save_state or overlay:
-        write_fm2_sidecar(out_path, save_state=sidecar_save_state, overlay=overlay)
+    if overlay:
+        write_fm2_sidecar(out_path, overlay=overlay)
     return len(frame_lines)

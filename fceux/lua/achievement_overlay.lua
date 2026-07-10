@@ -1,10 +1,13 @@
--- Achievement overlay при проигрывании inference FM2 (ML_CONCEPT §8).
--- Запуск: scripts/play_inference_fm2.py  или  -lua achievement_overlay.lua -playmovie …
--- Конфиг: WAIT_ACHIEVEMENT_OVERLAY → путь к .overlay.json (или sidecar рядом с .fm2)
+-- Achievement overlay при проигрывании inference FM2 (single clip или playlist).
+-- Запуск: scripts/play_inference_fm2.py
+-- Конфиг: WAIT_ACHIEVEMENT_OVERLAY, опц. WAIT_BLOCK_LABEL (заголовок блока эфира)
 
 local overlay_cache = nil
 local overlay_until_frame = 0
 local last_overlay_raw = ""
+local block_label = ""
+local block_label_until = 0
+local block_label_frames = 120
 
 local function overlay_path()
   local from_env = os.getenv("WAIT_ACHIEVEMENT_OVERLAY")
@@ -45,17 +48,21 @@ local function parse_overlay_json(text)
   }
 end
 
-local function debug_log(hypothesis_id, message, data_json)
-  -- #region agent log
-  local log_path = os.getenv("WAIT_DEBUG_LOG")
-  if not log_path or log_path == "" then return end
-  local f = io.open(log_path, "a")
-  if not f then return end
-  f:write('{"sessionId":"04d5f1","hypothesisId":"' .. (hypothesis_id or "?")
-    .. '","location":"achievement_overlay.lua","message":"' .. (message or "")
-    .. '","data":' .. (data_json or "{}") .. ',"timestamp":' .. ((os.time() or 0) * 1000) .. "}\n")
-  f:close()
-  -- #endregion
+local function init_block_label()
+  local from_env = os.getenv("WAIT_BLOCK_LABEL")
+  if from_env and from_env ~= "" then
+    block_label = from_env
+  end
+  local frames_env = os.getenv("WAIT_BLOCK_LABEL_FRAMES")
+  if frames_env and frames_env ~= "" then
+    local n = tonumber(frames_env)
+    if n and n > 0 then
+      block_label_frames = n
+    end
+  end
+  if block_label ~= "" then
+    block_label_until = emu.framecount() + block_label_frames
+  end
 end
 
 local function draw_overlay()
@@ -75,14 +82,17 @@ local function draw_overlay()
     last_overlay_raw = text
     overlay_cache = parse_overlay_json(text)
     overlay_until_frame = emu.framecount() + (overlay_cache.show_until_frame or 180)
-    -- #region agent log
-    debug_log("H-D", "overlay loaded", '{"count":' .. #(overlay_cache.achievements or {}) .. '}')
-    -- #endregion
+  end
+  if block_label ~= "" and emu.framecount() <= block_label_until then
+    gui.text(8, 2, "[" .. block_label .. "]", "cyan")
   end
   if not overlay_cache or emu.framecount() > overlay_until_frame then
     return
   end
   local y = 12
+  if block_label ~= "" and emu.framecount() <= block_label_until then
+    y = 24
+  end
   for _, ach in ipairs(overlay_cache.achievements or {}) do
     local prefix = "*"
     if ach.tier == "skull" then
@@ -96,6 +106,8 @@ local function draw_overlay()
   local st = overlay_cache.stats or {}
   gui.text(8, y + 4, string.format("CP:%d  R:%.0f  steps:%d", st.max_cp or 0, st.reward or 0, st.steps or 0), "white")
 end
+
+init_block_label()
 
 local movie_done = false
 

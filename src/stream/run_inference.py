@@ -22,7 +22,7 @@ from attempt_logger import AttemptLogger  # noqa: E402
 from env.loader import make_env  # noqa: E402
 from fm2_export import export_episode_fm2_from_steps, write_fm2_artifacts  # noqa: E402
 from fceux_helpers import load_fceux_profile  # noqa: E402
-from inference_config import resolve_inference_save_state  # noqa: E402
+from inference_states import resolve_inference_reset_state  # noqa: E402
 from inference_input_logger import InferenceInputLogger  # noqa: E402
 from log_utils import dated_log_path, load_jsonl_window, utc_date_prefix  # noqa: E402
 from project_paths import mission_dir, repo_root  # noqa: E402
@@ -51,7 +51,10 @@ def run_inference(args: argparse.Namespace) -> None:
 
     save_state = args.save_state
     if not save_state:
-        save_state = resolve_inference_save_state(mission, cp_index=0)
+        try:
+            save_state = resolve_inference_reset_state(mission, cp_index=0)
+        except FileNotFoundError as exc:
+            raise SystemExit(str(exc)) from exc
         if not (mission / save_state).is_file():
             raise SystemExit(
                 f"Inference save state not found: {mission / save_state}. "
@@ -104,11 +107,8 @@ def run_inference(args: argparse.Namespace) -> None:
                 input_logger.log_step(step=steps - 1, frame=frame, action=action_str)
 
             fm2_path: Path | None = None
-            embed_fm2 = (
-                not args.no_embed_savestate
-                and (args.export_fm2 or args.export_fm2_dir or args.save_episode_fm2)
-            )
-            save_state_path = mission / save_state if embed_fm2 else None
+            exporting_fm2 = bool(args.export_fm2 or args.export_fm2_dir or args.save_episode_fm2)
+            save_state_path = mission / save_state if exporting_fm2 else None
             if args.export_fm2 or args.export_fm2_dir:
                 if args.export_fm2:
                     fm2_path = Path(args.export_fm2)
@@ -120,7 +120,6 @@ def run_inference(args: argparse.Namespace) -> None:
                 export_episode_fm2_from_steps(
                     step_log,
                     fm2_path,
-                    embed_savestate=embed_fm2,
                     save_state_path=save_state_path,
                 )
             elif args.save_episode_fm2:
@@ -128,7 +127,6 @@ def run_inference(args: argparse.Namespace) -> None:
                 export_episode_fm2_from_steps(
                     step_log,
                     fm2_path,
-                    embed_savestate=embed_fm2,
                     save_state_path=save_state_path,
                 )
 
@@ -153,14 +151,9 @@ def run_inference(args: argparse.Namespace) -> None:
             _write_overlay(args.session, overlay)
 
             if fm2_path:
-                write_fm2_artifacts(
-                    fm2_path,
-                    save_state=None if embed_fm2 else save_state,
-                    overlay=overlay,
-                )
+                write_fm2_artifacts(fm2_path, overlay=overlay)
                 print(f"  overlay sidecar: {fm2_path.with_suffix('.overlay.json')}")
-                if embed_fm2:
-                    print(f"  embedded savestate: {save_state}")
+                print(f"  embedded savestate: {save_state}")
 
             print(
                 f"episode {ep}: steps={steps} max_cp={last_info.get('max_checkpoint')} "
@@ -218,11 +211,6 @@ def main() -> None:
         "--save-episode-fm2",
         action="store_true",
         help="сохранять FM2 каждого эпизода в logs/YYYYMMDD_epNNNN.fm2",
-    )
-    parser.add_argument(
-        "--no-embed-savestate",
-        action="store_true",
-        help="не встраивать save state в FM2; sidecar save_state для replay",
     )
     parser.add_argument("--build-playlist", action="store_true", help="собрать плейлист после прогона")
     args = parser.parse_args()

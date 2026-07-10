@@ -1,16 +1,9 @@
-"""Inference FM2 GUID и выбор save state для replay/export."""
+"""Inference reset save state (gameplay start); не train cp0."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from project_paths import load_yaml
-
-# Отдельный GUID от эталона (clear.fm2); стабильный для всех inference-movie.
-INFERENCE_FM2_GUID = "B1AEF103-0001-4000-8000-000000000001"
-
-
-def inference_fm2_guid() -> str:
-    return INFERENCE_FM2_GUID
 
 
 def inference_save_state_for(cp_index: int) -> str:
@@ -28,17 +21,23 @@ def gameplay_start_frame(mission: Path) -> int | None:
     return int(frame) if frame is not None else None
 
 
-def resolve_inference_save_state(mission: Path, *, cp_index: int = 0) -> str:
-    """Путь относительно mission; inference_cpN, иначе cpN (legacy train states)."""
+def resolve_inference_reset_state(mission: Path, *, cp_index: int = 0) -> str:
+    """Путь относительно mission для inference env reset и FM2 embed."""
     manifest = mission / "config" / "playthrough_manifest.yaml"
     if manifest.is_file() and cp_index == 0:
         data = load_yaml(manifest)
         inference = data.get("inference") or {}
         rel = inference.get("save_state")
-        if rel and (mission / rel).is_file():
-            return str(rel)
+        if rel:
+            path = mission / rel
+            if path.is_file():
+                return str(rel)
+            raise FileNotFoundError(f"Inference save state from manifest not found: {path}")
 
-    inf = mission / inference_save_state_for(cp_index)
-    if inf.is_file():
-        return inference_save_state_for(cp_index)
-    return f"states/cp{cp_index}.fc0"
+    rel = inference_save_state_for(cp_index)
+    path = mission / rel
+    if path.is_file():
+        return rel
+    raise FileNotFoundError(
+        f"Inference save state not found: {path}. Run scripts/build_inference_states.py"
+    )
