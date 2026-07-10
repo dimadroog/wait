@@ -1161,9 +1161,9 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 
 #### B — RAM scout: убрать fallback `logs/ram_*` (этап 2, миграция done)
 
-- [ ] `project_paths.resolve_ram_scout_jsonl` / `resolve_ram_resolve_json` — только целевые пути (`reference/scout/`, `config/`); без `DeprecationWarning` и `tuple[Path, bool]`
-- [ ] Упростить вызовы в `build_playthrough.py`, `ram_map_load.py` (убрать `_legacy`)
-- [ ] `docs/SCRIPTS.md` — без упоминания fallback на `logs/ram_*`
+- [x] `project_paths` — только `ram_scout_jsonl_path` / `ram_resolve_path`; без `resolve_*`, `DeprecationWarning` и `tuple[Path, bool]`
+- [x] Упростить вызовы в `build_playthrough.py`, `ram_map_load.py` (убрать `_legacy`)
+- [x] `docs/SCRIPTS.md` — без упоминания fallback на `logs/ram_*`
 
 #### C — Bridge IPC v2: удалить PoC (вердикт 1.8 — не включаем)
 
@@ -1181,7 +1181,7 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 
 - [ ] DESIGN § именование соблюдено в коде и конфигах плагина.
 - [ ] Нет идентификаторов `phaseN_*` / `phaseN.yaml` в коде и `games/`.
-- [ ] Нет fallback на `logs/ram_scout.jsonl` / `logs/ram_resolve.json` в runtime.
+- [x] Нет fallback на `logs/ram_scout.jsonl` / `logs/ram_resolve.json` в runtime.
 - [ ] Нет IPC v2 в коде и профилях (только v1).
 - [ ] Inference / playthrough / train smoke (tier 0–2) без регрессий.
 - [ ] **[5.0]** разблокирован.

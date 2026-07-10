@@ -49,44 +49,6 @@ def ram_resolve_path(mission: Path) -> Path:
     return mission / "config" / "ram_resolve.json"
 
 
-def resolve_ram_scout_jsonl(mission: Path) -> tuple[Path, bool]:
-    """Чтение ram_scout.jsonl: reference/scout/, fallback logs/ (deprecated)."""
-    import warnings
-
-    preferred = ram_scout_jsonl_path(mission)
-    legacy = mission / "logs" / "ram_scout.jsonl"
-    if preferred.is_file():
-        return preferred, False
-    if legacy.is_file():
-        warnings.warn(
-            f"{legacy.relative_to(mission).as_posix()} is deprecated; "
-            f"use {preferred.relative_to(mission).as_posix()}.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return legacy, True
-    return preferred, False
-
-
-def resolve_ram_resolve_json(mission: Path) -> tuple[Path, bool]:
-    """Чтение ram_resolve.json: config/, fallback logs/ (deprecated)."""
-    import warnings
-
-    preferred = ram_resolve_path(mission)
-    legacy = mission / "logs" / "ram_resolve.json"
-    if preferred.is_file():
-        return preferred, False
-    if legacy.is_file():
-        warnings.warn(
-            f"{legacy.relative_to(mission).as_posix()} is deprecated; "
-            f"use {preferred.relative_to(mission).as_posix()}.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return legacy, True
-    return preferred, False
-
-
 def resolve_mission_fm2(fm2_arg: str | Path) -> tuple[Path, str, Path]:
     """FM2 → (файл, game_id, каталог миссии).
 

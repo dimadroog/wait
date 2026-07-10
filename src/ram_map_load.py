@@ -4,11 +4,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from project_paths import resolve_ram_resolve_json
+from project_paths import ram_resolve_path
 
 
 def load_ram_addresses(mission: Path) -> dict[str, int]:
-    path, _legacy = resolve_ram_resolve_json(mission)
+    path = ram_resolve_path(mission)
     if not path.is_file():
         raise FileNotFoundError(
             f"ram_resolve.json not found: {path}. Run ram_scout.py first."

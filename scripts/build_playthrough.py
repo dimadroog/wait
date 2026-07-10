@@ -20,7 +20,7 @@ from playthrough_build import (  # noqa: E402
 from project_paths import (  # noqa: E402
     count_fm2_frames,
     resolve_mission_fm2,
-    resolve_ram_scout_jsonl,
+    ram_scout_jsonl_path,
     resolve_rom,
 )
 from ram_resolve import load_frames  # noqa: E402
@@ -47,7 +47,7 @@ def main() -> None:
     except (FileNotFoundError, ValueError) as e:
         raise SystemExit(str(e)) from e
 
-    jsonl, _legacy = resolve_ram_scout_jsonl(mission)
+    jsonl = ram_scout_jsonl_path(mission)
     if not jsonl.is_file():
         raise SystemExit(
             f"ram_scout.jsonl not found: {jsonl}. Run ram_scout.py first."
