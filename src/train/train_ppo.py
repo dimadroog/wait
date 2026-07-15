@@ -29,6 +29,8 @@ from train.checkpointing import (  # noqa: E402
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_clean_preflight  # noqa: E402
 from train.learn_watchdog import DEFAULT_LEARN_STALL_TIMEOUT_S, LearnStallError, learn_with_stall_watchdog  # noqa: E402
 from train.progress_callback import TrainProgressPctCallback  # noqa: E402
+from train.ram_mitigations import RolloutGcCallback, warn_if_n_envs_high_for_ram  # noqa: E402
+from train.thread_limits import configure_train_threads  # noqa: E402
 
 POLICY_KWARGS = {"normalize_images": False}  # obs уже float [0,1], channel-first (4,84,84)
 
@@ -153,7 +155,8 @@ def train(args: argparse.Namespace) -> Path:
 
         reward_overrides = _reward_overrides_from_task(task)
 
-        torch.set_num_threads(args.threads)
+        configure_train_threads(n_envs=args.n_envs, threads=args.threads)
+        warn_if_n_envs_high_for_ram(args.n_envs)
         if not args.skip_preflight:
             require_clean_preflight(label="train_ppo")
 
@@ -250,7 +253,9 @@ def train(args: argparse.Namespace) -> Path:
         if args.latest_checkpoint:
             latest = mission / "checkpoints" / "latest.zip"
             callbacks.append(LatestCheckpointCallback(latest))
-        if not args.no_progress_pct and not args.progress:
+        if args.rollout_gc:
+            callbacks.append(RolloutGcCallback())
+        if not args.no_progress_pct:
             callbacks.append(TrainProgressPctCallback(target_timesteps))
 
         print(
@@ -318,7 +323,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--gamma", type=float, default=0.99)
     p.add_argument("--learning-rate", type=float, default=2.5e-4)
     p.add_argument("--save-every", type=int, default=50_000, help="checkpoint каждые N env steps (total)")
-    p.add_argument("--threads", type=int, default=2, help="torch.set_num_threads")
+    p.add_argument("--threads", type=int, default=2, help="torch/BLAS threads (cap 2 при n_envs≥6)")
     p.add_argument("--save-state", default=None, help="states/cp0.fc0 относительно миссии")
     p.add_argument("--reward-profile", default="default")
     p.add_argument("--checkpoint-in", default=None)
@@ -366,6 +371,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_LEARN_STALL_TIMEOUT_S,
         help="abort learn без прогресса timesteps, с (default 300; 0=off)",
+    )
+    p.add_argument(
+        "--rollout-gc",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="gc.collect() после каждого rollout — снижает RAM pressure (H2, default: on)",
     )
     p.add_argument(
         "--skip-preflight",

@@ -29,6 +29,10 @@
 
 **Environment** — среда Gymnasium; общий каркас `BaseNesEnv` в `src/env/`, игровая фабрика `make_env()` в `games/<game_id>/env/`.
 
+### env-step
+
+Один вызов `env.step(action)` — шаг среды: действие агента, новый [obs](#obs), награда, флаги `terminated`/`truncated`. Счётчик `total_timesteps` в [SB3](#sb3) — сумма env-steps по **всем** параллельным [env](#env) (`n_envs`). Не путать с кадром [NES](#nes): при [frame skip](#frame-skip) 4 один env-step ≈ 4 кадра эмулятора. В [MEASUREMENTS.md](MEASUREMENTS.md) throughput пишут как **env-steps/s** (часто «wall» или «steady»).
+
 ### FCEUX
 
 Эмулятор NES: portable **2.6.6 win64** в `fceux/portable/fceux64.exe`; Lua проекта в `fceux/lua/`. Единый runtime для [эталона](#etalon), train и [inference](#inference). Окно для OBS Game Capture на эфире. Не Qt/SDL.
@@ -39,7 +43,7 @@
 
 ### FPS
 
-**Frames Per Second** — кадры в секунду; эфир: 30 FPS, эмулятор [NES](#nes): 60 FPS.
+**Frames Per Second** — кадры в секунду; эфир: 30 FPS, эмулятор [NES](#nes): 60 FPS. В [train log](#train-log-rollout-table) поле `fps` — другое: [env-steps](#env-step)/[wall-clock](#wall-clock) при обучении, не кадры видео.
 
 ### Frame skip
 
@@ -96,7 +100,7 @@
 
 ### Orphan (process)
 
-**Orphan** — процесс без живого родителя (train/worker). В проекте: зависший `fceux64.exe` с `bridge.lua` после краша, Ctrl+C или обрыва [SB3](#sb3) `SubprocVecEnv`. Снимается `kill_orphan_fceux_bridge()` в `cleanup_bridge_sessions()` (`src/train/env_factory.py`).
+**Orphan** — процесс без живого родителя (train/worker). В проекте: зависший `fceux64.exe` (`bridge.lua` или сессия `tmp/bridge/`) и зависший `python` (`benchmark_train.py`, `train_ppo.py`, `stress_e2e_gate.py`, …) после краша, Ctrl+C или обрыва [SB3](#sb3) `SubprocVecEnv`. Снимается `kill_orphan_fceux_bridge()` в `cleanup_bridge_sessions()` (`src/train/env_factory.py`).
 
 ### PPO
 
@@ -109,6 +113,10 @@
 ### RL
 
 **Reinforcement Learning** — обучение с подкреплением: агент получает числовую награду за действия в среде.
+
+### rollout
+
+Один цикл обучения [PPO](#ppo) в [SB3](#sb3): (1) параллельный сбор `n_steps` шагов в каждом из `n_envs` [env](#env) → `n_envs × n_steps` [env-steps](#env-step); (2) обновление весов по собранному буферу (`n_epochs` проходов по batch). В [train log](#train-log-rollout-table) новая строка таблицы = завершённый rollout; `iterations` — их счётчик. Gate [5.0] = **2 rollout'а** при `n_steps=128`, `n_envs=8`, `timesteps=2048` (2×1024 env-steps).
 
 ### ROM
 
@@ -126,9 +134,49 @@
 
 **Stable-Baselines3** — библиотека RL на PyTorch; в проекте: [PPO](#ppo), `SubprocVecEnv` / `DummyVecEnv`, callbacks (чекпоинты, progress %). Код: `src/train/train_ppo.py`, пакет `stable-baselines3` в `.venv/`.
 
+### Train log (rollout table)
+
+Периодический вывод в консоль при `model.learn()` с `verbose=1` ([`train_ppo.py`](../src/train/train_ppo.py)). Печатается **после каждого [rollout'а](#rollout)** — одного цикла «сбор траекторий в [env](#env) → обновление весов [PPO](#ppo)». Дополнительные поля `progress_pct` и `target_timesteps` добавляет `TrainProgressPctCallback` (`src/train/progress_callback.py`); отключить: `--no-progress-pct`.
+
+**Пример** (2-й rollout из трёх, `n_envs=6`, `n_steps=128`, цель `timesteps=2048`):
+
+```
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 2        |
+|    ep_rew_mean     | -38.5    |
+| time/              |          |
+|    fps             | 5        |
+|    iterations      | 2        |
+|    time_elapsed    | 281      |
+|    total_timesteps | 1536     |
+|    progress_pct    | 75.0     |
+|    target_timesteps| 2048     |
+---------------------------------
+```
+
+| Поле | Секция | Значение |
+| ---- | ------ | -------- |
+| **rollout/** | метрики эпизодов за последний сбор данных | |
+| `ep_len_mean` | rollout | средняя длина эпизода в [env-steps](#env-step). При Rush'n Attack [M1](#m1) типично **≈2** — короткие эпизоды, частые `reset()` ([reset storm](MEASUREMENTS.md)). |
+| `ep_rew_mean` | rollout | средняя суммарная награда за эпизод за последний [rollout](#rollout) (профиль наград миссии). |
+| **time/** | время и прогресс обучения | |
+| `fps` | time | **не** [FPS](#fps) видео. Пропускная способность train: [env-steps](#env-step) / [wall-секунду](#wall-clock) **с начала сессии** (кумулятивный показатель [SB3](#sb3)). Сравнение с эталоном — [MEASUREMENTS.md](MEASUREMENTS.md). |
+| `iterations` | time | число завершённых [rollout'ов](#rollout) (= число вызовов `learn` update). |
+| `time_elapsed` | time | [wall-clock](#wall-clock) (с) с момента старта `learn()`. Разница между соседними строками ≈ длительность одного rollout'а. |
+| `total_timesteps` | time | всего [env-steps](#env-step), собранных моделью (`num_timesteps`). За один [rollout](#rollout): `n_envs × n_steps` (напр. 6×128 = **768**). |
+| `progress_pct` | time | доля цели в %: `100 × total_timesteps / target_timesteps` (проектный callback). |
+| `target_timesteps` | time | целевое число [env-steps](#env-step) из CLI `--timesteps` или sidecar `.train.json` при `--resume`. |
+
+Связанные команды: [`train_local.sh`](../scripts/train_local.sh), [SCRIPTS.md](SCRIPTS.md) § train. Деградация `fps` на длинном train — [ISSUE_TRAIN_FPS_DEGRADATION.md](ISSUE_TRAIN_FPS_DEGRADATION.md).
+
 ### TAS
 
 **Tool-Assisted Speedrun** — frame-perfect скрипт человека; **не** формат проекта (у нас [RL](#rl) + [inference](#inference)).
+
+### wall-clock
+
+**Wall-clock** (wall time, «настенные часы») — реальное прошедшее время на машине, в отличие от симулированного времени игры или суммарного CPU по потокам. В проекте: `time_elapsed` в [train log](#train-log-rollout-table) (с); **wall env-steps/s** = `total_env_steps / wall_seconds` ([MEASUREMENTS.md](MEASUREMENTS.md)). **Steady** — тот же расчёт без первого [rollout'а](#rollout) (cold start FCEUX). Синоним в текстах: **wall-секунда**.
 
 ### WR
 

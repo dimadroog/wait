@@ -39,6 +39,7 @@ from train.session_report import (  # noqa: E402
     phase_record,
     rollout_phase_records,
 )
+from train.thread_limits import configure_train_threads  # noqa: E402
 from train.train_ppo import POLICY_KWARGS, _default_save_state  # noqa: E402
 
 HISTORICAL_E2E_ENV_STEPS_PER_S = 0.5  # 4 env, pre-1.x (BACKLOG)
@@ -168,7 +169,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         print(f"json_out={(bench_dir / 'train_report.json').resolve()}")
         return {"dry_run": True, "bench_dir": str(bench_dir)}
 
-    torch.set_num_threads(args.threads)
+    configure_train_threads(n_envs=args.n_envs, threads=args.threads)
     preflight_orphans = preflight_bridge_sessions(label="benchmark_train")
 
     timing = RolloutTimingCallback(warmup_rollouts=args.warmup_rollouts)

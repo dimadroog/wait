@@ -87,6 +87,9 @@ class LatestCheckpointCallback(BaseCallback):
         super().__init__(verbose)
         self._latest_path = checkpoint_zip_path(latest_path)
 
+    def _on_step(self) -> bool:
+        return True
+
     def _on_rollout_end(self) -> bool:
         atomic_save_model(self.model, self._latest_path)
         return True
