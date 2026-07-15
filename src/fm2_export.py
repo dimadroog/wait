@@ -3,14 +3,26 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, Iterator
 
 from jsonl_logs import iter_jsonl
 from project_paths import repo_root
 
-# Отдельный GUID от эталона (clear.fm2); стабильный для всех inference-movie.
-INFERENCE_FM2_GUID = "B1AEF103-0001-4000-8000-000000000001"
+# Отдельный GUID от эталона (clear.fm2) и от fceux/portable/movies/*.fm2 (шаблон ...0001).
+INFERENCE_FM2_GUID = "B1AEF103-0001-4000-8000-000000000002"
+INFERENCE_FM2_GUID_NS = uuid.UUID(INFERENCE_FM2_GUID)
+
+
+def episode_fm2_guid(episode: int | None = None, *, salt: str = "") -> str:
+    """Уникальный GUID на эпизод — FCEUX иначе путает клипы с общим guid в одной папке."""
+    if episode is None and not salt:
+        return INFERENCE_FM2_GUID
+    name = f"episode-{episode}" if episode is not None else "clip"
+    if salt:
+        name = f"{name}-{salt}"
+    return str(uuid.uuid5(INFERENCE_FM2_GUID_NS, name)).upper()
 
 # FCEUX FM2: RLDUTSBA
 FM2_BUTTON_CHARS = "RLDUTSBA"
@@ -78,14 +90,37 @@ def fm2_has_embedded_savestate(fm2_path: Path) -> bool:
     return False
 
 
+def remap_fm2_guid(fm2_path: Path, new_guid: str) -> str:
+    """Переписать guid в заголовке и в embedded savestate (in-place). Возвращает старый guid."""
+    lines = fm2_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    old_guid = ""
+    out: list[str] = []
+    for line in lines:
+        if line.startswith("guid "):
+            parts = line.split(None, 1)
+            old_guid = parts[1] if len(parts) > 1 else ""
+            out.append(f"guid {new_guid}")
+        elif line.startswith("savestate 0x"):
+            hex_body = line.split(None, 1)[1]
+            blob = bytes.fromhex(hex_body[2:])
+            blob = patch_savestate_movie_guid(blob, new_guid)
+            out.append("savestate 0x" + blob.hex().upper())
+        else:
+            out.append(line)
+    fm2_path.write_text("\n".join(out) + "\n", encoding="utf-8", newline="\n")
+    return old_guid
+
+
 def patch_savestate_movie_guid(fcs: bytes, target_guid: str) -> bytes:
-    """Заменить единственный movie GUID в FCS/FCEUX save state на target_guid."""
+    """Заменить movie GUID в FCS/FCEUX save state на target_guid (если есть ровно один)."""
+    matches = list(_GUID_BYTES_RE.finditer(fcs))
+    if len(matches) == 0:
+        return fcs
     target = target_guid.upper().encode("ascii")
     if len(target) != 36:
         raise ValueError(f"invalid GUID length: {target_guid!r}")
-    matches = list(_GUID_BYTES_RE.finditer(fcs))
     if len(matches) != 1:
-        raise ValueError(f"expected 1 movie GUID in save state, found {len(matches)}")
+        raise ValueError(f"expected 0 or 1 movie GUID in save state, found {len(matches)}")
     start, end = matches[0].span()
     if fcs[start:end] == target:
         return fcs
@@ -192,6 +227,7 @@ def export_fm2(
     frame_lines = list(iter_episode_frames(rows, episode=episode, frame_skip=frame_skip))
     header = build_fm2_header(
         tmpl,
+        guid=episode_fm2_guid(episode),
         embed_savestate=True,
         save_state_path=save_state_path,
     )
@@ -214,6 +250,7 @@ def export_episode_fm2_from_steps(
     frame_skip: int = DEFAULT_FRAME_SKIP,
     overlay: dict[str, Any] | None = None,
     save_state_path: Path,
+    episode: int | None = None,
 ) -> int:
     """In-memory steps [{action}, …] → self-contained FM2."""
     tmpl = template or default_fm2_template()
@@ -225,6 +262,7 @@ def export_episode_fm2_from_steps(
 
     header = build_fm2_header(
         tmpl,
+        guid=episode_fm2_guid(episode),
         embed_savestate=True,
         save_state_path=save_state_path,
     )

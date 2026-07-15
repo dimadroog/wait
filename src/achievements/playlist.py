@@ -4,7 +4,11 @@ from __future__ import annotations
 
 
 
+import hashlib
+
 import json
+
+import re
 
 import shutil
 
@@ -16,14 +20,13 @@ from typing import Any
 
 from achievements.evaluator import evaluate_attempts_file, load_achievements_config, overlay_payload
 
-from fm2_export import export_fm2, fm2_has_embedded_savestate, write_fm2_sidecar
+from fm2_export import export_fm2, episode_fm2_guid, fm2_has_embedded_savestate, remap_fm2_guid, write_fm2_sidecar
 
 from inference_states import resolve_inference_reset_state
 
 from jsonl_logs import utc_date_prefix
 
 from project_paths import mission_dir, repo_root
-
 
 
 
@@ -62,6 +65,24 @@ def _block_label(nom: dict[str, Any]) -> str:
 
 
 
+def _fm2_digest(path: Path) -> str:
+
+    """MD5 покадровой части FM2 (строки |…) — одинаковый геймплей → один клип."""
+
+    digest = hashlib.md5()
+
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+
+        if line.startswith("|"):
+
+            digest.update(line.encode("utf-8"))
+
+    return digest.hexdigest()
+
+
+
+
+
 def _strip_legacy_save_state(overlay_path: Path) -> None:
 
     if not overlay_path.is_file():
@@ -82,6 +103,41 @@ def _strip_legacy_save_state(overlay_path: Path) -> None:
 
 
 
+def _playlist_clip_name(date_prefix: str, name: str) -> bool:
+    """Имена клипов плейлиста: YYYYMMDD_NN_slug_NNN.fm2 / .overlay.json (не ep0001)."""
+    return bool(re.match(rf"^{re.escape(date_prefix)}_\d{{2}}_.+", name))
+
+
+def cleanup_playlist_clips(logs_dir: Path, *, date_prefix: str | None = None) -> int:
+    """Удалить FM2/overlay клипов плейлиста за день (перед пересборкой)."""
+    prefix = date_prefix or utc_date_prefix()
+    removed = 0
+    if not logs_dir.is_dir():
+        return 0
+    for path in list(logs_dir.iterdir()):
+        if not _playlist_clip_name(prefix, path.name):
+            continue
+        if path.name.endswith(".fm2") or path.name.endswith(".overlay.json"):
+            path.unlink(missing_ok=True)
+            removed += 1
+    for name in (f"{prefix}_playlist.json", f"{prefix}_playlist.play.cmd"):
+        p = logs_dir / name
+        if p.is_file():
+            p.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
+def _write_file_clone(src: Path, dest: Path) -> None:
+    """Скопировать файл через .tmp (меньше WinError 32 при перезаписи)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    tmp.write_bytes(src.read_bytes())
+    if dest.exists():
+        dest.unlink()
+    tmp.rename(dest)
+
+
 def _copy_overlay_sidecar(
 
     src_fm2: Path,
@@ -96,23 +152,21 @@ def _copy_overlay_sidecar(
 
 ) -> Path:
 
-    """Скопировать или собрать .overlay.json рядом с FM2 в плейлисте."""
-
+    """Собрать .overlay.json рядом с FM2 в плейлисте (атомарная запись — меньше WinError 32)."""
     dest_overlay = dest_fm2.with_suffix(".overlay.json")
-
     src_overlay = src_fm2.with_suffix(".overlay.json")
-
     if src_overlay.is_file():
-
-        shutil.copy2(src_overlay, dest_overlay)
-
-        _strip_legacy_save_state(dest_overlay)
-
-        return dest_overlay
-
-    payload = overlay_payload(record, config=config)
-
-    return write_fm2_sidecar(dest_fm2, overlay=payload)
+        payload = json.loads(src_overlay.read_text(encoding="utf-8"))
+        if "save_state" in payload:
+            del payload["save_state"]
+    else:
+        payload = overlay_payload(record, config=config)
+    tmp = dest_overlay.with_suffix(".overlay.json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if dest_overlay.exists():
+        dest_overlay.unlink()
+    tmp.rename(dest_overlay)
+    return dest_overlay
 
 
 
@@ -198,6 +252,8 @@ def build_playlist(
 
     mission: str = "m1",
 
+    dedupe: bool = True,
+
 ) -> tuple[dict[str, list[Path]], Path | None, int]:
 
     """Создать FM2-копии, overlay sidecar и YYYYMMDD_playlist.json.
@@ -213,6 +269,8 @@ def build_playlist(
     records = evaluate_attempts_file(attempts_path, config=achievements_config)
 
     date_prefix = utc_date_prefix()
+
+    cleanup_playlist_clips(logs_dir, date_prefix=date_prefix)
 
     noms = _nomination_index(achievements_config)
 
@@ -250,6 +308,8 @@ def build_playlist(
 
     clip_seq = 0
 
+    seen_digests: set[str] = set()
+
     logs_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -270,15 +330,19 @@ def build_playlist(
 
         paths: list[Path] = []
 
-        for seq, record in enumerate(items, start=1):
+        clip_num = 0
 
-            dest = logs_dir / f"{date_prefix}_{nom_idx:02d}_{slug}_{seq:03d}.fm2"
+        for record in items:
+
+            dest = logs_dir / f"{date_prefix}_{nom_idx:02d}_{slug}_{clip_num + 1:03d}.fm2"
 
             src = record.get("fm2_path")
 
             if src and Path(src).is_file():
 
-                shutil.copy2(src, dest)
+                _write_file_clone(Path(src), dest)
+
+                remap_fm2_guid(dest, episode_fm2_guid(salt=dest.stem))
 
                 if not fm2_has_embedded_savestate(dest):
 
@@ -313,6 +377,22 @@ def build_playlist(
                 config=achievements_config,
 
             )
+
+            if dedupe:
+
+                digest = _fm2_digest(dest)
+
+                if digest in seen_digests:
+
+                    dest.unlink(missing_ok=True)
+
+                    overlay_path.unlink(missing_ok=True)
+
+                    continue
+
+                seen_digests.add(digest)
+
+            clip_num += 1
 
             paths.append(dest)
 

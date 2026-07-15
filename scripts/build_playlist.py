@@ -41,6 +41,7 @@ def main() -> None:
     parser.add_argument("--attempts", default=None)
 
     parser.add_argument("--inputs", default=None, help="inference_inputs.jsonl for on-demand FM2 export")
+    parser.add_argument("--no-dedupe", action="store_true", help="не пропускать дубликаты FM2 в плейлисте")
 
     args = parser.parse_args()
 
@@ -60,7 +61,9 @@ def main() -> None:
 
         raise SystemExit(f"Attempts log not found: {attempts}")
 
+    from inference_preflight import require_playback_preflight  # noqa: E402
 
+    require_playback_preflight(label="build_playlist")
 
     created, manifest_path, clip_count = build_playlist(
 
@@ -73,6 +76,8 @@ def main() -> None:
         game=args.game,
 
         mission=args.mission,
+
+        dedupe=not args.no_dedupe,
 
     )
 

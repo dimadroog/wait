@@ -39,6 +39,16 @@ def _write_overlay(session_id: str, payload: dict) -> None:
 
 
 def run_inference(args: argparse.Namespace) -> None:
+    if not args.skip_preflight:
+        from inference_preflight import require_inference_preflight  # noqa: WPS433
+
+        require_inference_preflight(
+            game=args.game,
+            mission=args.mission,
+            clean_logs=True,
+            label="run_inference",
+        )
+
     mission = mission_dir(args.game, args.mission)
     checkpoint = Path(args.checkpoint)
     if not checkpoint.is_absolute():
@@ -121,6 +131,7 @@ def run_inference(args: argparse.Namespace) -> None:
                     step_log,
                     fm2_path,
                     save_state_path=save_state_path,
+                    episode=ep,
                 )
             elif args.save_episode_fm2:
                 fm2_path = logs_dir / f"{date_prefix}_ep{ep:04d}.fm2"
@@ -128,6 +139,7 @@ def run_inference(args: argparse.Namespace) -> None:
                     step_log,
                     fm2_path,
                     save_state_path=save_state_path,
+                    episode=ep,
                 )
 
             record = attempt_logger.log_episode(
@@ -171,6 +183,7 @@ def run_inference(args: argparse.Namespace) -> None:
                 inference_inputs_path=input_logger.log_path,
                 game=args.game,
                 mission=args.mission,
+                dedupe=not args.playlist_no_dedupe,
             )
             if manifest_path:
                 print(f"playlist manifest: {manifest_path} ({clip_count} clips)")
@@ -213,6 +226,16 @@ def main() -> None:
         help="сохранять FM2 каждого эпизода в logs/YYYYMMDD_epNNNN.fm2",
     )
     parser.add_argument("--build-playlist", action="store_true", help="собрать плейлист после прогона")
+    parser.add_argument(
+        "--playlist-no-dedupe",
+        action="store_true",
+        help="плейлист без дедупликации одинаковых FM2",
+    )
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="не вызывать inference_preflight (inference_local.sh чистит отдельно)",
+    )
     args = parser.parse_args()
     run_inference(args)
 

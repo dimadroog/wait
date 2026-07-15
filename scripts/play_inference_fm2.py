@@ -15,16 +15,17 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from fceux_launch import fceux_sound_off  # noqa: E402
-from fm2_export import fm2_has_embedded_savestate  # noqa: E402
+from fm2_export import (  # noqa: E402
+    episode_fm2_guid,
+    fm2_has_embedded_savestate,
+    read_fm2_guid,
+    remap_fm2_guid,
+)
 from project_paths import mission_dir, parse_fm2_rom_basename, repo_root, resolve_fceux_binary, resolve_rom  # noqa: E402
 
 
 def _fm2_guid(path: Path) -> str | None:
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("guid "):
-            parts = line.split(None, 1)
-            return parts[1] if len(parts) > 1 else None
-    return None
+    return read_fm2_guid(path)
 
 
 def _count_fm2_frames(fm2: Path) -> int:
@@ -64,10 +65,13 @@ def _stage_clip(
     rom: Path,
     overlay_path: Path | None,
     staging: Path,
+    *,
+    guid_salt: str,
 ) -> tuple[Path, Path, Path | None]:
     staging.mkdir(parents=True, exist_ok=True)
-    staged_fm2 = staging / fm2.name
+    staged_fm2 = staging / "playback.fm2"
     shutil.copy2(fm2, staged_fm2)
+    remap_fm2_guid(staged_fm2, episode_fm2_guid(salt=guid_salt))
     rom_base = parse_fm2_rom_basename(fm2)
     staged_rom = _stage_rom(rom, staging, rom_base)
     staged_overlay: Path | None = None
@@ -121,7 +125,8 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
     rom = resolve_rom(args.game)
     staging = repo_root() / "tmp" / "play_fm2" / "staging"
     staged_fm2, staged_rom, staged_overlay = _stage_clip(
-        fm2, rom, overlay_path if overlay_path.is_file() else None, staging
+        fm2, rom, overlay_path if overlay_path.is_file() else None, staging,
+        guid_salt=fm2.stem,
     )
 
     portable_dup = repo_root() / "fceux" / "portable" / "movies" / fm2.name
@@ -172,11 +177,7 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
         raise SystemExit(f"Playlist has no clips: {playlist_path}")
 
     rom = resolve_rom(args.game)
-    staging = repo_root() / "tmp" / "play_fm2" / "staging"
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
-
+    staging_root = repo_root() / "tmp" / "play_fm2" / "staging"
     fceux = resolve_fceux_binary()
     lua = repo_root() / "fceux" / "lua" / "achievement_overlay.lua"
     total_timeout = 0.0
@@ -188,7 +189,6 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
         _require_embedded_fm2(fm2)
         overlay_name = clip.get("overlay") or fm2.with_suffix(".overlay.json").name
         overlay_path = logs_dir / overlay_name
-        _stage_clip(fm2, rom, overlay_path if overlay_path.is_file() else None, staging)
         frames = _count_fm2_frames(fm2)
         hold = _overlay_hold_frames(overlay_path)
         total_timeout += (frames + hold) / 30.0 + 5.0
@@ -204,12 +204,21 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
         fm2 = logs_dir / clip["fm2"]
         overlay_name = clip.get("overlay") or fm2.with_suffix(".overlay.json").name
         overlay_path = logs_dir / overlay_name
-        staged_fm2 = staging / fm2.name
-        staged_rom = staging / parse_fm2_rom_basename(fm2)
-        staged_overlay = staging / overlay_name
+
+        # Один клип в staging: FCEUX путает FM2 с одинаковым guid в одной папке.
+        if staging_root.exists():
+            shutil.rmtree(staging_root)
+        staging_root.mkdir(parents=True)
+        staged_fm2, staged_rom, staged_overlay = _stage_clip(
+            fm2,
+            rom,
+            overlay_path if overlay_path.is_file() else None,
+            staging_root,
+            guid_salt=fm2.stem,
+        )
 
         env = os.environ.copy()
-        if staged_overlay.is_file():
+        if staged_overlay and staged_overlay.is_file():
             env["WAIT_ACHIEVEMENT_OVERLAY"] = str(staged_overlay.resolve())
         elif overlay_path.is_file():
             env["WAIT_ACHIEVEMENT_OVERLAY"] = str(overlay_path.resolve())
@@ -228,7 +237,7 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
         _run_fceux_clip(
             fceux=fceux,
             lua=lua,
-            staging=staging,
+            staging=staging_root,
             staged_fm2=staged_fm2,
             staged_rom=staged_rom,
             env=env,
@@ -248,7 +257,17 @@ def main() -> None:
     parser.add_argument("--overlay", default=None, help="путь к .overlay.json (single FM2)")
     parser.add_argument("--turbo", action="store_true", help="макс. скорость (без throttle)")
     parser.add_argument("--timeout", type=float, default=120.0, help="минимальный timeout (сек)")
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="не вызывать playback preflight (inference_local.sh чистит отдельно)",
+    )
     args = parser.parse_args()
+
+    if not args.skip_preflight:
+        from inference_preflight import require_playback_preflight  # noqa: WPS433
+
+        require_playback_preflight(label="play_inference_fm2")
 
     input_path = _resolve_input_path(Path(args.input), args.game, args.mission)
     if not input_path.is_file():
