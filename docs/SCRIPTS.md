@@ -437,7 +437,7 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 | `-o` / `--output` | путь к `.fm2` (обязательный) |
 | `--episode` | только один эпизод из jsonl |
 | `--frame-skip` | NES-кадров на env step (default 4) |
-| `--template` | заголовок FM2 (default `fceux/portable/movies/`) |
+| `--template` | заголовок FM2 (default `games/…/reference/header.fm2`) |
 | `--save-state` | путь к `.fc0` для embed (default `states/inference_cp0.fc0`) |
 
 **Отличие от эталона:** `reference/clear.fm2` — полное прохождение с power-on и GUID эталона; inference FM2 — короткий клип с gameplay-start state, отдельный GUID, без `length` в заголовке (не FM3).

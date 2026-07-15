@@ -318,16 +318,7 @@ class FceuxBridge:
     def _resolve_fm2_template(self) -> Path:
         if self.fm2_template and self.fm2_template.is_file():
             return self.fm2_template
-        portable = default_fm2_template(self.game_id)
-        if portable.is_file():
-            return portable
-        ref = next(self.mission.glob("reference/*.fm2"), None)
-        if ref and ref.is_file():
-            return ref
-        raise FileNotFoundError(
-            f"No FM2 template for ROM staging (game={self.game_id}). "
-            "Set fm2_template or add fceux/portable/movies/*.fm2"
-        )
+        return default_fm2_template(self.game_id, mission_id=self.mission.name)
 
     def _stage_rom(self, rom: Path) -> Path:
         self.staging.mkdir(parents=True, exist_ok=True)

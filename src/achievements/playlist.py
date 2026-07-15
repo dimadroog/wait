@@ -362,6 +362,8 @@ def build_playlist(
 
                 )
 
+                remap_fm2_guid(dest, episode_fm2_guid(salt=dest.stem))
+
             else:
 
                 continue

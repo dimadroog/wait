@@ -651,7 +651,7 @@ heuristics:
 | --------- | ---------------- |
 | Конвертер | `scripts/export_fm2.py` |
 | Библиотека | `src/fm2_export.py` (`embed_savestate`, `fc0_to_savestate_hex`) |
-| Заголовок ROM | шаблон из `fceux/portable/movies/*.fm2` (не `reference/`) |
+| Заголовок ROM | `games/…/reference/header.fm2` (только метаданные; не класть в `fceux/portable/movies/`) |
 | Save state | `states/inference_cp0.fc0` → `savestate 0x…` в заголовке FM2 (GUID патчится на inference) |
 | Frame skip | 1 env step → 4 одинаковые строки FM2 (как в `bridge.lua`) |
 | CLI inference | `--export-fm2`, `--export-fm2-dir`, `--save-episode-fm2` (embed по умолчанию; `--no-embed-savestate`) |

@@ -18,14 +18,9 @@ from fceux_launch import fceux_sound_off  # noqa: E402
 from fm2_export import (  # noqa: E402
     episode_fm2_guid,
     fm2_has_embedded_savestate,
-    read_fm2_guid,
     remap_fm2_guid,
 )
 from project_paths import mission_dir, parse_fm2_rom_basename, repo_root, resolve_fceux_binary, resolve_rom  # noqa: E402
-
-
-def _fm2_guid(path: Path) -> str | None:
-    return read_fm2_guid(path)
 
 
 def _count_fm2_frames(fm2: Path) -> int:
@@ -129,15 +124,17 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
         guid_salt=fm2.stem,
     )
 
-    portable_dup = repo_root() / "fceux" / "portable" / "movies" / fm2.name
-    staged_guid = _fm2_guid(staged_fm2)
-    portable_guid = _fm2_guid(portable_dup) if portable_dup.is_file() else None
-    if portable_dup.is_file() and portable_guid and staged_guid and portable_guid != staged_guid:
+    portable_movies = repo_root() / "fceux" / "portable" / "movies"
+    rom_base = parse_fm2_rom_basename(fm2)
+    for stray in sorted(portable_movies.glob("*.fm2")):
+        if parse_fm2_rom_basename(stray) != rom_base:
+            continue
         print(
-            f"Warning: stale {portable_dup} has guid {portable_guid} "
-            f"(inference uses {staged_guid}). Remove portable copy if opening FM2 manually in FCEUX.",
+            f"Warning: {stray} shares romFilename with inference clip; "
+            "FCEUX may substitute wrong movie — remove from fceux/portable/movies/",
             file=sys.stderr,
         )
+        break
 
     fceux = resolve_fceux_binary()
     lua = repo_root() / "fceux" / "lua" / "achievement_overlay.lua"

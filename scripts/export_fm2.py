@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Конвертер inference_inputs.jsonl → self-contained .fm2 (без reference/)."""
+"""Конвертер inference_inputs.jsonl → self-contained .fm2."""
 from __future__ import annotations
 
 import argparse
@@ -27,7 +27,7 @@ def main() -> None:
     parser.add_argument("--output", "-o", required=True, help="output .fm2 path")
     parser.add_argument("--episode", type=int, default=None, help="export single episode")
     parser.add_argument("--frame-skip", type=int, default=4)
-    parser.add_argument("--template", default=None, help="FM2 header template (not reference/)")
+    parser.add_argument("--template", default=None, help="FM2 header template (default reference/header.fm2)")
     parser.add_argument(
         "--save-state",
         default=None,
@@ -40,7 +40,7 @@ def main() -> None:
     if not jsonl.is_file():
         raise SystemExit(f"Input not found: {jsonl}")
 
-    template = Path(args.template) if args.template else default_fm2_template(args.game)
+    template = Path(args.template) if args.template else default_fm2_template(args.game, args.mission)
     out = Path(args.output)
 
     try:
@@ -58,6 +58,8 @@ def main() -> None:
         episode=args.episode,
         frame_skip=args.frame_skip,
         save_state_path=save_state_path,
+        game_id=args.game,
+        mission_id=args.mission,
     )
     print(f"  embedded savestate: {save_state_path.name}")
     print(f"Wrote {out} ({n} frames)")

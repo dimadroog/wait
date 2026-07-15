@@ -1,4 +1,4 @@
-"""Экспорт inference_inputs.jsonl → FM2 (без reference/)."""
+"""Экспорт inference_inputs.jsonl → FM2."""
 from __future__ import annotations
 
 import json
@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from jsonl_logs import iter_jsonl
-from project_paths import repo_root
+from project_paths import game_dir, load_yaml, mission_dir
 
-# Отдельный GUID от эталона (clear.fm2) и от fceux/portable/movies/*.fm2 (шаблон ...0001).
+# Отдельный GUID от эталона (clear.fm2) и от reference/header.fm2 (шаблон ...0001).
 INFERENCE_FM2_GUID = "B1AEF103-0001-4000-8000-000000000002"
 INFERENCE_FM2_GUID_NS = uuid.UUID(INFERENCE_FM2_GUID)
 
@@ -44,17 +44,33 @@ _GUID_BYTES_RE = re.compile(
 )
 
 
-def default_fm2_template(game_id: str = "rushn_attack") -> Path:
-    """Шаблон заголовка FM2 вне games/…/reference/."""
-    portable = repo_root() / "fceux" / "portable" / "movies"
-    for name in (f"{game_id}-1.fm2", f"{game_id}.fm2"):
-        candidate = portable / name
-        if candidate.is_file():
-            return candidate
-    for fm2 in sorted(portable.glob("*.fm2")):
+def default_fm2_template(
+    game_id: str = "rushn_attack",
+    mission_id: str | None = None,
+) -> Path:
+    """Шаблон заголовка FM2 из games/…/reference/ (не fceux/portable/movies/)."""
+    game_yaml = load_yaml(game_dir(game_id) / "game.yaml")
+    mid = mission_id or str(game_yaml.get("default_mission", "m1"))
+    reference = mission_dir(game_id, mid) / "reference"
+
+    header = reference / "header.fm2"
+    if header.is_file():
+        return header
+
+    manifest_path = mission_dir(game_id, mid) / "config" / "playthrough_manifest.yaml"
+    if manifest_path.is_file():
+        fm2_rel = load_yaml(manifest_path).get("fm2_file")
+        if fm2_rel:
+            etalon = mission_dir(game_id, mid) / str(fm2_rel)
+            if etalon.is_file():
+                return etalon
+
+    for fm2 in sorted(reference.glob("*.fm2")):
         return fm2
+
     raise FileNotFoundError(
-        f"No FM2 template in {portable.as_posix()}. Pass --template explicitly."
+        f"No FM2 header template in {reference.as_posix()}. "
+        "Add reference/header.fm2 or pass --template explicitly."
     )
 
 
@@ -217,9 +233,11 @@ def export_fm2(
     frame_skip: int = DEFAULT_FRAME_SKIP,
     overlay: dict[str, Any] | None = None,
     save_state_path: Path,
+    game_id: str = "rushn_attack",
+    mission_id: str = "m1",
 ) -> int:
     """jsonl → self-contained .fm2; возвращает число FM2-кадров."""
-    tmpl = template or default_fm2_template()
+    tmpl = template or default_fm2_template(game_id, mission_id)
     rows = list(iter_jsonl(jsonl_path))
     if not rows:
         raise ValueError(f"No rows in {jsonl_path}")
@@ -249,11 +267,13 @@ def export_episode_fm2_from_steps(
     template: Path | None = None,
     frame_skip: int = DEFAULT_FRAME_SKIP,
     overlay: dict[str, Any] | None = None,
+    game_id: str = "rushn_attack",
+    mission_id: str = "m1",
     save_state_path: Path,
     episode: int | None = None,
 ) -> int:
     """In-memory steps [{action}, …] → self-contained FM2."""
-    tmpl = template or default_fm2_template()
+    tmpl = template or default_fm2_template(game_id, mission_id)
     frame_lines: list[str] = []
     for row in steps:
         action = str(row.get("action", ""))

@@ -14,7 +14,12 @@ from achievements.playlist import (  # noqa: E402
     _copy_overlay_sidecar,
     build_playlist,
 )
-from fm2_export import export_episode_fm2_from_steps, fm2_has_embedded_savestate  # noqa: E402
+from fm2_export import (  # noqa: E402
+    episode_fm2_guid,
+    export_episode_fm2_from_steps,
+    fm2_has_embedded_savestate,
+    read_fm2_guid,
+)
 from project_paths import repo_root  # noqa: E402
 
 _MISSION = Path(__file__).resolve().parents[1] / "games" / "rushn_attack" / "missions" / "m1"
@@ -171,4 +176,67 @@ def test_build_playlist_dedupes_identical_fm2(inference_cp0: Path) -> None:
     assert clip_count == 1
     assert manifest_path
     assert len(json.loads(manifest_path.read_text(encoding="utf-8"))["clips"]) == 1
+
+
+def test_build_playlist_remaps_guid_without_fm2_path(inference_cp0: Path) -> None:
+    """Fallback export из jsonl: GUID клипа ≠ episode GUID (FCEUX путает одинаковые guid)."""
+    logs = repo_root() / "tmp" / "smoke" / "playlist_guid_remap" / "logs"
+    if logs.exists():
+        import shutil
+
+        shutil.rmtree(logs)
+    logs.mkdir(parents=True)
+    inputs = logs / "inputs.jsonl"
+    inputs.write_text(
+        json.dumps({"episode": 1, "action": "right"}) + "\n",
+        encoding="utf-8",
+    )
+    attempts = logs / "20260715_attempts.jsonl"
+    attempts.write_text(
+        json.dumps(
+            {
+                "episode": 1,
+                "episode_reward": 42.0,
+                "episode_frames": 4,
+                "max_checkpoint": 2,
+                "died": False,
+                "tags": ["episode_reward"],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    config = {
+        "broadcast_order": ["episode_reward"],
+        "nominations": [
+            {
+                "idx": 2,
+                "slug": "episode_reward",
+                "title": "Greedy",
+                "label": "Greedy",
+                "tier": "gold",
+                "type": "top_k",
+                "field": "episode_reward",
+                "k": 3,
+                "order": "desc",
+            }
+        ],
+    }
+    _, manifest_path, clip_count = build_playlist(
+        attempts,
+        logs,
+        config=config,
+        inference_inputs_path=inputs,
+        game="rushn_attack",
+        mission="m1",
+    )
+    assert clip_count == 1
+    assert manifest_path
+    clip_name = json.loads(manifest_path.read_text(encoding="utf-8"))["clips"][0]["fm2"]
+    clip_path = logs / clip_name
+    clip_guid = read_fm2_guid(clip_path)
+    assert clip_guid is not None
+    assert clip_guid == episode_fm2_guid(salt=clip_path.stem)
+    assert clip_guid != episode_fm2_guid(1)
 

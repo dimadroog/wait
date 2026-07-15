@@ -132,6 +132,8 @@ def run_inference(args: argparse.Namespace) -> None:
                     fm2_path,
                     save_state_path=save_state_path,
                     episode=ep,
+                    game_id=args.game,
+                    mission_id=args.mission,
                 )
             elif args.save_episode_fm2:
                 fm2_path = logs_dir / f"{date_prefix}_ep{ep:04d}.fm2"
@@ -140,6 +142,8 @@ def run_inference(args: argparse.Namespace) -> None:
                     fm2_path,
                     save_state_path=save_state_path,
                     episode=ep,
+                    game_id=args.game,
+                    mission_id=args.mission,
                 )
 
             record = attempt_logger.log_episode(
@@ -155,6 +159,11 @@ def run_inference(args: argparse.Namespace) -> None:
 
             history = load_jsonl_window(attempt_logger.log_path)
             tagged = evaluate_records(history, achievements_cfg)
+            if fm2_path:
+                for row in tagged:
+                    if int(row.get("episode", -1)) == ep:
+                        row["fm2_path"] = str(fm2_path.resolve())
+                        break
             write_tagged_attempts(attempt_logger.log_path, tagged)
             record = next((r for r in tagged if r.get("episode") == ep), record)
             session_records.append(record)

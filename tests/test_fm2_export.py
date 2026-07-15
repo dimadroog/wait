@@ -54,15 +54,22 @@ def test_fc0_to_savestate_hex_prefix(inference_cp0: Path) -> None:
     assert len(hex_val) == 2 + inference_cp0.stat().st_size * 2
 
 
-def test_inference_guid_differs_from_portable_template() -> None:
-    template = default_fm2_template("rushn_attack")
+def test_inference_guid_differs_from_reference_template() -> None:
+    template = default_fm2_template("rushn_attack", "m1")
+    assert template.name == "header.fm2"
+    assert "reference" in template.as_posix()
     template_guid = read_fm2_guid(template)
     assert template_guid is not None
     assert INFERENCE_FM2_GUID != template_guid
 
 
+def test_default_fm2_template_not_in_portable() -> None:
+    template = default_fm2_template("rushn_attack", "m1")
+    assert "fceux/portable/movies" not in template.as_posix()
+
+
 def test_build_fm2_header_embeds_savestate(inference_cp0: Path) -> None:
-    template = default_fm2_template("rushn_attack")
+    template = default_fm2_template("rushn_attack", "m1")
     header = build_fm2_header(
         template,
         embed_savestate=True,
