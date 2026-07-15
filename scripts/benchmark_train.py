@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import platform
 import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
@@ -23,8 +23,22 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from project_paths import artifact_quarantine_dir, mission_dir, repo_root  # noqa: E402
-from train.checkpointing import atomic_save_model, checkpoint_zip_path  # noqa: E402
-from train.env_factory import build_vec_env, cleanup_bridge_sessions  # noqa: E402
+from train.checkpointing import InterruptHandler, atomic_save_model, checkpoint_zip_path  # noqa: E402
+from train.env_factory import build_vec_env, cleanup_bridge_sessions, preflight_bridge_sessions  # noqa: E402
+from train.learn_watchdog import (  # noqa: E402
+    DEFAULT_LEARN_STALL_TIMEOUT_S,
+    DEFAULT_SESSION_WALL_TIMEOUT_S,
+    LearnStallError,
+    SessionWallTimeoutError,
+    learn_with_stall_watchdog,
+)
+from train.session_report import (  # noqa: E402
+    SCHEMA_VERSION,
+    host_info,
+    parse_failure_rank,
+    phase_record,
+    rollout_phase_records,
+)
 from train.train_ppo import POLICY_KWARGS, _default_save_state  # noqa: E402
 
 HISTORICAL_E2E_ENV_STEPS_PER_S = 0.5  # 4 env, pre-1.x (BACKLOG)
@@ -47,23 +61,30 @@ class TrainBenchmarkMetrics:
 
 
 class RolloutTimingCallback(BaseCallback):
-    """Время rollout'ов для steady-state fps (без cold-start rollout)."""
+    """Время rollout'ов и auto_dones для JSON-отчёта (R0.3)."""
 
     def __init__(self, *, warmup_rollouts: int, verbose: int = 0):
         super().__init__(verbose)
         self.warmup_rollouts = warmup_rollouts
         self.rollout_wall_s: list[float] = []
+        self.rollout_auto_dones: list[int] = []
         self._t0: float | None = None
+        self._dones_this_rollout = 0
 
     def _on_rollout_start(self) -> None:
         self._t0 = time.perf_counter()
+        self._dones_this_rollout = 0
 
     def _on_rollout_end(self) -> None:
         if self._t0 is not None:
             self.rollout_wall_s.append(time.perf_counter() - self._t0)
+            self.rollout_auto_dones.append(self._dones_this_rollout)
         self._t0 = None
 
     def _on_step(self) -> bool:
+        dones = self.locals.get("dones")
+        if dones is not None:
+            self._dones_this_rollout += int(np.sum(dones))
         return True
 
 
@@ -147,8 +168,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         print(f"json_out={(bench_dir / 'train_report.json').resolve()}")
         return {"dry_run": True, "bench_dir": str(bench_dir)}
 
-    cleanup_bridge_sessions("train_")
     torch.set_num_threads(args.threads)
+    preflight_orphans = preflight_bridge_sessions(label="benchmark_train")
 
     timing = RolloutTimingCallback(warmup_rollouts=args.warmup_rollouts)
     vec_env = build_vec_env(
@@ -174,21 +195,39 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     t0 = time.perf_counter()
-    try:
-        model.learn(
-            total_timesteps=int(args.timesteps),
-            callback=timing,
-            progress_bar=False,
-            reset_num_timesteps=True,
-        )
-    finally:
+    learn_error: str | None = None
+    interrupted = False
+    with InterruptHandler() as interrupt:
         try:
-            vec_env.close()
-        except (EOFError, BrokenPipeError):
-            pass
-        cleanup_bridge_sessions("train_")
-        if int(model.num_timesteps) > 0:
-            atomic_save_model(model, checkpoint_out)
+            learn_with_stall_watchdog(
+                model,
+                vec_env,
+                stall_timeout_s=args.learn_stall_timeout,
+                wall_timeout_s=args.session_wall_timeout,
+                session_start_mono=t0,
+                total_timesteps=int(args.timesteps),
+                callback=timing,
+                progress_bar=False,
+                reset_num_timesteps=True,
+            )
+        except LearnStallError as exc:
+            learn_error = repr(exc)
+        except SessionWallTimeoutError as exc:
+            learn_error = repr(exc)
+        except Exception as exc:
+            learn_error = repr(exc)
+        finally:
+            interrupted = interrupt.interrupted
+            try:
+                vec_env.close()
+            except (EOFError, BrokenPipeError):
+                pass
+            cleanup_bridge_sessions("train_")
+            if int(model.num_timesteps) > 0:
+                atomic_save_model(model, checkpoint_out)
+
+    if interrupted and learn_error is None:
+        learn_error = "interrupted (KeyboardInterrupt/SIGTERM)"
 
     wall_s = time.perf_counter() - t0
     done = int(model.num_timesteps)
@@ -223,22 +262,32 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
 
     _print_table(metrics, bridge_eps=bridge_eps)
 
-    host = {
-        "platform": platform.platform(),
-        "processor": platform.processor() or platform.machine(),
-        "python": platform.python_version(),
-        "date": time.strftime("%Y-%m-%d"),
-    }
+    phases = rollout_phase_records(
+        rollout_wall_s=timing.rollout_wall_s,
+        rollout_auto_dones=timing.rollout_auto_dones,
+        learn_error=learn_error,
+    )
+    target = int(args.timesteps)
+    ok = learn_error is None and done >= target
     return {
-        "host": host,
+        "schema_version": SCHEMA_VERSION,
+        "kind": "benchmark_train",
+        "ok": ok,
+        "error": learn_error,
+        "failure_rank": parse_failure_rank(learn_error),
+        "host": host_info(),
+        "preflight_orphans_before": preflight_orphans,
         "game": args.game,
         "mission": args.mission,
         "save_state": save_state,
         "bench_dir": str(bench_dir),
         "checkpoint_out": str(checkpoint_zip_path(checkpoint_out)),
         "mode": args.mode,
+        "wall_s": round(wall_s, 2),
+        "phases": phases,
         "metrics": asdict(metrics),
-        "rollout_wall_s": timing.rollout_wall_s,
+        "rollout_wall_s": [round(x, 2) for x in timing.rollout_wall_s],
+        "rollout_auto_dones": timing.rollout_auto_dones,
         "comparison": {
             "historical_e2e_env_steps_per_s": HISTORICAL_E2E_ENV_STEPS_PER_S,
             "bridge_parallel_env_steps_per_s": bridge_eps,
@@ -286,6 +335,18 @@ def main() -> None:
     parser.add_argument("--dummy-vec", action="store_true", help="отладка only; не приёмка 1.9")
     parser.add_argument("--quiet", action="store_true", help="PPO verbose=0")
     parser.add_argument("--dry-run", action="store_true", help="пути tmp/bench, без learn")
+    parser.add_argument(
+        "--learn-stall-timeout",
+        type=float,
+        default=DEFAULT_LEARN_STALL_TIMEOUT_S,
+        help="abort learn без прогресса timesteps, с (default 300; 0=off)",
+    )
+    parser.add_argument(
+        "--session-wall-timeout",
+        type=float,
+        default=DEFAULT_SESSION_WALL_TIMEOUT_S,
+        help="abort learn по wall-clock сессии, с (default 3600; 0=off)",
+    )
     args = parser.parse_args()
 
     if args.timesteps is not None:
@@ -309,6 +370,9 @@ def main() -> None:
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"report: {out_path}")
     print(f"checkpoint: {report['checkpoint_out']}")
+    if not report.get("ok", True):
+        print(f"BENCHMARK FAIL: {report.get('error', 'incomplete timesteps')}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

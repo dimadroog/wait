@@ -102,13 +102,14 @@
 ```bash
 ./.venv/Scripts/python.exe scripts/run_smoke.py
 ./.venv/Scripts/python.exe scripts/run_smoke.py --suite bridge,env,parallel
+./.venv/Scripts/python.exe scripts/run_smoke.py --suite stress   # длительный IPC stress (см. ниже)
 ```
 
 | Аргумент | Описание |
 | -------- | -------- |
-| `--suite` | подмножество: `bridge`, `env`, `parallel` (default — все три) |
+| `--suite` | подмножество: `bridge`, `env`, `parallel`, `stress` (default — первые три) |
 
-Subprocess: `smoke_bridge.py`; `smoke_env.py --steps 20`; `test_parallel_env.py --n-envs 8 --cycles 10 --reset-every 5`. В `finally`: `cleanup_bridge_sessions`, `cleanup_artifact_quarantine("smoke")`, проверка stray `smoke_*` в checkpoints. Exit code 0/1.
+Subprocess: `smoke_bridge.py`; `smoke_env.py --steps 20`; `test_parallel_env.py --n-envs 8 --cycles 10 --reset-every 5`; `stress_e2e_gate.py --quick` (только suite `stress`). В `finally`: `cleanup_bridge_sessions`, `cleanup_artifact_quarantine("smoke")`, проверка stray `smoke_*` в checkpoints. Exit code 0/1.
 
 **Pytest (BACKLOG 4.3):** то же покрытие + autouse cleanup в `tests/conftest.py`.
 
@@ -150,7 +151,7 @@ Smoke-тест IPC Python ↔ FCEUX (`FceuxBridge`): load state, ping, step, RAM
 | no-focus | **on** | `train.yaml`, `WAIT_FCEUX_NO_FOCUS` |
 | frame_skip | **4** | `train.yaml`, env default |
 | n_envs | **8** | `train_ppo.py` |
-| torch threads | **2** | `train_ppo.py` |
+| torch threads | **2** (cap при `n_envs≥8`; `OPENBLAS_NUM_THREADS` синхронно) | `train_ppo.py` |
 | PPO n_steps / batch | **128 / 256** | `train_ppo.py` |
 | turbo (FCEUX) | **on** | env default (`--no-turbo` для отладки) |
 
@@ -168,7 +169,13 @@ Inference: `obs_format: gd` (`inference.yaml`).
 ./.venv/Scripts/python.exe scripts/benchmark_bridge.py --n-envs 8
 ```
 
-JSON-отчёт: `tmp/bench/bridge_baseline/baseline_report.json` (или `--json-out`).
+JSON-отчёт: `tmp/bench/bridge_baseline/baseline_report.json` (или `--json-out`). Секция `breakdown.ep_len2`: доля STEP vs reset при `ep_len≈2` (default `--ep-len2-cycles 64`); `gate_rollout_projection` — оценка wall одного vec-rollout gate.
+
+| Аргумент | Описание |
+| -------- | -------- |
+| `--ep-len2-cycles` | циклов 2×step+reset (0 = пропустить; default 64) |
+| `--ep-len2-steps` | шагов на эпизод в профиле (default 2) |
+| `--gate-vec-cycles` | vec cycles для проекции gate (default 128) |
 
 **Baseline (i7-3770, Win10 19045, 2026-07-07, `frame_skip=4`, train no-focus on):**
 
@@ -200,7 +207,7 @@ JSON-отчёт: `tmp/bench/bridge_baseline/baseline_report.json` (или `--jso
 | e2e PPO (SB3 `time/fps`) | **4–5** | `train_ppo.py --n-envs 8 --timesteps 2048` |
 | historical pre-1.x | **~0.5** | 4 env, до IPC-оптимизаций |
 
-**Вывод:** e2e **~10×** исторического ~0.5 (wall); **~0.21×** bridge parallel step-only — узкое место PPO update + reset storm при `ep_len≈2`, не raw STEP IPC. Перед длинным train: `cleanup_bridge_sessions` / нет зависших `fceux64.exe`.
+**Вывод:** e2e **~10×** исторического ~0.5 (wall); **~0.21×** bridge parallel step-only — узкое место PPO update + reset storm при `ep_len≈2`, не raw STEP IPC. Перед gate/stress: `preflight_bridge_sessions()` (`train_` + `bench_` IPC; orphan `fceux64.exe` и зависший `python` train/benchmark); при orphan > 0 — `WARNING` в stdout.
 
 Отчёты: `tmp/bench/train_e2e_gate/train_report.json`, checkpoint smoke: `tmp/bench/train_smoke_gate/`.
 
@@ -219,6 +226,8 @@ JSON-отчёт: `tmp/bench/bridge_baseline/baseline_report.json` (или `--jso
 ./.venv/Scripts/python.exe scripts/benchmark_train.py --mode fps     # 8192 timesteps, steady fps
 ```
 
+**Preflight (R0.1–R0.2):** перед `learn` скрипт вызывает `preflight_bridge_sessions()` — `cleanup_bridge_sessions('train_')` + `bench_`, подсчёт orphan `fceux64.exe` (bridge.lua / `tmp/bridge`) и зависших `python` (train/benchmark scripts). При orphan > 0 — `WARNING`; иначе `preflight [...]: no orphan processes ...`. Снятие: `kill_orphan_fceux_bridge()` в `src/train/env_factory.py`.
+
 JSON + checkpoint: `tmp/bench/train_e2e/` (`train_report.json`, `bench_train.zip`) — **не** `games/.../checkpoints/`.
 
 | Аргумент | Описание |
@@ -230,6 +239,10 @@ JSON + checkpoint: `tmp/bench/train_e2e/` (`train_report.json`, `bench_train.zip
 | `--session` | подкаталог `tmp/bench/<session>/` |
 | `--bridge-report` | JSON `benchmark_bridge` для сравнения |
 | `--dry-run` | только пути, без `learn` |
+| `--learn-stall-timeout` | abort `learn` без прогресса timesteps, с (default **300**; `0`=off) |
+| `--session-wall-timeout` | abort `learn` по wall-clock сессии, с (default **3600**; `0`=off); Ctrl+C/SIGTERM через `InterruptHandler` |
+
+JSON `train_report.json` (`schema_version` 1): `phases[]` с `rollout_N`, `wall_s`, `auto_dones`, `error`, `rank`; top-level `ok`, `error`, `preflight_orphans_before`.
 
 Метрики: `env_steps/s (wall)` — полный wall-clock; `env_steps/s (steady)` — после `--warmup-rollouts`. Сравнение с `benchmark_bridge.py` parallel и историческим ~0.5 env-step/s (4 env, pre-1.x). См. таблицу **E2E train после 1.9** в секции IPC benchmark выше.
 
@@ -271,6 +284,41 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 | `--cycles` | раундов step на все env (default 30) |
 | `--reset-every` | принудительный `vec.reset()` каждые N циклов (default 5; 0 = только initial) |
 
+**E2E gate stress (BACKLOG 5.0, диагностика [ISSUE_FALL.md](ISSUE_FALL.md)):** [`scripts/stress_e2e_gate.py`](../scripts/stress_e2e_gate.py) — пять фаз без полного `benchmark_train`: bridge STEP-only, два rollout'а `SubprocVecEnv` с reset storm, `ppo_spike` и `ppo_spike_with_vec` между ними. Подробности и оценка времени — [ISSUE_FALL.md § Стрессовый smoke](ISSUE_FALL.md#стрессовый-smoke--диагностика).
+
+```bash
+./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --quick   # ~8–12 min
+./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --full    # ~18–25 min
+./.venv/Scripts/python.exe scripts/run_smoke.py --suite stress
+
+# одна фаза (точечная диагностика)
+./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --phase vec_rollout_2 --full
+```
+
+**Preflight (R0.1–R0.2):** в начале — `preflight_bridge_sessions(label='stress_e2e_gate')` (см. секцию E2E train benchmark).
+
+| Аргумент | Описание |
+| -------- | -------- |
+| `--quick` / `--full` | половина / полная глубина rollout (64 vs 128 cycles; default `--quick`) |
+| `--phase` | подмножество фаз: `bridge_parallel`, `vec_rollout_1`, `ppo_spike`, `ppo_spike_with_vec`, `vec_rollout_2` |
+| `--n-envs` | parallel env (default 8) |
+| `--cycles` | vec steps за rollout (override quick/full) |
+| `--bridge-steps` | STEP-only steps на env в `bridge_parallel` |
+| `--batch-size`, `--n-epochs`, `--threads` | параметры фазы `ppo_spike` (default как `train_ppo`) |
+| `--json-out` | default: `tmp/smoke/stress_e2e/report.json` (`schema_version` 1: `phase`, `wall_s`, `rank`, `auto_dones`, `error` на фазу) |
+
+| Фаза | Что проверяет |
+| ---- | ------------- |
+| `bridge_parallel` | 8 FCEUX, только STEP (класс падений `benchmark_bridge --n-envs 8`) |
+| `vec_rollout_1` | ~1 rollout SubprocVecEnv, reset storm при `ep_len≈2` |
+| `ppo_spike` | пик CPU/RAM как PPO update (родитель, без vec) |
+| `ppo_spike_with_vec` | spike + живой SubprocVecEnv (8 FCEUX); диагностика OpenBLAS OOM (B4) |
+| `vec_rollout_2` | второй rollout в той же vec-сессии (типичная зона падения gate) |
+
+**Pytest (slow):** `pytest tests/smoke/test_suites.py::test_stress_e2e_gate_quick -m "requires_fceux and slow"`.
+
+Устаревший короткий stress: [`scripts/stress_parallel_reset.py`](../scripts/stress_parallel_reset.py) — 4 env, 90 s auto-reset (без gate-shaped глубины).
+
 ---
 
 ## Phase 2 — обучение и inference
@@ -279,7 +327,8 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 | ------ | ---- | ----- |
 | [`src/train/train_ppo.py`](../src/train/train_ppo.py) | env + опц. `tasks/train_task.json` | `checkpoints/m1_vN.zip`, промежуточные в `checkpoints/runs/` |
 | [`src/train/bc_pretrain.py`](../src/train/bc_pretrain.py) | `demos/seg_*.npz` (реальные obs) | warm-start policy (вызывается из train_ppo) |
-| [`scripts/train_local.sh`](../scripts/train_local.sh) | task JSON или CLI | запуск train_ppo |
+| [`scripts/train_local.sh`](../scripts/train_local.sh) | task JSON или CLI | preflight cleanup → `train_ppo` (**default `--n-envs 6`**, H2 RAM) |
+| [`scripts/train_preflight.py`](../scripts/train_preflight.py) | — | обязательная очистка перед train (вызывается из `train_local.sh`) |
 | [`src/stream/run_inference.py`](../src/stream/run_inference.py) | checkpoint `.zip` | `logs/YYYYMMDD_attempts.jsonl`, `logs/YYYYMMDD_inference_inputs.jsonl`, опц. FM2 / плейлист |
 | [`scripts/export_fm2.py`](../scripts/export_fm2.py) | `inference_inputs.jsonl` | `.fm2` (без `reference/`) |
 | [`scripts/eval_achievements.py`](../scripts/eval_achievements.py) | `attempts.jsonl` + `config/achievements.yaml` | `tags[]` в attempts |
@@ -287,8 +336,13 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 
 ### Первая модель (v0)
 
+`train_local.sh` перед `learn` всегда запускает `scripts/train_preflight.py` (очистка `train_`/`bench_` IPC, kill orphan FCEUX/python). Если после cleanup остались процессы — **exit 1** (вручную: `taskkill /F /IM fceux64.exe`). Прямой вызов `train_ppo.py` делает ту же проверку (`--skip-preflight` только для отладки).
+
 ```bash
-# 8 parallel env (default на i7-3770), 500k steps (~1–3 суток)
+# рекомендуемый старт: checkpoint для inference-пайплайна, промежуточные saves каждые 10k
+./scripts/train_local.sh --timesteps 50000 --save-every 10000 --checkpoint-out checkpoints/m1_v0.zip
+
+# полный v0: 8 parallel env (default на i7-3770), 500k steps (~1–3 суток при ~5 env-step/s)
 ./scripts/train_local.sh --timesteps 500000 --checkpoint-out checkpoints/m1_v0.zip
 
 # отладка train: карантин tmp/smoke (не checkpoints/smoke_* в games/)
@@ -302,22 +356,24 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 | -------- | -------- |
 | `--task` | `tasks/train_task.json` (finetune: checkpoint_in/out, hot_zone, seg) |
 | `--timesteps` | total PPO steps (default 500000) |
-| `--n-envs` | parallel FCEUX (default 8) |
+| `--n-envs` | parallel FCEUX (default **8** прямой вызов; **`train_local.sh` → 6**) |
+| `--rollout-gc` / `--no-rollout-gc` | `gc.collect()` после rollout (default: on, H2) |
 | `--save-every` | checkpoint каждые N steps (default 50000) |
 | `--checkpoint-in` / `--checkpoint-out` | load/save `.zip` |
 | `--resume` / `--no-resume` | продолжить с `checkpoint_out` + sidecar `.train.json` (default: resume on) |
-| `--latest-checkpoint` | дополнительно `checkpoints/latest.zip` на каждый rollout PPO |
+| `--latest-checkpoint` / `--no-latest-checkpoint` | `checkpoints/latest.zip` на каждый rollout PPO (default: on) |
 | `--bc-epochs` | BC epochs перед PPO (0 = skip; нужны demos без obs_stub) |
 | `--dummy-vec` | DummyVecEnv вместо SubprocVecEnv |
 | `--smoke` | checkpoint в `tmp/smoke/<session>/`; `finally` удаляет сессию; без `runs/` и resume |
 | `--smoke-session` | имя подкаталога `tmp/smoke/` (default `train_smoke`) |
 | `--no-intermediate-checkpoints` | без `CheckpointCallback` / `checkpoints/runs/` |
-| `--progress` | tqdm/rich progress bar (отключает текстовый `train: N%`) |
-| `--no-progress-pct` | не печатать `train: 42.3% (211500/500000 steps)` в stderr |
+| `--progress` | tqdm/rich progress bar (дополнительно к таблице SB3) |
+| `--no-progress-pct` | не добавлять `progress_pct` / `target_timesteps` в секцию `time/` таблицы SB3 |
+| `--skip-preflight` | не вызывать `require_clean_preflight` (только прямой `train_ppo`; `train_local.sh` чистит отдельно) |
 
 **Smoke train:** для короткой проверки PPO — `--smoke`, не `--checkpoint-out checkpoints/smoke_*.zip` в миссии. Для bridge/env — `run_smoke.py`, не `train_ppo`.
 
-По умолчанию в stderr каждые ~5 с (и в начале/конце) — строка **`train: 42.3% (211500/500000 steps)`** от полного `target_timesteps` (в т.ч. при resume). SB3 `verbose=1` и `--save-every` не меняются.
+По умолчанию в таблице SB3 (`verbose=1`, секция `time/`) — **`progress_pct`** и **`target_timesteps`** от полного `target_timesteps` (в т.ч. при resume). SB3 `verbose=1` и `--save-every` не меняются.
 
 **Прерывание и resume:** Ctrl+C или SIGTERM сохраняют `checkpoint_out` атомарно (`*.tmp.zip` → rename) и обновляют sidecar `*.train.json` (`target_timesteps`, `game`, `mission`, `n_envs`, `save_state`). Повторный запуск с тем же `--checkpoint-out` продолжает до `target_timesteps` (`PPO.load`, `reset_num_timesteps=False`). BC при resume не повторяется. Несовпадение `--n-envs` с sidecar → отказ. Явный finetune: `--checkpoint-in other.zip --checkpoint-out new.zip --no-resume`.
 

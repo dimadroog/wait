@@ -32,12 +32,12 @@
 | 5     | **[3.3]** inference без legacy + `inference_config` | done   | только embedded FM2; `inference_states.py`                                                      |
 | 6     | **[4.4]** рефакторинг: именование и техдолг в коде  | done   | etalon naming; RAM fallback; IPC v2 — см. [4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e) |
 | 7     | **[4.1–4.3]** гигиена (регрессия)                   | done   | `run_smoke.py`, `pytest tests/smoke/` — быстро                                                  |
-| **8** | **[5.0]** финальный e2e train                       | todo   | **последний шаг** — только после **4.4**                                                        |
+| **8** | **[5.0]** финальный e2e train                       | done   | приёмка R5 2026-07-13 — gate 2× зелёный, fps ~5.8 (1-й прогон) |
 
 
 Этапы **1.1–1.9**, **4.1–4.3** и закрытые шаги аудита — done; при регрессии в шагах 3.x–4.4 — быстрые smoke/pytest, **не** e2e train.
 
-**Следующий шаг аудита (на 2026-07-10):** **[5.0]** финальный e2e train.
+**Следующий шаг аудита (на 2026-07-13):** аудит **[5.0]** закрыт. Длинный train «первая модель» — по желанию, см. SCRIPTS.md.
 
 ---
 
@@ -1080,7 +1080,7 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 
 ## [5.0] Аудит: финальный e2e train
 
-**Статус:** todo  
+**Статус:** done (2026-07-13, приёмка R5)
 **Этап:** 5.0  
 **Приоритет:** high  
 **Зависит от:** **[3.0]–[3.3]**, **[4.4]**; **4.3** (рекомендуется — pytest smoke перед длинным прогоном)  
@@ -1093,16 +1093,16 @@ Roadmap ML («Phase 0», «Phase 1»…) — документация плани
 
 ### Чеклист сессии
 
-- [ ] Предусловие: **3.0–3.3** и **[4.4]** закрыты
-- [ ] `pytest tests/smoke/` и `run_smoke.py` — зелёные (регрессия 4.x)
-- [ ] `cleanup_bridge_sessions` перед e2e
-- [ ] **Gate (tier 3):** `train_ppo.py --n-envs 8 --timesteps 2048` (SubprocVecEnv, без `--dummy-vec`) — без IPC timeout / worker crash
-- [ ] `benchmark_train.py` — env-steps/s, отчёт в `tmp/bench/`; сравнение с `benchmark_bridge.py`
+- [x] Предусловие: **3.0–3.3** и **[4.4]** закрыты
+- [x] `pytest tests/smoke/` и `run_smoke.py` — зелёные (регрессия 4.x)
+- [x] `cleanup_bridge_sessions` перед e2e
+- [x] **Gate (tier 3):** `train_ppo.py --n-envs 8 --timesteps 2048` (SubprocVecEnv, без `--dummy-vec`) — без IPC timeout / worker crash
+- [x] `benchmark_train.py` — env-steps/s, отчёт в `tmp/bench/`; сравнение с `benchmark_bridge.py`
 - [ ] (опц.) Длинный train «первая модель» по `SCRIPTS.md` — только после зелёного gate
-- [ ] `cleanup_artifact_quarantine("bench")`; нет stray `smoke_*` в `games/.../checkpoints/`
+- [x] `cleanup_artifact_quarantine("bench")`; нет stray `smoke_*` в `games/.../checkpoints/`
 
 ### Критерий готовности
 
-- [ ] E2e gate 8 env × 2048 завершается стабильно; цифры fps зафиксированы или без регрессии к вердикту 1.9.
+- [x] E2e gate 8 env × 2048 завершается стабильно; цифры fps зафиксированы или без регрессии к вердикту 1.9.
 - [ ] (опц.) Первая полноценная модель обучена; checkpoint в `games/.../checkpoints/` (не `tmp/`).
-- [ ] После прогона — гигиена артефактов (bench/smoke quarantine, bridge cleanup).
+- [x] После прогона — гигиена артефактов (bench/smoke quarantine, bridge cleanup).

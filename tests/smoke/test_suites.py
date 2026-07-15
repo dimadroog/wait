@@ -26,6 +26,24 @@ SUITE_COMMANDS: dict[str, list[str]] = {
 
 
 @pytest.mark.requires_fceux
+@pytest.mark.slow
+def test_stress_e2e_gate_quick(repo_root: Path) -> None:
+    """Gate-shaped IPC stress (quick mode); not part of default smoke parametrization."""
+    cmd = [sys.executable, str(_SCRIPTS / "stress_e2e_gate.py"), "--quick"]
+    result = subprocess.run(
+        cmd,
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"stress_e2e_gate --quick failed (exit {result.returncode})\n"
+        f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+    )
+
+
+@pytest.mark.requires_fceux
 @pytest.mark.parametrize("suite", list(SUITE_COMMANDS))
 def test_smoke_suite(suite: str, repo_root: Path) -> None:
     cmd = [sys.executable, *SUITE_COMMANDS[suite]]

@@ -36,12 +36,29 @@ class SingleBridgeMetrics:
 
 
 @dataclass
+class EpLen2Profile:
+    """STEP vs hot reset при ep_len≈2 (2 step + reset на цикл)."""
+
+    cycles: int
+    steps_total: int
+    resets_total: int
+    step_ms_mean: float
+    reset_ms_mean: float
+    step_wall_ms: float
+    reset_wall_ms: float
+    step_share_pct: float
+    reset_share_pct: float
+    cycle_ms_mean: float
+
+
+@dataclass
 class AggregateMetrics:
     n_envs: int
     step_warmup: int
     step_samples: int
     reset_samples: int
     single: SingleBridgeMetrics
+    ep_len2: EpLen2Profile | None = None
     parallel_env_steps_per_s: float | None = None
     parallel_wall_s: float | None = None
 
@@ -114,6 +131,86 @@ def _bench_single(
         step_total_ms=step_total_ms,
         reset_step_ratio=reset_step_ratio,
     )
+
+
+def _bench_ep_len2_profile(
+    mission: Path,
+    game_id: str,
+    *,
+    session_id: str,
+    save_state: str,
+    frame_skip: int,
+    cycles: int,
+    steps_per_episode: int = 2,
+) -> EpLen2Profile:
+    """Профиль gate-shaped: N×(ep_len step + hot reset LOAD_OBS)."""
+    step_times: list[float] = []
+    reset_times: list[float] = []
+    state_name = Path(save_state).name
+    with FceuxBridge(
+        mission,
+        game_id,
+        frame_skip=frame_skip,
+        session_id=session_id,
+    ) as bridge:
+        bridge.start(load_state=save_state)
+        bridge.cache_state(state_name)
+        for _ in range(cycles):
+            for _ in range(steps_per_episode):
+                t_step = time.perf_counter()
+                bridge_response = bridge.step("right")
+                bridge.decode_obs_from_response(bridge_response)
+                step_times.append((time.perf_counter() - t_step) * 1000.0)
+            t_reset = time.perf_counter()
+            with bridge_load_lock():
+                obs_data = bridge.load_obs(state_name)
+            bridge.decode_obs_from_response(obs_data)
+            reset_times.append((time.perf_counter() - t_reset) * 1000.0)
+
+    step_wall_ms = sum(step_times)
+    reset_wall_ms = sum(reset_times)
+    total_wall_ms = step_wall_ms + reset_wall_ms
+    step_ms_mean = statistics.mean(step_times)
+    reset_ms_mean = statistics.mean(reset_times)
+    return EpLen2Profile(
+        cycles=cycles,
+        steps_total=len(step_times),
+        resets_total=len(reset_times),
+        step_ms_mean=step_ms_mean,
+        reset_ms_mean=reset_ms_mean,
+        step_wall_ms=step_wall_ms,
+        reset_wall_ms=reset_wall_ms,
+        step_share_pct=100.0 * step_wall_ms / total_wall_ms if total_wall_ms else 0.0,
+        reset_share_pct=100.0 * reset_wall_ms / total_wall_ms if total_wall_ms else 0.0,
+        cycle_ms_mean=total_wall_ms / cycles if cycles else 0.0,
+    )
+
+
+def _gate_rollout_projection(
+    profile: EpLen2Profile,
+    *,
+    vec_cycles: int = 128,
+    n_envs: int = 8,
+    ep_len: int = 2,
+) -> dict[str, float | int]:
+    """Оценка wall одного vec-rollout (gate) из single-env профиля."""
+    env_steps = vec_cycles * n_envs
+    resets = env_steps // ep_len
+    parallel_step_s = vec_cycles * profile.step_ms_mean / 1000.0
+    reset_serial_s = resets * profile.reset_ms_mean / 1000.0
+    reset_spread_s = (resets / n_envs) * profile.reset_ms_mean / 1000.0
+    return {
+        "vec_cycles": vec_cycles,
+        "n_envs": n_envs,
+        "ep_len": ep_len,
+        "env_steps_per_rollout": env_steps,
+        "resets_per_rollout": resets,
+        "parallel_step_wall_s_est": round(parallel_step_s, 2),
+        "reset_wall_s_serial_est": round(reset_serial_s, 2),
+        "reset_wall_s_spread_est": round(reset_spread_s, 2),
+        "rollout_wall_s_est_low": round(parallel_step_s + reset_spread_s, 2),
+        "rollout_wall_s_est_high": round(parallel_step_s + reset_serial_s, 2),
+    }
 
 
 def _parallel_worker(
@@ -210,6 +307,15 @@ def _print_table(metrics: AggregateMetrics) -> None:
     ipc_share = 100.0 * s.step_ipc_ms / s.step_total_ms if s.step_total_ms else 0.0
     dec_share = 100.0 * s.step_decode_ms / s.step_total_ms if s.step_total_ms else 0.0
     print(f"  step breakdown      IPC {ipc_share:.0f}% | decode {dec_share:.0f}%")
+    if metrics.ep_len2 is not None:
+        e = metrics.ep_len2
+        print(f"  ep_len2 profile     {e.cycles} cycles x (2 step + reset)")
+        print(
+            f"    step {e.step_share_pct:5.1f}%  ({e.step_ms_mean:.1f} ms/step, wall {e.step_wall_ms:.0f} ms)"
+        )
+        print(
+            f"    reset {e.reset_share_pct:5.1f}%  ({e.reset_ms_mean:.1f} ms/reset, wall {e.reset_wall_ms:.0f} ms)"
+        )
     print()
 
 
@@ -227,6 +333,25 @@ def run_benchmark(args: argparse.Namespace) -> dict:
         step_samples=args.step_samples,
         reset_samples=args.reset_samples,
     )
+
+    ep_len2: EpLen2Profile | None = None
+    gate_projection: dict[str, float | int] | None = None
+    if args.ep_len2_cycles > 0:
+        ep_len2 = _bench_ep_len2_profile(
+            mission,
+            args.game,
+            session_id=f"{args.session}_ep_len2",
+            save_state=save_state,
+            frame_skip=args.frame_skip,
+            cycles=args.ep_len2_cycles,
+            steps_per_episode=args.ep_len2_steps,
+        )
+        gate_projection = _gate_rollout_projection(
+            ep_len2,
+            vec_cycles=args.gate_vec_cycles,
+            n_envs=args.n_envs,
+            ep_len=args.ep_len2_steps,
+        )
 
     parallel_eps: float | None = None
     parallel_wall: float | None = None
@@ -246,6 +371,7 @@ def run_benchmark(args: argparse.Namespace) -> dict:
         step_samples=args.step_samples,
         reset_samples=args.reset_samples,
         single=single,
+        ep_len2=ep_len2,
         parallel_env_steps_per_s=parallel_eps,
         parallel_wall_s=parallel_wall,
     )
@@ -257,13 +383,26 @@ def run_benchmark(args: argparse.Namespace) -> dict:
         "python": platform.python_version(),
         "date": time.strftime("%Y-%m-%d"),
     }
+    breakdown: dict = {
+        "step_ipc_ms": single.step_ipc_ms,
+        "step_decode_ms": single.step_decode_ms,
+        "step_total_ms": single.step_total_ms,
+        "hot_reset_ms": single.hot_reset_ms,
+        "reset_step_ratio": single.reset_step_ratio,
+    }
+    if ep_len2 is not None:
+        breakdown["ep_len2"] = asdict(ep_len2)
+        breakdown["gate_rollout_projection"] = gate_projection
     return {
+        "schema_version": 1,
+        "kind": "benchmark_bridge",
         "host": host,
         "game": args.game,
         "mission": args.mission,
         "frame_skip": args.frame_skip,
         "save_state": save_state,
         "metrics": asdict(agg),
+        "breakdown": breakdown,
         "notes": {
             "bottleneck_hypothesis": "IPC+gdscreenshot+file obs (not torch/PPO)",
             "ep_len_mean_ref": 2,
@@ -284,6 +423,14 @@ def main() -> None:
     parser.add_argument("--step-samples", type=int, default=30)
     parser.add_argument("--reset-samples", type=int, default=10)
     parser.add_argument("--parallel-steps", type=int, default=20, help="steps per env in parallel phase")
+    parser.add_argument(
+        "--ep-len2-cycles",
+        type=int,
+        default=64,
+        help="ep_len~2 profile cycles (2 step + reset); 0=skip",
+    )
+    parser.add_argument("--ep-len2-steps", type=int, default=2, help="steps per episode in ep_len2 profile")
+    parser.add_argument("--gate-vec-cycles", type=int, default=128, help="vec cycles for gate rollout projection")
     parser.add_argument("--json-out", default=None, help="write report JSON (default: tmp/bench/)")
     args = parser.parse_args()
 

@@ -21,6 +21,7 @@ from train.env_factory import cleanup_bridge_sessions  # noqa: E402
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "requires_fceux: integration smoke (FCEUX + mission)")
+    config.addinivalue_line("markers", "slow: long IPC stress (minutes)")
 
 
 @pytest.fixture(scope="session")

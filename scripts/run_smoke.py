@@ -3,6 +3,7 @@
 
 Запускает существующие smoke-скрипты subprocess; cleanup bridge + tmp/smoke в finally.
 Не использовать train_ppo для проверки bridge/env.
+Suite stress — длительный IPC stress (stress_e2e_gate --quick).
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ from project_paths import (  # noqa: E402
 )
 from train.env_factory import cleanup_bridge_sessions  # noqa: E402
 
-SUITE_NAMES = ("bridge", "env", "parallel")
+SUITE_NAMES = ("bridge", "env", "parallel", "stress")
 
 
 def _suite_commands() -> dict[str, list[str]]:
@@ -42,6 +43,11 @@ def _suite_commands() -> dict[str, list[str]]:
             "10",
             "--reset-every",
             "5",
+        ],
+        "stress": [
+            py,
+            str(_SCRIPTS / "stress_e2e_gate.py"),
+            "--quick",
         ],
     }
 
@@ -68,7 +74,7 @@ def _run_suite(name: str, cmd: Sequence[str]) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Unified smoke tests (bridge, env, parallel)")
+    parser = argparse.ArgumentParser(description="Unified smoke tests (bridge, env, parallel, stress)")
     parser.add_argument(
         "--suite",
         default=",".join(SUITE_NAMES),

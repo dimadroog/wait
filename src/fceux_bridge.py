@@ -26,6 +26,12 @@ DEFAULT_TIMEOUT = 30.0
 STARTUP_STAGGER_SEC = 5.0
 STARTUP_TIMEOUT_BASE = 45.0
 STARTUP_TIMEOUT_PER_RANK = 15.0
+STEP_TIMEOUT_BASE = 45.0
+STEP_TIMEOUT_PER_RANK = 12.0
+STEP_TIMEOUT_PER_PEER = 6.0
+STEP_TIMEOUT_MAX = 180.0
+STEP_RETRY_ATTEMPTS = 2
+STEP_RETRY_BACKOFF_SEC = 0.05
 POLL_INTERVAL = 0.002
 IPC_RETRIES = 100
 LOAD_LOCK_TIMEOUT_SEC = 90.0
@@ -35,6 +41,38 @@ LOAD_LOCK_STALE_SEC = 120.0
 
 class FceuxBridgeError(RuntimeError):
     pass
+
+
+def _parallel_bridge_session_prefixes() -> tuple[str, ...]:
+    return ("train_", "bench_", "record_demos_")
+
+
+def count_parallel_bridge_sessions() -> int:
+    """Число IPC-сессий bridge (proxy для параллельной нагрузки n_envs)."""
+    bridge_root = repo_root() / "tmp" / "bridge"
+    if not bridge_root.is_dir():
+        return 0
+    prefixes = _parallel_bridge_session_prefixes()
+    return sum(
+        1
+        for entry in bridge_root.iterdir()
+        if entry.is_dir() and entry.name.startswith(prefixes)
+    )
+
+
+def step_ipc_timeout(
+    *,
+    rank: int | None,
+    parallel_sessions: int,
+    base_timeout: float = DEFAULT_TIMEOUT,
+) -> float:
+    """Адаптивный deadline STEP: rank + число параллельных bridge-сессий."""
+    timeout = max(base_timeout, 15.0)
+    if rank is not None:
+        timeout = max(timeout, STEP_TIMEOUT_BASE + rank * STEP_TIMEOUT_PER_RANK)
+    if parallel_sessions > 1:
+        timeout = max(timeout, base_timeout + (parallel_sessions - 1) * STEP_TIMEOUT_PER_PEER)
+    return min(timeout, STEP_TIMEOUT_MAX)
 
 
 def _pid_alive(pid: int) -> bool:
@@ -249,13 +287,17 @@ class FceuxBridge:
 
     def _session_rank(self) -> int | None:
         sid = self.session_id
-        for prefix in ("train_", "record_demos_"):
+        for prefix in _parallel_bridge_session_prefixes():
             if sid.startswith(prefix):
                 try:
                     return int(sid.rsplit("_", 1)[-1])
                 except ValueError:
                     return None
         return None
+
+    def _step_timeout(self) -> float:
+        peers = max(count_parallel_bridge_sessions(), 1)
+        return step_ipc_timeout(rank=self._session_rank(), parallel_sessions=peers)
 
     def _startup_stagger(self) -> None:
         """Windows: разнести старт нескольких FCEUX (SubprocVecEnv / parallel record)."""
@@ -476,13 +518,41 @@ class FceuxBridge:
             _safe_unlink(resp_path)
             return response
 
-        raise FceuxBridgeError(f"IPC timeout for {cmd} ({timeout}s)")
+        raise FceuxBridgeError(f"IPC timeout for {cmd} ({timeout:.1f}s) seq={seq}")
+
+    def _is_step_ipc_timeout(self, exc: FceuxBridgeError) -> bool:
+        return str(exc).startswith("IPC timeout for STEP")
+
+    def _log_step_retry(self, attempt: int, seq: int, error: str) -> None:
+        rank = self._session_rank()
+        rank_label = f"rank={rank}" if rank is not None else f"session={self.session_id}"
+        print(
+            f"WARNING [fceux_bridge] STEP retry {attempt}/{STEP_RETRY_ATTEMPTS} "
+            f"{rank_label} seq={seq}: {error}"
+        )
 
     def ping(self) -> dict:
         return self.request("PING")
 
     def step(self, action: str = "") -> dict:
-        return self.request("STEP", action, timeout=max(DEFAULT_TIMEOUT, 15.0))
+        attempts = STEP_RETRY_ATTEMPTS + 1
+        last_error: str | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return self.request("STEP", action, timeout=self._step_timeout())
+            except FceuxBridgeError as exc:
+                last_error = str(exc)
+                if attempt >= attempts or not self._is_step_ipc_timeout(exc):
+                    raise
+                if not self.is_running():
+                    raise FceuxBridgeError(
+                        f"FCEUX bridge is not running after STEP timeout (seq={self._seq})"
+                    ) from exc
+                failed_seq = self._seq
+                self._log_step_retry(attempt, failed_seq, last_error)
+                _safe_unlink(self.ipc_dir / "response.json")
+                time.sleep(STEP_RETRY_BACKOFF_SEC)
+        raise FceuxBridgeError(last_error or "STEP failed")
 
     def decode_obs_from_response(self, bridge_response: dict) -> np.ndarray:
         """Obs из STEP (obs_file) или отдельный GET_OBS."""

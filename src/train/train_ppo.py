@@ -26,7 +26,8 @@ from train.checkpointing import (  # noqa: E402
     validate_sidecar_n_envs,
     write_sidecar,
 )
-from train.env_factory import build_vec_env, cleanup_bridge_sessions  # noqa: E402
+from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_clean_preflight  # noqa: E402
+from train.learn_watchdog import DEFAULT_LEARN_STALL_TIMEOUT_S, LearnStallError, learn_with_stall_watchdog  # noqa: E402
 from train.progress_callback import TrainProgressPctCallback  # noqa: E402
 
 POLICY_KWARGS = {"normalize_images": False}  # obs уже float [0,1], channel-first (4,84,84)
@@ -153,7 +154,8 @@ def train(args: argparse.Namespace) -> Path:
         reward_overrides = _reward_overrides_from_task(task)
 
         torch.set_num_threads(args.threads)
-        cleanup_bridge_sessions("train_")
+        if not args.skip_preflight:
+            require_clean_preflight(label="train_ppo")
 
         vec_env = build_vec_env(
             game_id=args.game,
@@ -258,13 +260,20 @@ def train(args: argparse.Namespace) -> Path:
         )
 
         with InterruptHandler() as interrupt:
+            learn_failed = False
             try:
-                model.learn(
+                learn_with_stall_watchdog(
+                    model,
+                    vec_env,
+                    stall_timeout_s=args.learn_stall_timeout,
                     total_timesteps=remaining,
                     callback=CallbackList(callbacks) if callbacks else None,
                     progress_bar=args.progress,
                     reset_num_timesteps=not resuming,
                 )
+            except LearnStallError as exc:
+                learn_failed = True
+                print(f"train aborted: {exc}")
             finally:
                 try:
                     vec_env.close()
@@ -280,7 +289,13 @@ def train(args: argparse.Namespace) -> Path:
                         mission_id=args.mission,
                         n_envs=args.n_envs,
                         save_state=save_state,
-                        reason="interrupt" if interrupt.interrupted else "complete",
+                        reason=(
+                            "stall"
+                            if learn_failed
+                            else "interrupt"
+                            if interrupt.interrupted
+                            else "complete"
+                        ),
                     )
 
         return checkpoint_zip_path(checkpoint_out)
@@ -316,18 +331,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--latest-checkpoint",
-        action="store_true",
-        help="дополнительно писать checkpoints/latest.zip на каждый rollout",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="писать checkpoints/latest.zip на каждый rollout (default: on)",
     )
     p.add_argument("--bc-demo", default=None, help="demos/seg_XXX.npz для BC")
     p.add_argument("--bc-epochs", type=int, default=0, help="BC epochs (0 = skip)")
     p.add_argument("--no-bc", action="store_true")
     p.add_argument("--no-turbo", action="store_true", help="FCEUX без turbo (отладка)")
-    p.add_argument("--progress", action="store_true", help="progress bar (needs tqdm+rich)")
+    p.add_argument("--progress", action="store_true", help="tqdm/rich progress bar (доп. к таблице SB3)")
     p.add_argument(
         "--no-progress-pct",
         action="store_true",
-        help="не печатать train: N%% (done/target steps) в stderr",
+        help="не добавлять progress_pct / target_timesteps в таблицу SB3",
     )
     p.add_argument("--dummy-vec", action="store_true", help="DummyVecEnv вместо SubprocVecEnv")
     p.add_argument(
@@ -344,6 +360,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-intermediate-checkpoints",
         action="store_true",
         help="без CheckpointCallback / checkpoints/runs/ (включено при --smoke)",
+    )
+    p.add_argument(
+        "--learn-stall-timeout",
+        type=float,
+        default=DEFAULT_LEARN_STALL_TIMEOUT_S,
+        help="abort learn без прогресса timesteps, с (default 300; 0=off)",
+    )
+    p.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="не вызывать require_clean_preflight (train_local.sh всегда чистит отдельно)",
     )
     return p
 

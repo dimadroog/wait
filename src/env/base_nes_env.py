@@ -8,7 +8,7 @@ import gymnasium as gym
 import numpy as np
 import yaml
 
-from fceux_bridge import FceuxBridge
+from fceux_bridge import FceuxBridge, FceuxBridgeError
 from project_paths import mission_dir
 
 OBS_SHAPE = (4, 84, 84)
@@ -154,11 +154,69 @@ class BaseNesEnv(gym.Env):
         }
         return self._obs_stack(), info
 
+    def _soft_reset_after_bridge_error(
+        self, error: FceuxBridgeError
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        """Восстановить env после IPC-сбоя; не пробрасывать в SubprocVecEnv worker."""
+        try:
+            bridge = self._ensure_bridge()
+            bridge_response = bridge.reset_to_state(self.save_state)
+        except FceuxBridgeError:
+            if self._bridge is not None:
+                try:
+                    self._bridge._force_close_proc()
+                except OSError:
+                    pass
+                self._bridge = None
+            bridge = self._ensure_bridge()
+            bridge_response = bridge.reset_to_state(self.save_state)
+
+        self._frames.clear()
+        self._step_count = 0
+        self._episode_start_lives = None
+        self._prev_lives = None
+
+        gray = bridge.decode_obs_from_response(bridge_response)
+        self._push_obs(gray)
+
+        ram = {
+            k: bridge_response[k]
+            for k in ("room", "x", "y", "hp", "lives", "checkpoint", "frame")
+            if k in bridge_response
+        }
+        if not ram:
+            ram = bridge.get_ram()
+        lives = int(ram.get("lives", 0))
+        if self._valid_lives(lives):
+            self._episode_start_lives = lives
+            self._prev_lives = lives
+
+        info: dict[str, Any] = {
+            "ram": ram,
+            "died": False,
+            "mission_complete": False,
+            "max_checkpoint": -1,
+            "episode_frames": 0,
+            "bridge_error": str(error),
+            "bridge_recovered": True,
+        }
+        return self._obs_stack(), info
+
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         bridge = self._ensure_bridge()
         action_str = self._action_string(int(action))
 
-        step_data = bridge.step(action_str)
+        try:
+            step_data = bridge.step(action_str)
+        except FceuxBridgeError as exc:
+            print(
+                f"WARNING [base_nes_env] bridge step failed "
+                f"session={self.session_id}: {exc}; soft reset"
+            )
+            obs, info = self._soft_reset_after_bridge_error(exc)
+            info["action"] = action_str
+            return obs, 0.0, False, True, info
+
         gray = bridge.decode_obs_from_response(step_data)
         self._push_obs(gray)
 
