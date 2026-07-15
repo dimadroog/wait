@@ -10,6 +10,7 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from inference_states import inference_save_state_for  # noqa: E402
+from fm2_export import INFERENCE_FM2_GUID, ensure_savestate_movie_guid  # noqa: E402
 from mission_states import save_fm2_states  # noqa: E402
 from etalon_build_config import load_etalon_build_config, transition_rooms_from_etalon_build  # noqa: E402
 from playthrough_build import (  # noqa: E402
@@ -85,6 +86,13 @@ def main() -> None:
         tmp_subdir="inference_states",
     )
     _update_manifest_inference(mission, gameplay_frame)
+    cp0_path = mission / inference_save_state_for(0)
+    if cp0_path.is_file():
+        raw = cp0_path.read_bytes()
+        fixed = ensure_savestate_movie_guid(raw, INFERENCE_FM2_GUID)
+        if fixed != raw:
+            cp0_path.write_bytes(fixed)
+            print(f"Patched movie GUID in {cp0_path.name}")
     print(f"Wrote {inference_save_state_for(0)} and manifest inference block")
     print("Done.")
 

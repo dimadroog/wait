@@ -1,149 +1,423 @@
 # ISSUE_INFERENCE — FM2 playback показывает attract demo вместо геймплея агента
 
+
+
 **Дата:** 2026-07-15  
+
 **Этап BACKLOG:** 3.1–3.3 (inference FM2 / playlist / replay)  
-**Ветка старта:** `issue/inference-fm2-replay`  
-**Статус:** открыт — корневая причина локализована, фикс playback не реализован
+
+**Ветка:** `issue/inference-fm2-replay`  
+
+**Статус:** **открыт** — GUID/embed в файле исправлены; **визуальный playback на FCEUX 2.6.6 win64 не починен** (сессия отладки 2026-07-15, вечер)
+
+
 
 **Связанные документы:** [ML_CONCEPT.md § FM2 из inference](ML_CONCEPT.md), [SCRIPTS.md § Inference / Replay](SCRIPTS.md), [BACKLOG.md § 3.1](BACKLOG.md)
 
+
+
 ---
+
+
 
 ## Симптом
 
-При воспроизведении inference-клипов (`play_inference_fm2.py`, плейлист, ручное открытие FM2 в FCEUX) на экране **одинаковая картинка** — **встроенное attract mode demo** Rush'n Attack на заставке (до нажатия Start / старта миссии 1).
 
-Ожидание: replay с **gameplay-start** (`states/inference_cp0.fc0`, кадр 18 эталона, room `0x00`) и нажатиями агента.
 
-Факт: power-on → title screen → штатное демо игры. Записанные в FM2 кадры накладываются на неверное состояние эмулятора.
+При воспроизведении inference-клипов (`play_inference_fm2.py`, плейлист, ручное открытие FM2 в FCEUX) на экране **не геймплей агента** — **title / attract demo** Rush'n Attack (меню «1 PLAYER») или чёрный экран. Overlay и метрики эпизода (CP4, reward ≈497) при этом **корректны** — клип записан с gameplay-start.
+
+
+
+Ожидание: replay с **gameplay-start** (`states/inference_cp0.fc0`, кадр 18 эталона, room `0x00`, x=129) и нажатиями агента.
+
+
+
+Факт: power-on / title → штатное демо или рассинхрон PPU↔RAM. Записанные в FM2 кадры накладываются на неверное **визуальное** состояние эмулятора.
+
+
 
 ---
+
+
 
 ## Что работает (контраст)
 
+
+
 | Компонент | Статус | Доказательство |
+
 | --------- | ------ | -------------- |
-| Запись inference (`run_inference.py`) | OK | bridge грузит `inference_cp0` через `-loadstate`; метрики `max_cp=4`, reward ≈497 согласуются с прохождением CP |
-| Экспорт FM2 | OK | в заголовке есть `savestate 0x…`, уникальные GUID, разные digest кадров между эпизодами |
-| Плейлист / dedupe | OK | `build_playlist`, `fm2_path` в attempts, remap GUID |
-| Критерий BACKLOG 3.1 (self-contained FM2) | **частично** | embed в файле есть; **FCEUX 2.6.6 win64 не применяет его при `-playmovie`** (наблюдение 2026-07-15) |
+
+| Запись inference (`run_inference.py`) | OK | bridge: `-loadstate inference_cp0.fc0`; метрики `max_cp=4`, reward ≈497 |
+
+| Экспорт FM2 | OK | `savestate 0x…` в заголовке, уникальные GUID, разные digest между эпизодами |
+
+| Staging playback | OK | `refresh_fm2_embedded_savestate` из `inference_cp0`, `stage_playback_fc0`, mirror в `fcs/` |
+
+| Плейлист / dedupe | OK | `fm2_path`, `remap_fm2_guid` |
+
+| Lua overlay / HUD | OK | achievement overlay, диагностика `boot=…` |
+
+| **Визуальный FM2 replay (win64 GUI)** | **FAIL** | title / black screen при активном movie и «успешном» Lua bootstrap |
+
+
 
 ---
 
-## Корневая причина (подтверждена)
 
-**FM2 playback не восстанавливает gameplay-start state.** FCEUX стартует с power-on; видно attract demo, а не сцену из `inference_cp0`.
 
-Запись inference и просмотр FM2 — **разные контракты**:
+## Корневая причина (уточнённая)
 
-| Режим | Старт состояния | Результат |
-| ----- | --------------- | --------- |
-| `run_inference` | `-loadstate inference_cp0.fc0` (bridge) | реальный геймплей, валидные метрики |
-| `play_inference_fm2` | `-playmovie playback.fm2` + embedded `savestate` в заголовке | power-on → demo (savestate не подхватывается) |
 
-Метрики эпизода (**не** «агент ничего не делал на заставке»): старт inference — кадр 18, CP0; CP4 требует прохождения комнат (`routes.yaml`). Reward ≈497 = 5× checkpoint_bonus − step_penalty.
+
+**Два слоя проблемы:**
+
+
+
+1. **Данные (частично закрыто):** в старых `ep*.fm2` embedded FCS мог не иметь movie GUID @ offset 5699; `inference_cp0` патчится через `ensure_savestate_movie_guid`. Staging перезаписывает embed из `inference_cp0` + GUID клипа.
+
+
+
+2. **FCEUX 2.6.6 win64 playback (открыто):** при `-playmovie` / `movie.play()` эмулятор **не восстанавливает PPU/gameplay-start** из embedded savestate и/или внешнего `.fc0`, даже когда Lua `savestate.load()` возвращает успех (`boot=OK`, `boot=PLAY+LD`, `boot=SYNC`). RAM (`room=0x00`) **не совпадает с картинкой** — на title к f≈8 уже `r=0x00`, `L=0` (см. `human_playthrough.jsonl`).
+
+
+
+Запись и просмотр — **разные контракты**:
+
+
+
+| Режим | Старт | Визуал | RAM / метрики |
+
+| ----- | ----- | ------ | ------------- |
+
+| `run_inference` | bridge `-loadstate inference_cp0.fc0` | gameplay | валидны |
+
+| `play_inference_fm2` | movie mode (`-playmovie` / Lua `movie.play`) | title / black | частично «как gameplay», PPU нет |
+
+
 
 ---
 
-## Отвергнутые / вторичные гипотезы
 
-| Гипотеза | Вердикт | Комментарий |
-| -------- | ------- | ----------- |
-| **H1:** FCEUX путает FM2 по GUID в одной папке | частично верна | Реальна при нескольких FM2 с одним `romChecksum` в `fceux/portable/movies/`; **не объясняет** attract demo при пустом `movies/` |
-| **H2:** одинаковый GUID в плейлисте | исправлена | `fm2_path` в attempts, remap в `build_playlist`; не влияет на картинку demo |
-| **H3:** дедупликация схлопывает клипы | неверна | digest кадров различается (3/3 в прогоне 2026-07-15) |
-| **H4:** бинарник `fceux64.exe` в `portable/` битый | неверна | MD5 идентичен чистому донору 2.6.6 win64 |
-| **H5:** шаблон в `portable/movies/` — причина одинаковой картинки | **переоценена** | Перенос в `reference/header.fm2` — правильная гигиена (DESIGN § Pluggable Core), но **не лечит** playback без loadstate |
-| **H6:** агент получает CP4 без действий на title screen | неверна | на title нет валидных CP; при записи старт — gameplay frame 18 |
+
+## Отвергнутые гипотезы (ранние)
+
+
+
+| ID | Гипотеза | Вердикт | Комментарий |
+
+| -- | -------- | ------- | ----------- |
+
+| H1 | FCEUX путает FM2 по GUID в `portable/movies/` | частично | Реальна при загрязнении `movies/`; **не объясняет** demo при пустой папке |
+
+| H2 | Одинаковый GUID в плейлисте | исправлена | `remap_fm2_guid`; на картинку не влияет |
+
+| H3 | Дедуп схлопывает клипы | неверна | digest кадров различается |
+
+| H4 | Битый `fceux64.exe` | неверна | MD5 = донор 2.6.6 win64 |
+
+| H5 | Шаблон в `portable/movies/` — причина demo | переоценена | Гигиена переноса в `reference/header.fm2` полезна, playback не лечит |
+
+| H6 | Агент получает CP4 на title | неверна | CP на title невалидны; запись с frame 18 gameplay |
+
+
 
 ---
+
+
+
+## Отвергнутые гипотезы (сессия playback 2026-07-15)
+
+
+
+### Данные / embed / GUID
+
+
+
+| ID | Гипотеза | Вердикт | Наблюдение |
+
+| -- | -------- | ------- | ---------- |
+
+| P1 | Нет GUID в FCS @5699 — **единственная** причина attract | **неверна как полное объяснение** | После `refresh_fm2_embedded_savestate` + `stage_playback_fc0` симптом **остаётся** |
+
+| P2 | `remap_fm2_guid` в staging достаточен для картинки | неверна | Нужен, но недостаточен |
+
+| P3 | Stale embed в `ep*.fm2` — playback читает старый attract-state | частично | `stage_playback_fc0` из `inference_cp0` исключает stale **для внешнего** `.fc0`; embed в FM2 refresh'ится; **визуал не меняется** |
+
+| P4 | `playback.fc0` ≠ `inference_cp0` (битый mirror) | неверна | Отличие только GUID @5699; тело FCS совпадает |
+
+
+
+### CLI: порядок `-loadstate` / `-playmovie`
+
+
+
+| ID | Гипотеза | Вердикт | Наблюдение |
+
+| -- | -------- | ------- | ---------- |
+
+| P5 | Bridge-order: `-loadstate fc0` **перед** `-playmovie` | **неверна** (с overlay) | `NO-MOVIE`, «Movie playback stopped» |
+
+| P6 | Doc-order: `-playmovie fm2 -readonly 1 -loadstate fc0 rom` | **неверна** | `Error(s) reading state 0!` (конфликт embed в FM2 + внешний loadstate) |
+
+| P7 | Embed-only: `-playmovie fm2 -readonly 1 rom` (без `-loadstate`) | **неверна для PPU** | Movie active, overlay OK; **экран title**; HUD `REPLAY/GAMEPLAY r=0x00` к f≈8 |
+
+| P8 | Явный `-loadstate` перед `-playmovie` + achievement overlay (ранний R1) | **неверна** | Attract demo сохраняется; порядок не даёт gameplay **на экране** |
+
+
+
+### Lua bootstrap / savestate.load
+
+
+
+| ID | Гипотеза | Вердикт | Наблюдение |
+
+| -- | -------- | ------- | ---------- |
+
+| P9 | `savestate.load(slot)` при `lives>10` (attract heuristic) | неверна | На title f≈8 уже `L=0` — bootstrap **не вызывается** |
+
+| P10 | `savestate.load(slot)` при `mf<=1` после `-playmovie` | **неверна для PPU** | `boot=OK`; экран **title** |
+
+| P11 | Mirror в `fceux/portable/fcs/{rom}.fc0` (+ `.playback.fc0`, `.playback.fm2.fc0`) | недостаточна | Слот доступен; load «успешен», картинка не меняется |
+
+| P12 | `savestate.load` **после** `movie.play()` на `mf<=1` (`boot=PLAY+LD`) | **неверна для PPU** | f≈58: title, `r=0x00`, `boot=PLAY+LD` |
+
+| P13 | `movie.playbeginning()` после load на `mf<=1` (`boot=SYNC`) | **неверна** | Пользователь: результат тот же (title) |
+
+| P14 | Lua `movie.play()` вместо CLI `-playmovie` | **неверна** | `boot=PLAY`; title или black screen |
+
+| P15 | Двухфазный Lua: ROM → `load` → `movie.play(embed)` | **неверна** | `boot=PLAY` (фаза `LD` краткая); title к f≈7 |
+
+| P16 | Двухфазный: CLI `-loadstate` → Lua `movie.play` (strip embed) | **неверна** | Чёрный экран f≈15 `r=0x02` (траектория power-on); затем title с reload |
+
+
+
+### Strip embed / конфликт state 0
+
+
+
+| ID | Гипотеза | Вердикт | Наблюдение |
+
+| -- | -------- | ------- | ---------- |
+
+| P17 | Удалить `savestate` из FM2, полагаться на `-loadstate` | неверна | `Error(s) reading state 0!` при `-playmovie` без строки savestate |
+
+| P18 | Strip embed + только CLI loadstate (без Lua play) | не тестировалось до конца | Отвергнуто цепочкой P16 / P5 |
+
+
+
+### Диагностика RAM / HUD
+
+
+
+| ID | Гипотеза | Вердикт | Наблюдение |
+
+| -- | -------- | ------- | ---------- |
+
+| P19 | `room==0x00` ⇒ gameplay (HUD `REPLAY/GAMEPLAY`) | **неверна** | Title к f≈8 уже `r=0x00` (`human_playthrough` frame 8: `0x05`, но в probe/power-on+movie — `0x00`) |
+
+| P20 | `lives>10` ⇒ title phase | частично | Ранние кадры attract; на title после demo `L=0` — эвристика бесполезна |
+
+| P21 | `mf < gameplay_start_frame (18)` ⇒ title в HUD | частично верна как **метка movie**, не как PPU | Inference FM2: frame 1 = первый кадр **агента**, не кадр 18 эталона; HUD не отражает экран |
+
+| P22 | Headless probe Lua (`-noicon`, no GUI) воспроизводит GUI | неверна | `registerafter` / IO в headless ненадёжны; GUI — единственный валидный тест |
+
+
+
+### Прочее (ранее отвергнуто, зафиксировать)
+
+
+
+| ID | Гипотеза | Вердикт |
+
+| -- | -------- | ------- |
+
+| P23 | `movie.playbeginning()` при init скрипта | неверна — «No movie loaded» / stop |
+
+| P24 | Replay через `FceuxBridge` + jsonl вместо FM2 | **идеологически отклонён** — см. ниже |
+
+
+
+---
+
+
+
+## Что не решило playback (не продолжать без новой идеи)
+
+
+
+- Очистка `fceux/portable/movies/`, `fceux.cfg`
+
+- Пересборка плейлиста / remap GUID / refresh embed **без смены контракта FCEUX**
+
+- Любая комбинация **embed + внешний `-loadstate`** в одном CLI-вызове
+
+- Lua `savestate.load` до/после `movie.play` / `playbeginning` на win64 GUI
+
+- Strip embed при сохранении `-playmovie` в CLI
+
+- Bridge-order `-loadstate` перед `-playmovie` (с `achievement_overlay.lua`)
+
+- Эвристики HUD по `room` / `lives` как критерий закрытия issue
+
+- **Replay через bridge + jsonl** — обход FM2; эфир/OBS завязаны на movie mode (BACKLOG 3.1–3.2)
+
+
+
+---
+
+
 
 ## Полезные изменения в ветке (оставить)
 
+
+
 | Изменение | Зачем |
+
 | --------- | ----- |
-| `reference/header.fm2` + `default_fm2_template()` из `games/…/reference/` | артефакты игры в плагине, не в `fceux/portable/` |
-| `run_inference`: сохранение `fm2_path` в `attempts.jsonl` | корректный clone в `build_playlist` |
-| `build_playlist`: `remap_fm2_guid` после fallback `export_fm2` | уникальные GUID клипов |
-| `warn_portable_movies_pollution()` в preflight | ранний сигнал загрязнения `portable/movies/` |
-| Тесты `test_fm2_export`, `test_playlist_embed` | регрессия export / playlist |
-| Документация `ML_CONCEPT`, `SCRIPTS` | путь к шаблону |
+
+| `reference/header.fm2`, `default_fm2_template()` | артефакты в плагине |
+
+| `ensure_savestate_movie_guid`, `refresh_fm2_embedded_savestate` | корректный embed + GUID |
+
+| `src/fm2_playback.py` (`stage_playback_fc0`, `stage_external_playback`) | staging helpers, тесты, будущий bootstrap |
+
+| `achievement_overlay.lua` HUD (`REPLAY/TITLE`) | диагностика playback |
+
+| `run_inference`: `fm2_path` в attempts | playlist |
+
+| Тесты `test_fm2_export`, `test_fm2_playback`, `test_playlist_embed` | регрессия данных |
+
+| `warn_portable_movies_pollution()` | preflight |
+
+
 
 ---
 
-## Что не решило playback (не продолжать в том же направлении)
 
-- Очистка / сброс `fceux/portable/movies/` и `fceux.cfg` без loadstate при play
-- Пересборка плейлиста из тех же `ep*.fm2` (копия без смены контракта play)
-- Remap GUID в staging (нужен, но недостаточен)
+
+## Направления, **не** опробованные до конца (не отвергнуты, но нет результата)
+
+
+
+| ID | Идея | Почему остаётся |
+
+| -- | ---- | --------------- |
+
+| N1 | **Playback-bootstrap `.fc0`**: save state в FCEUX **при активном movie frame 0** того же FM2 (movie-bound FCS) | `inference_cp0` сохранён с `clear.fm2`, не с ep-FM2; load при readonly может требовать sync blob |
+
+| N2 | Другая версия / сборка FCEUX (не 2.6.6 win64) | Баг может быть платформенным |
+
+| N3 | `fceux.cfg`: «Load full savestate-movies», «Bind savestates to movies» | Не проверялось систематически |
+
+| N4 | Smoke с `requires_fceux` + скриншот-хэш / RAM x,y @ gameplay | Нет автоматического критерия «зелёного» playback |
+
+| N5 | Перезапись `ep*.fm2` из pipeline после фикса GUID (не только staging) | Улучшает self-contained, не доказано для PPU |
+
+
+
+---
+
+
+
+## Текущий контракт кода (не закрывает issue)
+
+
+
+```
+
+staging: remap_fm2_guid → refresh embed from inference_cp0
+CLI:     fceux -lua achievement_overlay.lua -playmovie playback.fm2 -readonly 1 rushn_attack
+Lua:     диагностический HUD; без savestate bootstrap
+
+```
+
+
+
+**Фактический результат (2026-07-15):** title screen; см. таблицы P1–P24.
+
+
 
 ---
 
-## Пути решения (следующий спринт)
 
-### R1 — Явный `-loadstate` перед `-playmovie` (рекомендуется)
-
-В `play_inference_fm2.py`:
-
-1. Извлечь embedded savestate из FM2 (или использовать `inference_cp0.fc0` как fallback).
-2. Запуск: `-loadstate <state>` → `-playmovie playback.fm2` (проверить порядок аргументов FCEUX 2.6.6).
-3. Staging: один `.fc0` рядом с ROM в `tmp/play_fm2/staging/`.
-
-**Критерий:** визуально gameplay-start (room `0x00`, не title demo); ep3 короче ep1 по wall time.
-
-### R2 — Проверить контракт embedded `savestate` в FM2
-
-- Совпадение `guid` в заголовке и в blob savestate (`patch_savestate_movie_guid` — в `inference_cp0` может быть 0 GUID в blob).
-- Минимальный repro: один FM2, Load ROM → Play Movie в чистом FCEUX без `portable/movies/*.fm2`.
-- Обновить критерий BACKLOG 3.1, если embed не поддерживается win32-портом.
-
-### R3 — Альтернатива: replay через bridge + Lua
-
-Воспроизведение inputs из jsonl через `FceuxBridge` (как inference), без FM2 movie mode — тяжелее, но контракт совпадает с записью.
-
-### R4 — Диагностика в CI / smoke
-
-- `pytest` + `@pytest.mark.requires_fceux`: export FM2 → `play_inference_fm2` 1 клип → проверка RAM (room/y) через Lua или скриншот-хэш (опционально).
-
----
 
 ## Воспроизведение
 
+
+
 ```bash
-# 1. Короткий inference + плейлист
-./scripts/inference_local.sh --episodes 3 --max-steps 600 --stochastic \
-  --save-episode-fm2 --build-playlist
 
-# 2. Playback (симптом: attract demo)
 ./.venv/Scripts/python.exe scripts/play_inference_fm2.py \
-  games/rushn_attack/missions/m1/logs/YYYYMMDD_playlist.json
 
-# 3. Контраст: запись идёт с gameplay-start
-# В логе run_inference: embedded savestate: states/inference_cp0.fc0
-# human_playthrough frame 18: room 0x00, checkpoint 0
+  games/rushn_attack/missions/m1/logs/20260715_ep0001.fm2 --skip-preflight
+
 ```
 
-**Preflight:** `fceux/portable/movies/` должен быть **пуст** (нет FM2 с `romChecksum` игры).
+
+
+Контраст записи:
+
+
+
+```bash
+
+# run_inference: embedded savestate: states/inference_cp0.fc0
+
+# human_playthrough frame 18: room 0x00, x=129 (gameplay-start)
+
+```
+
+
+
+**Preflight:** `fceux/portable/movies/` пуст.
+
+
 
 ---
+
+
 
 ## Чеклист закрытия
 
-- [ ] `play_inference_fm2` стартует с `inference_cp0` (embed или `-loadstate`)
-- [ ] Визуально: не attract demo; различимы ep1 vs ep3 по длительности/картинке
-- [ ] Ручное открытие FM2 из `logs/` документировано (если остаётся ограничение FCEUX)
-- [ ] BACKLOG 3.1 критерий уточнён под фактический контракт win32
-- [ ] Smoke/integration тест с `requires_fceux` (опц.)
+
+
+- [ ] Визуальный gameplay-start при playback (не title / black)
+
+- [ ] HUD `REPLAY/GAMEPLAY` **и** совпадение PPU (x≈129, комната 1)
+
+- [ ] Контракт win64 документирован (или смена эмулятора/версии)
+
+- [ ] Опц.: smoke `requires_fceux` со скриншот/RAM assert
+
+- [ ] BACKLOG 3.1 критерий уточнён под фактический контракт
+
+
 
 ---
 
+
+
 ## Ссылки на код
 
+
+
 | Файл | Роль |
+
 | ---- | ---- |
-| `scripts/play_inference_fm2.py` | playback staging, `-playmovie` |
-| `src/fm2_export.py` | embed savestate, GUID, template |
-| `src/inference_states.py` | `inference_cp0`, gameplay_start_frame |
-| `scripts/build_inference_states.py` | сборка `inference_cp0.fc0` |
-| `src/stream/run_inference.py` | запись с `-loadstate` |
-| `games/…/reference/header.fm2` | шаблон метаданных ROM (не replay) |
+
+| `scripts/play_inference_fm2.py` | staging, запуск FCEUX |
+
+| `src/fm2_playback.py` | argv, staging helpers |
+
+| `src/fm2_export.py` | embed, GUID, `refresh_fm2_embedded_savestate` |
+
+| `fceux/lua/achievement_overlay.lua` | overlay + HUD + sync bootstrap |
+
+| `games/…/states/inference_cp0.fc0` | gameplay-start state |
+
+| `games/…/reference/human_playthrough.jsonl` | эталон room/x по кадрам |
+
+| `src/stream/run_inference.py` | запись с bridge `-loadstate` |
+
+

@@ -42,6 +42,9 @@ _HEADER_KEYS_STRIP = frozenset({"guid", "length", "savestate"})
 _GUID_BYTES_RE = re.compile(
     rb"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"
 )
+# FCEUX 2.6.6 FCS: movie GUID в фиксированном смещении (cp0 / inference_cp1+ @ 5699).
+FCS_MOVIE_GUID_OFFSET = 5699
+FCS_MOVIE_GUID_LEN = 36
 
 
 def default_fm2_template(
@@ -98,12 +101,75 @@ def read_fm2_guid(fm2_path: Path) -> str | None:
 
 
 def fm2_has_embedded_savestate(fm2_path: Path) -> bool:
+    return read_embedded_savestate_blob(fm2_path) is not None
+
+
+def read_embedded_savestate_blob(fm2_path: Path) -> bytes | None:
+    """Бинарный FCS из строки `savestate 0x…` в заголовке FM2."""
     for line in fm2_path.read_text(encoding="utf-8", errors="replace").splitlines():
         if line.startswith("|"):
             break
+        if line.startswith("savestate 0x"):
+            hex_body = line.split(None, 1)[1]
+            return bytes.fromhex(hex_body[2:])
+    return None
+
+
+PLAYBACK_SAVESTATE_NAME = "playback.fc0"
+
+
+def stage_playback_savestate(
+    fm2_path: Path,
+    staging: Path,
+    *,
+    fallback_fc0: Path | None = None,
+    state_name: str = PLAYBACK_SAVESTATE_NAME,
+) -> Path:
+    """Записать .fc0 в staging для `-loadstate` перед `-playmovie` (FCEUX win64)."""
+    staging.mkdir(parents=True, exist_ok=True)
+    dest = staging / state_name
+    blob = read_embedded_savestate_blob(fm2_path)
+    if blob is None:
+        if fallback_fc0 is None or not fallback_fc0.is_file():
+            raise FileNotFoundError(
+                f"FM2 has no embedded savestate and no fallback .fc0: {fm2_path}"
+            )
+        blob = fallback_fc0.read_bytes()
+        guid = read_fm2_guid(fm2_path)
+        if guid:
+            blob = ensure_savestate_movie_guid(blob, guid)
+    dest.write_bytes(blob)
+    return dest
+
+
+def refresh_fm2_embedded_savestate(
+    fm2_path: Path,
+    save_state_path: Path,
+    *,
+    guid: str | None = None,
+) -> bool:
+    """Подменить embedded FCS из .fc0 и прописать GUID заголовка в blob."""
+    eff_guid = guid or read_fm2_guid(fm2_path)
+    if not eff_guid:
+        raise ValueError(f"FM2 has no guid line: {fm2_path}")
+    if not save_state_path.is_file():
+        raise FileNotFoundError(f"Save state not found: {save_state_path}")
+    hex_val = fc0_to_savestate_hex(save_state_path, target_guid=eff_guid)
+    save_line = f"savestate {hex_val}"
+    lines = fm2_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    out: list[str] = []
+    replaced = False
+    for line in lines:
         if line.startswith("savestate "):
-            return True
-    return False
+            out.append(save_line)
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        insert_at = next((i for i, line in enumerate(out) if line.startswith("|")), len(out))
+        out.insert(insert_at, save_line)
+    fm2_path.write_text("\n".join(out) + "\n", encoding="utf-8", newline="\n")
+    return True
 
 
 def remap_fm2_guid(fm2_path: Path, new_guid: str) -> str:
@@ -119,7 +185,7 @@ def remap_fm2_guid(fm2_path: Path, new_guid: str) -> str:
         elif line.startswith("savestate 0x"):
             hex_body = line.split(None, 1)[1]
             blob = bytes.fromhex(hex_body[2:])
-            blob = patch_savestate_movie_guid(blob, new_guid)
+            blob = ensure_savestate_movie_guid(blob, new_guid)
             out.append("savestate 0x" + blob.hex().upper())
         else:
             out.append(line)
@@ -127,20 +193,31 @@ def remap_fm2_guid(fm2_path: Path, new_guid: str) -> str:
     return old_guid
 
 
+def ensure_savestate_movie_guid(fcs: bytes, target_guid: str) -> bytes:
+    """Прописать movie GUID в FCS: заменить существующий или записать в offset 5699."""
+    target = target_guid.upper().encode("ascii")
+    if len(target) != FCS_MOVIE_GUID_LEN:
+        raise ValueError(f"invalid GUID length: {target_guid!r}")
+    matches = list(_GUID_BYTES_RE.finditer(fcs))
+    if len(matches) == 1:
+        start, end = matches[0].span()
+        if fcs[start:end] == target:
+            return fcs
+        return fcs[:start] + target + fcs[end:]
+    if len(matches) == 0 and len(fcs) >= FCS_MOVIE_GUID_OFFSET + FCS_MOVIE_GUID_LEN:
+        start = FCS_MOVIE_GUID_OFFSET
+        end = start + FCS_MOVIE_GUID_LEN
+        if fcs[start:end] == target:
+            return fcs
+        return fcs[:start] + target + fcs[end:]
+    if len(matches) > 1:
+        raise ValueError(f"expected 0 or 1 movie GUID in save state, found {len(matches)}")
+    return fcs
+
+
 def patch_savestate_movie_guid(fcs: bytes, target_guid: str) -> bytes:
     """Заменить movie GUID в FCS/FCEUX save state на target_guid (если есть ровно один)."""
-    matches = list(_GUID_BYTES_RE.finditer(fcs))
-    if len(matches) == 0:
-        return fcs
-    target = target_guid.upper().encode("ascii")
-    if len(target) != 36:
-        raise ValueError(f"invalid GUID length: {target_guid!r}")
-    if len(matches) != 1:
-        raise ValueError(f"expected 0 or 1 movie GUID in save state, found {len(matches)}")
-    start, end = matches[0].span()
-    if fcs[start:end] == target:
-        return fcs
-    return fcs[:start] + target + fcs[end:]
+    return ensure_savestate_movie_guid(fcs, target_guid)
 
 
 def fc0_to_savestate_hex(
@@ -151,7 +228,7 @@ def fc0_to_savestate_hex(
     """FCEUX .fc0/.fcs → строка `0xHEX` для заголовка FM2."""
     blob = save_state_path.read_bytes()
     if target_guid:
-        blob = patch_savestate_movie_guid(blob, target_guid)
+        blob = ensure_savestate_movie_guid(blob, target_guid)
     return "0x" + blob.hex().upper()
 
 

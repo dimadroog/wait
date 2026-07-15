@@ -18,9 +18,14 @@ from fceux_launch import fceux_sound_off  # noqa: E402
 from fm2_export import (  # noqa: E402
     episode_fm2_guid,
     fm2_has_embedded_savestate,
+    read_fm2_guid,
+    refresh_fm2_embedded_savestate,
     remap_fm2_guid,
 )
+from fm2_playback import fceux_playmovie_argv  # noqa: E402
+from inference_states import gameplay_start_frame, resolve_inference_reset_state  # noqa: E402
 from project_paths import mission_dir, parse_fm2_rom_basename, repo_root, resolve_fceux_binary, resolve_rom  # noqa: E402
+from ram_map_load import load_ram_addresses  # noqa: E402
 
 
 def _count_fm2_frames(fm2: Path) -> int:
@@ -55,6 +60,12 @@ def _resolve_input_path(path: Path, game: str, mission: str) -> Path:
     return candidate.resolve() if candidate.is_file() else path.resolve()
 
 
+def _inference_reset_fc0(game: str, mission: str) -> Path:
+    mdir = mission_dir(game, mission)
+    rel = resolve_inference_reset_state(mdir)
+    return mdir / rel
+
+
 def _stage_clip(
     fm2: Path,
     rom: Path,
@@ -62,11 +73,16 @@ def _stage_clip(
     staging: Path,
     *,
     guid_salt: str,
+    game: str,
+    mission: str,
 ) -> tuple[Path, Path, Path | None]:
     staging.mkdir(parents=True, exist_ok=True)
     staged_fm2 = staging / "playback.fm2"
     shutil.copy2(fm2, staged_fm2)
-    remap_fm2_guid(staged_fm2, episode_fm2_guid(salt=guid_salt))
+    clip_guid = episode_fm2_guid(salt=guid_salt)
+    remap_fm2_guid(staged_fm2, clip_guid)
+    inference_fc0 = _inference_reset_fc0(game, mission)
+    refresh_fm2_embedded_savestate(staged_fm2, inference_fc0, guid=clip_guid)
     rom_base = parse_fm2_rom_basename(fm2)
     staged_rom = _stage_rom(rom, staging, rom_base)
     staged_overlay: Path | None = None
@@ -74,6 +90,21 @@ def _stage_clip(
         staged_overlay = staging / overlay_path.name
         shutil.copy2(overlay_path, staged_overlay)
     return staged_fm2, staged_rom, staged_overlay
+
+
+def _playback_ram_env(game: str, mission: str, env: dict[str, str]) -> None:
+    """RAM-адреса для диагностического HUD в achievement_overlay.lua."""
+    mdir = mission_dir(game, mission)
+    try:
+        addrs = load_ram_addresses(mdir)
+        env["WAIT_PLAYBACK_ROOM"] = str(addrs["room"])
+        if "lives" in addrs:
+            env["WAIT_PLAYBACK_LIVES"] = str(addrs["lives"])
+    except (FileNotFoundError, KeyError):
+        pass
+    gf = gameplay_start_frame(mdir)
+    if gf is not None:
+        env["WAIT_PLAYBACK_GAMEPLAY_START"] = str(gf)
 
 
 def _run_fceux_clip(
@@ -89,8 +120,6 @@ def _run_fceux_clip(
 ) -> None:
     cmd = [
         str(fceux),
-        "-readonly",
-        "1",
         "-noicon",
         "1",
         "-lua",
@@ -98,7 +127,7 @@ def _run_fceux_clip(
     ]
     if turbo:
         cmd.extend(["-nothrottle", "1"])
-    cmd.extend(["-playmovie", staged_fm2.name, staged_rom.name])
+    cmd.extend(fceux_playmovie_argv(staged_fm2=staged_fm2, staged_rom=staged_rom))
 
     with fceux_sound_off(fceux.parent):
         proc = subprocess.Popen(cmd, cwd=str(staging), env=env)
@@ -120,8 +149,13 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
     rom = resolve_rom(args.game)
     staging = repo_root() / "tmp" / "play_fm2" / "staging"
     staged_fm2, staged_rom, staged_overlay = _stage_clip(
-        fm2, rom, overlay_path if overlay_path.is_file() else None, staging,
+        fm2,
+        rom,
+        overlay_path if overlay_path.is_file() else None,
+        staging,
         guid_salt=fm2.stem,
+        game=args.game,
+        mission=args.mission,
     )
 
     portable_movies = repo_root() / "fceux" / "portable" / "movies"
@@ -145,12 +179,17 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
         env["WAIT_ACHIEVEMENT_OVERLAY"] = str(overlay_path.resolve())
     else:
         print(f"Warning: overlay not found: {overlay_path}", file=sys.stderr)
+    _playback_ram_env(args.game, args.mission, env)
 
     frames = _count_fm2_frames(fm2)
     overlay_hold = _overlay_hold_frames(overlay_path if overlay_path.is_file() else sidecar)
     timeout = max(args.timeout, (frames + overlay_hold) / 30.0 + 10.0)
 
-    print(f"Playing {fm2.name} ({frames} frames), save_state=embedded", flush=True)
+    print(
+        f"Playing {fm2.name} ({frames} frames), "
+        f"embed=refreshed guid={read_fm2_guid(staged_fm2)}",
+        flush=True,
+    )
     if overlay_path.is_file():
         print(f"Overlay: {overlay_path}")
 
@@ -202,7 +241,6 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
         overlay_name = clip.get("overlay") or fm2.with_suffix(".overlay.json").name
         overlay_path = logs_dir / overlay_name
 
-        # Один клип в staging: FCEUX путает FM2 с одинаковым guid в одной папке.
         if staging_root.exists():
             shutil.rmtree(staging_root)
         staging_root.mkdir(parents=True)
@@ -212,6 +250,8 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
             overlay_path if overlay_path.is_file() else None,
             staging_root,
             guid_salt=fm2.stem,
+            game=args.game,
+            mission=args.mission,
         )
 
         env = os.environ.copy()
@@ -221,6 +261,7 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
             env["WAIT_ACHIEVEMENT_OVERLAY"] = str(overlay_path.resolve())
         if clip.get("block_label"):
             env["WAIT_BLOCK_LABEL"] = str(clip["block_label"])
+        _playback_ram_env(args.game, args.mission, env)
 
         frames = _count_fm2_frames(staged_fm2)
         hold = _overlay_hold_frames(overlay_path if overlay_path.is_file() else staged_overlay)

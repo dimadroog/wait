@@ -65,6 +65,76 @@ local function init_block_label()
   end
 end
 
+local function movie_is_active()
+  return movie and movie.active and movie.active()
+end
+
+local movie_done = false
+local movie_ever_active = false
+
+local function gameplay_start_mf()
+  local from_env = os.getenv("WAIT_PLAYBACK_GAMEPLAY_START")
+  if from_env and from_env ~= "" then
+    local n = tonumber(from_env)
+    if n and n > 0 then
+      return n
+    end
+  end
+  return 18
+end
+
+local function is_title_phase(room, lives, mf)
+  local start_mf = gameplay_start_mf()
+  if mf > 0 and mf < start_mf then
+    return true
+  end
+  if room == 0xFF or room == 0x13 or room == 0x05 then
+    return true
+  end
+  if lives > 10 then
+    return true
+  end
+  return false
+end
+
+local function draw_playback_hud()
+  local room_env = os.getenv("WAIT_PLAYBACK_ROOM")
+  if not room_env or room_env == "" then
+    return
+  end
+  local room_addr = tonumber(room_env)
+  if not room_addr then
+    return
+  end
+  local active = movie_is_active()
+  local mf = 0
+  if active then
+    mf = movie.framecount()
+  end
+  local room = memory.readbyte(room_addr)
+  local lives = 0
+  local lives_env = os.getenv("WAIT_PLAYBACK_LIVES")
+  if lives_env and lives_env ~= "" then
+    local lives_addr = tonumber(lives_env)
+    if lives_addr then
+      lives = memory.readbyte(lives_addr)
+    end
+  end
+  local phase = "GAMEPLAY"
+  if is_title_phase(room, lives, mf) then
+    phase = "TITLE"
+  end
+  local tag = active and ("REPLAY/" .. phase) or "NO-MOVIE"
+  local color = "red"
+  if active and phase == "GAMEPLAY" then
+    color = "limegreen"
+  elseif active then
+    color = "orange"
+  end
+  local hud = string.format("%s f=%d r=0x%02X L=%d", tag, mf, room, lives)
+  gui.text(8, 220, hud, color)
+end
+
 local function draw_overlay()
   local path = overlay_path()
   if path == "" then
@@ -109,26 +179,29 @@ end
 
 init_block_label()
 
-local movie_done = false
-
 emu.registerafter(function()
+  draw_playback_hud()
   draw_overlay()
   if movie_done then
     return
   end
-  local active = movie and movie.active and movie.active()
-  local frame = (movie and movie.framecount and movie.framecount()) or 0
-  local mlen = (movie and movie.length and movie.length()) or -1
-  if not active then
-    if overlay_cache and emu.framecount() <= overlay_until_frame then
+  if movie_is_active() then
+    movie_ever_active = true
+  end
+  if not movie_is_active() then
+    if movie_ever_active and overlay_cache and emu.framecount() <= overlay_until_frame then
       return
     end
-    movie_done = true
-    if os and os.exit then
-      os.exit(0)
+    if movie_ever_active then
+      movie_done = true
+      if os and os.exit then
+        os.exit(0)
+      end
     end
     return
   end
+  local frame = movie.framecount()
+  local mlen = movie.length()
   if mlen and mlen > 0 and frame >= mlen then
     if overlay_cache and emu.framecount() <= overlay_until_frame then
       return
