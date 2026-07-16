@@ -50,7 +50,6 @@ if [[ ${#ARGS[@]} -eq 0 ]]; then
     --episodes 6
     --max-steps 1200
     --stochastic
-    --save-episode-fm2
     --build-playlist
   )
 else

@@ -313,56 +313,11 @@ def write_fm2_sidecar(
     *,
     overlay: dict[str, Any] | None = None,
 ) -> Path:
-    """Sidecar рядом с FM2: achievement overlay для Lua replay."""
+    """Sidecar .overlay.json рядом с FM2 (N6 / тесты формата)."""
     sidecar = fm2_path.with_suffix(".overlay.json")
     payload: dict[str, Any] = dict(overlay or {})
     sidecar.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return sidecar
-
-
-def write_fm2_artifacts(
-    fm2_path: Path,
-    *,
-    overlay: dict[str, Any] | None = None,
-) -> Path:
-    """Sidecar .overlay.json для achievement replay."""
-    return write_fm2_sidecar(fm2_path, overlay=overlay)
-
-
-def export_fm2(
-    jsonl_path: Path,
-    out_path: Path,
-    *,
-    template: Path | None = None,
-    episode: int | None = None,
-    frame_skip: int = DEFAULT_FRAME_SKIP,
-    overlay: dict[str, Any] | None = None,
-    save_state_path: Path,
-    game_id: str = "rushn_attack",
-    mission_id: str = "m1",
-) -> int:
-    """jsonl → self-contained .fm2; возвращает число FM2-кадров."""
-    tmpl = template or default_fm2_template(game_id, mission_id)
-    rows = list(iter_jsonl(jsonl_path))
-    if not rows:
-        raise ValueError(f"No rows in {jsonl_path}")
-
-    frame_lines = list(iter_episode_frames(rows, episode=episode, frame_skip=frame_skip))
-    header = build_fm2_header(
-        tmpl,
-        guid=episode_fm2_guid(episode),
-        embed_savestate=True,
-        save_state_path=save_state_path,
-    )
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8", newline="\n") as f:
-        for line in header:
-            f.write(line + "\n")
-        for frame_line in frame_lines:
-            f.write(frame_line + "\n")
-    if overlay:
-        write_fm2_sidecar(out_path, overlay=overlay)
-    return len(frame_lines)
 
 
 def export_episode_fm2_from_steps(

@@ -32,7 +32,7 @@ from project_paths import mission_dir  # noqa: E402
 
 def main() -> None:
 
-    parser = argparse.ArgumentParser(description="Build FM2 playlist by achievement nominations")
+    parser = argparse.ArgumentParser(description="Build inference playlist by achievement nominations")
 
     parser.add_argument("--game", default="rushn_attack")
 
@@ -40,8 +40,8 @@ def main() -> None:
 
     parser.add_argument("--attempts", default=None)
 
-    parser.add_argument("--inputs", default=None, help="inference_inputs.jsonl for on-demand FM2 export")
-    parser.add_argument("--no-dedupe", action="store_true", help="не пропускать дубликаты FM2 в плейлисте")
+    parser.add_argument("--inputs", default=None, help="inference_inputs.jsonl (обязателен)")
+    parser.add_argument("--no-dedupe", action="store_true", help="не пропускать дубликаты эпизодов в плейлисте")
 
     args = parser.parse_args()
 
@@ -55,47 +55,25 @@ def main() -> None:
 
     inputs = Path(args.inputs) if args.inputs else dated_log_path(logs, "inference_inputs")
 
-
-
     if not attempts.is_file():
-
         raise SystemExit(f"Attempts log not found: {attempts}")
-
-    from inference_preflight import require_playback_preflight  # noqa: E402
-
-    require_playback_preflight(label="build_playlist")
+    if not inputs.is_file():
+        raise SystemExit(f"inference_inputs not found: {inputs}")
 
     created, manifest_path, clip_count = build_playlist(
-
         attempts,
-
         logs,
-
-        inference_inputs_path=inputs if inputs.is_file() else None,
-
+        inference_inputs_path=inputs,
         game=args.game,
-
         mission=args.mission,
-
         dedupe=not args.no_dedupe,
-
     )
-
     if manifest_path:
-
         print(f"Manifest: {manifest_path} ({clip_count} clips)")
-
         print(f"Launcher: {manifest_path.with_suffix('.play.cmd')}")
-
     else:
-
         print("No clips matched nominations")
-
-    print(f"Blocks: {len(created)} slug(s), {sum(len(v) for v in created.values())} FM2 under {logs}")
-
-    for slug, paths in created.items():
-
-        print(f"  {slug}: {len(paths)} file(s)")
+    print(f"Blocks: {len(created)} slug(s), {sum(len(v) for v in created.values())} clips under {logs}")
 
 
 

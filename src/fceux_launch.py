@@ -134,6 +134,72 @@ def fceux_sound_off(fceux_dir: Path):
     yield
 
 
+def _wait_fceux_done(
+    proc: subprocess.Popen,
+    *,
+    done_flag: Path | None,
+    timeout_sec: float,
+) -> None:
+    deadline = time.time() + timeout_sec
+    while proc.poll() is None:
+        if done_flag and done_flag.is_file():
+            proc.wait(timeout=30)
+            return
+        if time.time() > deadline:
+            proc.terminate()
+            raise TimeoutError(f"FCEUX timeout ({timeout_sec}s)")
+        time.sleep(0.2)
+    if proc.returncode not in (0, None):
+        raise RuntimeError(f"FCEUX exited with code {proc.returncode}")
+
+
+def run_fceux_lua(
+    lua_script: Path,
+    config_path: Path,
+    cwd: Path,
+    rom: Path,
+    timeout_sec: float,
+    done_flag: Path | None = None,
+    *,
+    noicon: bool = True,
+    turbo: bool = True,
+    extra_args: list[str] | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> None:
+    """FCEUX + Lua без -playmovie (N6 record probe и др.)."""
+    fceux = resolve_fceux_binary()
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
+    env["WAIT_FCEUX_LUA_CONFIG"] = str(config_path.resolve())
+
+    if done_flag and done_flag.exists():
+        done_flag.unlink()
+
+    cmd = [str(fceux)]
+    if noicon:
+        cmd.extend(["-noicon", "1"])
+    if turbo:
+        cmd.extend(["-turbo", "1", "-nothrottle", "1"])
+    cmd.extend(["-lua", str(lua_script.resolve())])
+    if extra_args:
+        cmd.extend(extra_args)
+    cmd.append(rom.name)
+
+    popen_flags = 0
+    if sys.platform == "win32" and noicon:
+        popen_flags = subprocess.CREATE_NO_WINDOW
+
+    with fceux_sound_off(fceux.parent):
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            creationflags=popen_flags,
+        )
+        _wait_fceux_done(proc, done_flag=done_flag, timeout_sec=timeout_sec)
+
+
 def run_fceux_movie(
     staged_fm2: Path,
     staged_rom: Path,
@@ -182,14 +248,4 @@ def run_fceux_movie(
             env=env,
             creationflags=popen_flags,
         )
-        deadline = time.time() + timeout_sec
-        while proc.poll() is None:
-            if done_flag and done_flag.is_file():
-                proc.wait(timeout=30)
-                return
-            if time.time() > deadline:
-                proc.terminate()
-                raise TimeoutError(f"FCEUX timeout ({timeout_sec}s)")
-            time.sleep(0.2)
-        if proc.returncode not in (0, None):
-            raise RuntimeError(f"FCEUX exited with code {proc.returncode}")
+        _wait_fceux_done(proc, done_flag=done_flag, timeout_sec=timeout_sec)

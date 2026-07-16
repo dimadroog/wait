@@ -60,6 +60,7 @@
 | **3.1** | Inference: self-contained FM2                               | medium    | **3.0 (рекомендуется)**                                    | 1.x, 2                         |
 | **3.2** | Playlist и replay: self-contained FM2 клипы                 | medium    | 3.1, **3.0 (рекомендуется)**                               | 1.x, 2                         |
 | **3.3** | Inference: без legacy replay + убрать `inference_config.py` | low       | 3.1, 3.2                                                   | 1.x, 2                         |
+| **3.4** | Плейлист попыток inference (replay)                       | **high**  | 3.0, ISSUE_INFERENCE                                       | 1.x, 2                         |
 | **4.1** | Smoke: единый `run_smoke.py` (Facade)                       | medium    | —                                                          | 1.x, 3.x                       |
 | **4.2** | Train: `--smoke` / без `runs/` для коротких прогонов        | low       | 1.1 (рекомендуется), **1.9 (рекомендуется — e2e stable)**  | 1.x                            |
 | **4.3** | Тесты: pytest smoke + `conftest` cleanup                    | low       | 4.1 (рекомендуется)                                        | 1.x, 3.x                       |
@@ -120,7 +121,7 @@ flowchart LR
 
 **Комфортный train на Windows:** 1.2 перед повышением `n_envs` — иначе 8 окон FCEUX усилят перехват фокуса.
 
-**Эфир / inference-демо:** **3.0** → 3.1 → 3.2 → 3.3. **3.0 обязателен до осмысленного inference/плейлиста** (сейчас `inference_cp0` / `cp0` = кадр 1 эталона, intro + ложная смерть по `lives`). Train не блокирует; без эталона (Phase 0) кадр gameplay не определить.
+**Эфир / inference-демо:** **3.0** → **[3.4]** (плейлист попыток агента). Этапы 3.1–3.3 закрыли embed FM2 + `-playmovie`, но **цель не достигнута** (ISSUE_INFERENCE) — replay-слой переписывается в 3.4.
 
 **Чистка репозитория (Phase 0):** этап 2 закрыт; fallback `logs/ram_`* — удалить в **[4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e)**.
 
@@ -149,6 +150,7 @@ flowchart LR
 | 3.1  | `src/fm2_export.py`, `scripts/export_fm2.py`, `src/stream/run_inference.py`                                                                                                                  |
 | 3.2  | `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`, `fceux/lua/achievement_overlay.lua`                                                            |
 | 3.3  | `src/inference_states.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`                                                                         |
+| 3.4  | `src/achievements/playlist.py`, `scripts/build_playlist.py`, `scripts/play_inference_fm2.py` (переписать), `fceux/lua/`, `src/stream/run_inference.py`, `docs/ISSUE_INFERENCE.md` |
 | 4.1  | `scripts/run_smoke.py`, `scripts/smoke_*.py`, `scripts/test_parallel_env.py`, `docs/DESIGN.md`                                                                                               |
 | 4.2  | `src/train/train_ppo.py`, `docs/SCRIPTS.md`                                                                                                                                                  |
 | 4.3  | `tests/conftest.py`, `tests/smoke/`, `requirements.txt` (pytest)                                                                                                                             |
@@ -806,6 +808,8 @@ games/…/missions/m1/
 - [x] `docs/SCRIPTS.md` описывает новый поток и отличие от эталона `reference/clear.fm2`.
 - [x] Bootstrap-скрипт и `reference/inference_bootstrap.fm2` удалены; GUID-bound replay — через embed `savestate`.
 
+**Пересмотр (ISSUE_INFERENCE, 2026-07-16):** критерий «FM2 без `-loadstate`» **не соответствует цели** (плейлист попыток на эфире). Movie readonly даёт title ~50 кадров при RAM bootstrap. Replay-слой из 3.1–3.3 **снимается** в **[3.4]**.
+
 ### Заметки
 
 - Save state привязан к `emuVersion` FCEUX — использовать ту же portable-сборку, что при записи `cp*.fc0`.
@@ -933,6 +937,75 @@ games/…/missions/m1/
 - Train env по-прежнему читает `states/cp0.fc0` из manifest — отдельный контракт, не трогать.
 - «Голый» FM2 без Lua — replay OK, трофеев нет (ожидаемо).
 - Не плодить новый конфиг для GUID.
+
+---
+
+## [3.4] Плейлист попыток inference (replay)
+
+**Статус:** **почти закрыт** — jsonl replay + E2E pass; **GUI-эфир требует ручного подтверждения** (серый экран исправлен: register hooks, turbo opt-in)  
+**Этап:** 3.4  
+**Приоритет:** **high**  
+**Зависит от:** 3.0, ISSUE_INFERENCE (N6 visual sweep)  
+**Файлы:** `src/achievements/playlist.py`, `scripts/build_playlist.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`, `src/stream/run_inference.py`, `docs/ISSUE_INFERENCE.md`, `docs/SCRIPTS.md`  
+**Контекст в чат:** эта секция + `docs/ML_CONCEPT.md` § achievements/плейлист + `docs/ISSUE_INFERENCE.md`
+
+### Цель (единственная)
+
+Собирать в **плейлист** попытки агента **текущего уровня обучения** (номинации achievements) и **проигрывать их подряд** на эфире: gameplay с первого кадра, overlay метрик/трофеев. Это требование концепции ([ML_CONCEPT.md](ML_CONCEPT.md) § achievements/плейлист); **сейчас не работает**.
+
+Цепочка:
+
+```
+run_inference → attempts.jsonl + inference_inputs.jsonl
+      → eval_achievements (tags)
+      → build_playlist → playlist.json
+      → play (эфир/OBS)
+```
+
+### Почему не работает (3.1–3.3)
+
+Replay завязан на **movie readonly** (`-playmovie` + embedded FM2). N6 + visual sweep: PPU = **title** ~50 кадров, RAM = bootstrap `x=129`. Native `movie.record` — то же. Путь **не лечится** сменой embed / staging / GUID.
+
+Код embed-FM2 + `play_inference_fm2.py` (`-playmovie`) **не несёт ценности** для цели — привёл к ложному «done» в 3.1–3.2 и открыл ISSUE_INFERENCE.
+
+### Решение (один контракт)
+
+**Replay = emulation**, как `run_inference`: `-loadstate inference_cp0` + покадровый ввод из `inference_inputs.jsonl`. Без movie mode.
+
+| Слой | Артефакт | Кто читает |
+| ---- | -------- | ---------- |
+| Попытка | `attempts.jsonl` (метрики, tags, `inference_inputs_ref`) | playlist, overlay |
+| Ввод | `inference_inputs.jsonl` (episode, step, action, frame) | replay Lua |
+| Плейлист | `playlist.json` — ссылки на episode + overlay | `play_inference_fm2.py` |
+| Эфир | FCEUX GUI + overlay | OBS |
+
+FM2 **убрать** из inference-пайплайна (экспорт эпизода, копии в плейлисте, `-playmovie`). Эталон `reference/clear.fm2` (Phase 0) — не трогать.
+
+### Чеклист сессии
+
+- [x] Replay Lua: `inference_inputs.jsonl` → `joypad.set` (frame_skip=4), без `movie.*` (`achievement_overlay.lua`)
+- [x] `play_inference_fm2.py`: emulation+jsonl; playlist по `episode` из manifest
+- [x] `build_playlist`: manifest без FM2; клип = `(inference_inputs, episode, overlay)`
+- [x] `run_inference`: убраны `--save-episode-fm2` / embed export
+- [x] Удалён `export_fm2.py`; inference-путь без FM2 export
+- [x] Visual probe N4: gameplay @ reset (frame 1) + mid-episode (frame 200); mf=8 — метрика movie, не emulation
+- [x] `test_playback_overlay_fceux.py`: overlay register-hooks + non-turbo timing
+- [x] End-to-end: inference → playlist → play (20260716, 1600 frames, ~30s без `--turbo`)
+- [ ] **Ручной демо-прогон:** `20260716_playlist.play.cmd` — на экране gameplay, не серый/title
+
+### Критерий готовности
+
+- [x] Плейлист из `run_inference` проигрывается end-to-end (автотест + timing)
+- [ ] На экране FCEUX GUI **gameplay** с первого кадра — подтверждение оператором (headless probe ≠ GUI)
+- [x] Номинации → `playlist.json` → play с overlay (`deep_run` и др.)
+- [x] В inference/replay-пайплайне **нет** `-playmovie` и нет экспорта FM2 для попыток агента
+- [ ] ISSUE_INFERENCE: закрыть для **jsonl replay**; слой movie readonly — отдельно (не целевой путь 3.4)
+
+### Заметки
+
+- `inference_inputs.jsonl` уже пишется в `run_inference`; retention 4 ч достаточно для сбора плейлиста в тот же день.
+- Train / bridge **не трогать**.
+- Не добавлять fallback на movie FM2, «архивный» путь или dual mode.
 
 ---
 

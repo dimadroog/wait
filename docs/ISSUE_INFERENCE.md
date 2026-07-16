@@ -2,13 +2,13 @@
 
 
 
-**Дата:** 2026-07-15 (гипотезы M1–M8: 2026-07-16)  
+**Дата:** 2026-07-15 (M/N: 2026-07-16; N6 + visual: 2026-07-16)
 
 **Этап BACKLOG:** 3.1–3.3 (inference FM2 / playlist / replay)  
 
 **Ветка:** `issue/inference-fm2-replay`  
 
-**Статус:** **открыт** — данные/embed OK; **movie readonly playback** на FCEUX (2.6.6 win64, 2.2.2 win32) не восстанавливает gameplay RAM/PPU. Исследование M/N закрыто 2026-07-16.
+**Статус:** **открыт** — PPU title/attract на **GUI эфире** (jsonl replay 3.4, 2026-07-16); movie readonly — тот же класс симптомов. Headless probe **не закрывает** issue.
 
 
 
@@ -24,7 +24,7 @@
 
 
 
-При воспроизведении inference-клипов (`play_inference_fm2.py`, плейлист, ручное открытие FM2 в FCEUX) на экране **не геймплей агента** — **title / attract demo** Rush'n Attack (меню «1 PLAYER») или чёрный экран. Overlay и метрики эпизода (CP4, reward ≈497) при этом **корректны** — клип записан с gameplay-start.
+При воспроизведении inference-клипов (`play_inference_fm2.py`, плейлист, ручное открытие FM2 в FCEUX) на экране **не геймплей агента** — **title / attract demo** Rush'n Attack (меню «1 PLAYER») или чёрный экран. Overlay и метрики эпизода (CP4, reward ≈497) **корректны в emulation** (`run_inference`, bridge `-loadstate`). **N6 + visual:** тот же PPU-симптом на native `movie.record`, pipeline export и staged replay — не сводится к «пайплайн пишет FM2 неправильно».
 
 
 
@@ -42,15 +42,15 @@
 
 ## Что работает (контраст)
 
-
+> **Оговорка (N6, 2026-07-16):** таблица — emulation-запись и формат FM2. **RAM-probe @ mf=8** сейчас PASS у native/synthetic/pipeline, но **ложноположителен для PPU** (на экране title при `x=129`). Критерий эфира — **визуальный** gameplay (§ «Визуальная проверка playback»).
 
 | Компонент | Статус | Доказательство |
 
 | --------- | ------ | -------------- |
 
-| Запись inference (`run_inference.py`) | OK | bridge: `-loadstate inference_cp0.fc0`; метрики `max_cp=4`, reward ≈497 |
+| Запись inference (`run_inference.py`) | OK **только emulation** | bridge: `-loadstate inference_cp0.fc0`; метрики `max_cp=4`, reward ≈497 |
 
-| Экспорт FM2 | OK | `savestate 0x…` в заголовке, уникальные GUID, разные digest между эпизодами |
+| Экспорт FM2 | OK **формат + RAM-probe** | `savestate 0x…`, GUID; **PPU replay — FAIL** (title @ mf=8, § visual) |
 
 | Staging playback | OK | `refresh_fm2_embedded_savestate` из `inference_cp0`, `stage_playback_fc0`, mirror в `fcs/` |
 
@@ -58,7 +58,7 @@
 
 | Lua overlay / HUD | OK | achievement overlay, диагностика `boot=…` |
 
-| **Визуальный FM2 replay (win64 GUI)** | **FAIL** | title / black screen при активном movie и «успешном» Lua bootstrap |
+| **Визуальный FM2 replay (win64 GUI)** | **FAIL** | title @ mf=8 при `gameplay_like_ram=true` (native, pipeline, staged); § visual |
 
 
 
@@ -66,24 +66,21 @@
 
 
 
-## Корневая причина (уточнённая)
+## Корневая причина (уточнённая, 2026-07-16)
 
 
 
-**Два слоя проблемы:**
+**Три слоя (после N6 + visual):**
 
 
 
-1. **Данные (частично закрыто):** в старых `ep*.fm2` embedded FCS мог не иметь movie GUID @ offset 5699; `inference_cp0` патчится через `ensure_savestate_movie_guid`. Staging перезаписывает embed из `inference_cp0` + GUID клипа.
+1. **Данные / embed (гигиена закрыта):** GUID @5699, `refresh_fm2_embedded_savestate`, stale blob — лечится staging; **не объясняет** PPU title (staging vs raw визуально идентичны).
 
+2. **RAM↔PPU desync в movie readonly (основной слой, открыт):** при `-playmovie -readonly 1` RAM может показывать gameplay-start (`x=129`, `room=0`), а **PPU — title** («1 PLAYER»). Воспроизводится на **native `movie.record`**, synthetic `build_empty_fm2` и pipeline `export_episode_fm2_from_steps` — § «Визуальная проверка playback». Критерий `gameplay_like_ram` **недостаточен** для закрытия issue.
 
+3. **Контракт embed (вторичный, для фазы 3):** native пишет `savestate base64:` (FCSX ~4 KB), пайплайн — `savestate 0x:` (полный FCS ~79 KB). RAM-probe не различает; визуал @ mf=8 — одинаковый title. Фаза 3 — parity через `movie.record`.
 
-2. **FCEUX 2.6.6 win64 playback (открыто):** при `-playmovie` / `movie.play()` эмулятор **не восстанавливает PPU/gameplay-start** из embedded savestate и/или внешнего `.fc0`, даже когда Lua `savestate.load()` возвращает успех (`boot=OK`, `boot=PLAY+LD`, `boot=SYNC`). RAM (`room=0x00`) **не совпадает с картинкой** — на title к f≈8 уже `r=0x00`, `L=0` (см. `human_playthrough.jsonl`).
-
-3. **Режимы FCEUX (уточнение 2026-07-16):** ось проблемы — не «FM2 vs save state» как артефакты, а **где state применяется**:
-   - **emulation mode** — `-loadstate` без movie (`FceuxBridge`, `run_inference`): RAM + PPU согласованы;
-   - **movie readonly** — `-playmovie … -readonly 1`: inputs из FM2, load embed/Lua load **не синхронизирует PPU** (P7–P16).
-   Ось **где state сохранён** (свободный геймплей vs проигрывание movie) в проекте **не разведена** — все `.fc0` пайплайна сняты через `save_states.lua` при активном FM2 (см. M3–M4).
+**Режимы FCEUX:** bridge `-loadstate` при `run_inference` — RAM + PPU согласованы **в bridge**. Standalone GUI playback (`play_inference_fm2` + `achievement_overlay.lua`, CLI `-loadstate` без `savestate.load` bootstrap) — **PPU title/attract** при продолжении emulation (§ «BACKLOG 3.4»). Movie readonly — embed/Lua load **не синхронизирует PPU** с RAM (P7–P16).
 
 
 
@@ -95,9 +92,10 @@
 
 | ----- | ----- | ------ | ------------- |
 
-| `run_inference` | bridge `-loadstate inference_cp0.fc0` | gameplay | валидны |
+| `run_inference` | bridge `-loadstate inference_cp0.fc0` | gameplay | валидны **в emulation**; экспорт FM2 → replay **не верифицирован** |
 
-| `play_inference_fm2` | movie mode (`-playmovie` / Lua `movie.play`) | title / black | частично «как gameplay», PPU нет |
+| `play_inference_fm2` (3.4) | emulation `-loadstate` + `inference_inputs.jsonl` | **title / attract** @ GUI f≈28 (оператор, 2026-07-16) | overlay OK; HUD `REPLAY/GAMEPLAY` **не отражает PPU** |
+| `play_inference_fm2` (3.1–3.3, movie) | movie mode (`-playmovie` / Lua `movie.play`) | **title** @ mf=8 (visual) | RAM `x=129` возможен; **PPU ≠ RAM** (§ visual) |
 
 
 
@@ -123,7 +121,7 @@
 
 | H5 | Шаблон в `portable/movies/` — причина demo | переоценена | Гигиена переноса в `reference/header.fm2` полезна, playback не лечит |
 
-| H6 | Агент получает CP4 на title | неверна | CP на title невалидны; запись с frame 18 gameplay |
+| H6 | Агент получает CP4 на title | неверна | CP на title невалидны; агент стартует с gameplay в **emulation** (не доказывает корректность FM2 export) |
 
 
 
@@ -305,7 +303,7 @@
 
 | M3 | FCS, снятый в **emulation mode**, **нельзя** применить для корректного **movie readonly** replay | **подтверждена (RAM); ось capture не уникальна** | § M-proto-1 шаги 3–5: gameplay-capture = inference_cp0 control на mf=8 |
 
-| M4 | FCS, снятый при **movie playback**, **нельзя** применить в **emulation mode** | **опровергнута** | `inference_cp0` снят при проигрывании `clear.fm2`; `run_inference` (`-loadstate` без movie) — gameplay и метрики OK |
+| M4 | FCS, снятый при **movie playback**, **нельзя** применить в **emulation mode** | **опровергнута** | `inference_cp0` снят при проигрывании `clear.fm2`; `run_inference` (`-loadstate` без movie) — gameplay в **emulation** (не доказывает FM2 export) |
 
 | M5 | Проблема playback — в **cross-movie FCS** (источник `clear.fm2`, цель ep-FM2), а не в capture @ movie как таковом | **частично подтверждена** | Патч GUID @5699 + refresh embed (P1–P4) не лечат PPU; тело FCS с кадра 18 эталона, но не frame 0 ep-FM2 |
 
@@ -333,13 +331,13 @@ capture ↓
 
 @ movie       inference_cp0      embed / load / Lua
 
-(clear.fm2)   → OK (запись)      → FAIL PPU (P7–P16)
+(clear.fm2)   → OK (emulation)   → RAM varies; PPU title @ mf=8 (N6 visual)
 
 @ gameplay    не тестировали      не тестировали (M3)
 
-              M3: оба FAIL одинаково @ mf=8 (x=0, не 129)
+              M-proto-1 @ mf=8 (утро): x=0; N6 (день): x=129 RAM, title PPU
 
-@ same FM2    не тестировали      M6 **отвергнута** — bootstrap = original @ mf=8
+@ same FM2    не тестировали      M6 **отвергнута**
 
 mf=0          capture x=0 @ mf=1   нет улучшения
 
@@ -347,7 +345,7 @@ mf=0          capture x=0 @ mf=1   нет улучшения
 
 
 
-**Вывод по M3–M4:** формулировка «state с записи видео не работает в игре» **не совпадает** с данными проекта (M4). Формулировка «state не поднимает PPU в movie readonly» **совпадает** с P7–P16 и не зависит от того, gameplay это был или movie capture — для текущего `inference_cp0` capture был @ movie, apply @ emulation работает, apply @ movie — нет.
+**Вывод по M3–M4 (исторический, M-proto):** на момент M-proto-1 probe @ mf=8 давал `x=0`. **N6 (2026-07-16, позже):** RAM `x=129` у native/synthetic/pipeline, но **PPU title** — см. § visual. Ось «где сохранён» не объясняет симптом полностью. Для `inference_cp0`: emulation OK; movie readonly — **RAM↔PPU desync**.
 
 
 
@@ -369,7 +367,7 @@ mf=0          capture x=0 @ mf=1   нет улучшения
 
 
 
-**Вердикт M3 (2026-07-16):** gameplay-capture FCS **не** даёт корректный movie readonly replay. Но контроль (`inference_cp0`, capture @ movie) ведёт себя **так же** — ось «где сохранён» **не объясняет** расхождение; оба embed не восстанавливают gameplay RAM (`x=129`) при mf=8. Уточнённая формулировка: проблема в **apply @ movie readonly** (см. матрицу capture×apply), а не в gameplay vs movie capture.
+**Вердикт M3 (2026-07-16):** gameplay-capture FCS **не** даёт gameplay RAM в movie readonly на **синтетических** FM2. Контроль (`inference_cp0` embed) ведёт себя **так же** — ось «где сохранён» **не объясняет** расхождение. Ранний вывод «проблема только в apply @ movie readonly FCEUX» **не учитывает** нативную запись (§ N6).
 
 Сводка probe (`tmp/bench/mproto1/mproto1_step3_5.json`):
 
@@ -520,7 +518,7 @@ Bootstrap embed **отличается** от `inference_cp0` (185537 vs ~79 KB)
 
 - Эвристики HUD по `room` / `lives` как критерий закрытия issue
 
-- **Replay через bridge + jsonl** — обход FM2; эфир/OBS завязаны на movie mode (BACKLOG 3.1–3.2)
+- **Replay через jsonl (emulation)** — целевой путь плейлиста (**BACKLOG 3.4**); movie FM2 replay — удалить
 
 - Патч GUID в cross-movie FCS без movie-bound bootstrap (M5) — см. P1–P4
 
@@ -540,7 +538,7 @@ Bootstrap embed **отличается** от `inference_cp0` (185537 vs ~79 KB)
 
 | `reference/header.fm2`, `default_fm2_template()` | артефакты в плагине |
 
-| `ensure_savestate_movie_guid`, `refresh_fm2_embedded_savestate` | корректный embed + GUID |
+| `ensure_savestate_movie_guid`, `refresh_fm2_embedded_savestate` | embed + GUID в файле (гигиена); **не** гарантия валидного movie replay (N6) |
 
 | `src/fm2_playback.py` (`stage_playback_fc0`, `stage_external_playback`) | staging helpers, тесты, будущий bootstrap |
 
@@ -574,11 +572,13 @@ Bootstrap embed **отличается** от `inference_cp0` (185537 vs ~79 KB)
 
 | — | Gameplay capture → movie replay (M3) | **закрыто 2026-07-16** | `tmp/bench/mproto1/mproto1_step3_5.json` |
 
-| N4 | Smoke с `requires_fceux` + RAM probe @ gameplay | **добавлен** | `tests/test_fm2_playback_fceux.py` (fail до закрытия issue) |
+| N4 | Smoke с `requires_fceux` + RAM probe @ gameplay | **RAM pass; PPU — нет** | `tests/test_fm2_playback_fceux.py`; нужен visual assert |
 
-| N5 | Перезапись `ep*.fm2` из pipeline (embed при export, не только staging) | **закрыта (данные)** | `export_episode_fm2_from_steps` пишет embed; `play_inference_fm2` refresh — staging; PPU не меняется |
+| N5 | Перезапись `ep*.fm2` из pipeline (embed при export, не только staging) | **закрыта (формат)** | embed в файле есть; staging не лечит PPU (§ visual) |
 
-| — | Полный FM2 inference с power-on (M8) | **отвергнута** | даже `clear.fm2` probe FAIL @ mf=18 |
+| — | Полный FM2 inference с power-on (M8) | **отвергнута** | M-proto: `clear.fm2` RAM `x=0` @ mf=18 |
+
+| N6 | **Native record→play** vs synthetic export | **Ф0–2b + visual done** | RAM PASS @ mf=8; PPU title у всех; embed FCSX≠0x; § N6 |
 
 
 
@@ -600,7 +600,7 @@ Lua:     диагностический HUD; без savestate bootstrap
 
 
 
-**Фактический результат (2026-07-15):** title screen; см. таблицы P1–P24.
+**Фактический результат (2026-07-16):** PPU title @ mf=8; RAM может быть `x=129` (RAM↔PPU desync). См. таблицы P1–P24, § visual.
 
 
 
@@ -646,31 +646,45 @@ Lua:     диагностический HUD; без savestate bootstrap
 
 ---
 
-## Итоги исследования (2026-07-16)
+## Итоги исследования (2026-07-16, обновлено после N6 visual)
 
-Все гипотезы M-proto / N2 / N3 / M8 / N4 / N5 проработаны. **Корневая проблема не в данных FM2 и не в выборе `.fc0`**, а в контракте FCEUX **movie readonly**: embed/Lua load не дают gameplay RAM (`x=129`) даже для эталона `clear.fm2` @ mf=18.
+
+
+M/N-гипотезы и N6 фазы 0–2b проработаны. **Итоговая модель issue:**
+
+- **Симптом эфира:** PPU title/black при movie playback (подтверждено screenshot @ mf=8).
+- **RAM-probe `x=129`:** ложноположительный для PPU; N4 pass **не закрывает** issue.
+- **Native vs pipeline bytes:** embed-формат различается (FCSX base64 vs 0x hex), но **не объясняет** визуальный симптом alone (оба — title @ mf=8).
+- **Staging** (`remap_guid`, `refresh_embed`): на PPU не влияет.
+
+**Хронология RAM @ mf=8:** M-proto-1 (утро) — `x=0`; N6 ф0–2b (день) — `x=129`; visual — title при обоих условиях.
 
 | Что проверено | Вердикт |
 | ------------- | ------- |
-| GUID / embed / refresh (P1–P4, N5) | данные OK; PPU нет |
-| gameplay vs movie capture (M3) | оба FAIL одинаково |
-| movie-bound bootstrap (M6, N1) | FAIL |
+| GUID / embed / refresh (P1–P4, N5) | формат OK; staging не лечит PPU |
+| gameplay vs movie capture (M3) | M-proto: RAM `x=0`; N6: RAM `x=129`, PPU title |
+| movie-bound bootstrap (M6, N1) | отвергнута |
 | fceux.cfg bind/full (N3) | без эффекта |
-| FCEUX 2.6.6 GitHub / 2.2.2 win32 (N2) | тот же FAIL |
-| power-on FM2 без embed (M8, `clear.fm2`) | RAM probe FAIL @ mf=18 |
-| emulation `-loadstate` (`run_inference`) | **OK** (запись агента) |
+| FCEUX 2.6.6 GitHub / 2.2.2 win32 (N2) | тот же симптом (M-proto RAM) |
+| power-on FM2 (M8, `clear.fm2`) | RAM `x=0` @ mf=18 (M-proto) |
+| emulation `-loadstate` (`run_inference`, bridge) | **OK** в bridge | gameplay |
+| jsonl replay GUI (`play_inference_fm2` 3.4) | **FAIL** (оператор) | **title / attract** @ f≈28; § 3.4 |
+| N6 native / synthetic / pipeline | RAM PASS @ mf=8; **PPU title** (§ visual) |
+| N6 visual @ mf=8 | native = pipeline = staged; **FAIL** gameplay PPU |
 
-### Фактический контракт FCEUX (win64, 2026-07-16)
+### Фактический контракт FCEUX (win64, 2026-07-16, после visual)
 
-| Операция | Режим | Результат |
-| -------- | ----- | --------- |
-| Запись агента | bridge `-loadstate inference_cp0` | gameplay, метрики OK |
-| Эфир / replay | `-playmovie embed -readonly 1` | title/black; RAM `x=0` @ mf=8 |
-| Эталон `clear.fm2` replay | power-on, без embed | RAM `x=0` @ mf=18 (probe); визуал эталона для Phase 0 работал при сборке states |
+| Операция | Режим | RAM @ mf=8 | PPU @ mf=8 |
+| -------- | ----- | ---------- | ---------- |
+| Запись агента | bridge `-loadstate` | gameplay | gameplay |
+| `movie.record` → play (N6-B) | movie readonly | `x=129` | **title** |
+| Pipeline ep-FM2 | movie readonly | `x=129` | **title** |
+| `play_inference_fm2` (staged) | movie readonly | `x=129` | **title** |
+| Эфир (симптом issue) | movie readonly | может быть OK | **title / black** |
 
-### Расхождение с BACKLOG 3.1
+### Расхождение с BACKLOG 3.1–3.3
 
-Критерий 3.1: «FM2 воспроизводится в FCEUX без `-loadstate`» — **формально** movie active, **фактически** не gameplay-start на экране. Критерий нужно уточнить: **PPU gameplay-start** или альтернативный путь эфира (не movie readonly).
+Критерий 3.1 («FM2 без `-loadstate`») **не соответствует цели** — плейлист попыток агента на эфире. Movie readonly даёт title при RAM bootstrap. Replay-слой embed FM2 + `-playmovie` **снимается** в **[BACKLOG 3.4](BACKLOG.md#34-плейлист-попыток-inference-replay)** (emulation + `inference_inputs.jsonl`).
 
 ### N4 — автоматический критерий
 
@@ -678,17 +692,387 @@ Lua:     диагностический HUD; без savestate bootstrap
 ./.venv/Scripts/python.exe -m pytest tests/test_fm2_playback_fceux.py -m requires_fceux
 ```
 
-Ожидание при закрытии issue: тесты **pass**. Сейчас: **fail** (`x≠129`) — известный баг.
+Тесты: RAM @ mf=8/18 + **PPU title_like @ mf=8** (`test_inference_embed_fm2_ppu_title_at_mf8`). При закрытии issue — инвертировать PPU assert (`title_like=False`).
 
 ### N5 — pipeline export
 
-`run_inference` → `export_episode_fm2_from_steps` вшивает `savestate` при записи (`tests/test_fm2_export.py`). `play_inference_fm2.py` → `refresh_fm2_embedded_savestate` только в staging перед GUI; на PPU не влияет.
+`run_inference` → `export_episode_fm2_from_steps` вшивает `savestate` при записи (`tests/test_fm2_export.py` — **только формат файла**, не round-trip). `play_inference_fm2.py` → `refresh_fm2_embedded_savestate` только в staging перед GUI; на PPU не влияет.
 
-### Что остаётся открытым (вне scope исследования)
+**Под сомнением (N6):** эквивалентность embed `0x` vs FCSX `base64` — для фазы 3; **не** объясняет PPU title @ mf=8.
 
-- Визуальный PPU-fix (другой эмулятор, форк FCEUX, не FM2 replay).
-- P18 (strip embed + CLI loadstate без movie) — не приоритет; P16/P17 цепочка.
-- Скриншот-хэш в N4 (опц.; RAM probe достаточен для регрессии).
+### Что остаётся открытым
+
+- **PPU gameplay** на **GUI эфире** (jsonl replay 3.4) — критерий закрытия issue для плейлиста.
+- **PPU gameplay** при movie replay — тот же класс; movie **снят** с inference-пайплайна (3.4).
+- **N4:** headless PPU @ frame 1 **ложноположителен** для GUI; нужен smoke через `achievement_overlay.lua` @ f≥8.
+- **Visual sweep** @ mf 18,50,200,500 — **выполнен** (§ visual sweep).
+- **BACKLOG [3.4](BACKLOG.md#34-плейлист-попыток-inference-replay)** — реализован контракт jsonl; **эфир не верифицирован** оператором.
+- P18 — не приоритет.
+
+---
+
+## BACKLOG 3.4 — jsonl emulation replay (GUI эфир, 2026-07-16)
+
+**Статус:** **открыт** — реализация контракта есть; **визуальный эфир FAIL** у оператора.
+
+### Что сделано (ветка `issue/inference-fm2-replay`)
+
+| Компонент | Статус |
+| --------- | ------ |
+| `run_inference` | пишет `inference_inputs.jsonl`, без FM2 export |
+| `build_playlist` / `playlist.json` | клип = episode + jsonl + overlay |
+| `play_inference_fm2.py` | emulation + jsonl, без `-playmovie` |
+| `achievement_overlay.lua` | `registerbefore`/`registerafter`, joypad из jsonl |
+| `export_fm2.py` | **удалён** из inference-пути |
+| Headless probe | `inference_replay_visual_probe.lua` @ frame 1 — gameplay PPU PASS |
+| Автотесты | `test_inference_replay_fceux.py`, `test_playback_overlay_fceux.py`, E2E `done.flag` |
+
+### Симптом (оператор, GUI win64, 2026-07-16)
+
+Запуск `20260716_playlist.play.cmd` / `play_inference_fm2.py`:
+
+- На экране: **title Rush'n Attack** («PLAY SELECT», «1 PLAYER»), attract demo — **не геймплей уровня**.
+- Overlay: **корректен** (номинация `Almost finish`, CP:4, R:498, steps:400).
+- HUD: `REPLAY/GAMEPLAY f≈28 r=0x00 L=0` — **метка скрипта**, не верификация PPU.
+- Replay **идёт** (счётчик кадров растёт, `done.flag` пишется, E2E PASS по времени).
+
+Ранее на этой ветке: **серый экран** (синхронный `emu.frameadvance()` + безусловный `nothrottle` в overlay) — исправлен возвратом register-hooks; после фикса — **title**, не gameplay.
+
+### Headless vs GUI (расхождение приёмки)
+
+| Проверка | Результат | Ловит GUI? |
+| -------- | --------- | ---------- |
+| `probe_inference_replay_ppu` @ frame 1 | gameplay PPU PASS | **нет** — снимок до joypad / sync-loop |
+| `probe_playback_overlay_ppu` @ frame 1 (`probe_only`) | gameplay PPU PASS | **нет** — снимок сразу после CLI `-loadstate` |
+| `probe_*` @ frame 8 (emulation) | title-like | частично; не тот бинарь, что GUI |
+| `probe_*` @ frame 200 | gameplay PPU PASS | mid-episode; не лечит старт эфира |
+| E2E `done.flag` + wall time | PASS | **нет** — не смотрит в окно |
+| **Оператор GUI** | **title @ f≈28** | **да** |
+
+**Вывод:** критерий закрытия issue — **только визуальная проверка GUI** (`achievement_overlay.lua`, `noicon=False`). RAM-probe и headless gdscreenshot **недостаточны**.
+
+### Гипотезы (не исправлялись в этой сессии)
+
+| ID | Гипотеза | Комментарий |
+| -- | -------- | ----------- |
+| J1 | CLI `-loadstate` без bridge-bootstrap (`savestate.save`→`savestate.load`) | bridge при `reset_to_state` делает CACHE+LOAD; overlay — только CLI `-loadstate` |
+| J2 | PPU уходит на title через 1–2 кадра после loadstate | headless: frame 1 gameplay, frame 2+ title-like при тех же RAM |
+| J3 | HUD `REPLAY/GAMEPLAY` вводит в заблуждение | флаг `replay_done`, не эвристика PPU |
+| J4 | Replay через standalone FCEUX+Lua ≠ bridge emulation | `run_inference` OK; эфир — другой бинарь/путь |
+
+### Направления (не выполнять без отдельной задачи)
+
+1. Bootstrap `savestate.load` в `achievement_overlay.lua` как bridge `LOAD_OBS`.
+2. GUI smoke: screenshot @ f=8..30 через overlay (`noicon=False` или оператор).
+3. HUD: показывать `x` (0x81) для отладки RAM↔PPU.
+4. Крайний случай: playback через `FceuxBridge` step (тот же путь, что train/inference).
+
+### Команды воспроизведения (3.4)
+
+```bash
+# Эфир (симптом — смотреть в окно FCEUX)
+./.venv/Scripts/python.exe scripts/play_inference_fm2.py \
+  games/rushn_attack/missions/m1/logs/YYYYMMDD_playlist.json --skip-preflight
+
+# Headless (может PASS при том же баге GUI)
+./.venv/Scripts/python.exe scripts/inference_replay_visual_check.py \
+  --inputs games/rushn_attack/missions/m1/logs/YYYYMMDD_inference_inputs.jsonl \
+  --episode 1 --probe-at-frame 1
+
+./.venv/Scripts/python.exe -m pytest tests/test_playback_overlay_fceux.py tests/test_inference_replay_fceux.py -m requires_fceux
+```
+
+---
+
+## N6 — Native record vs synthetic export
+
+**Дата фиксации:** 2026-07-16  
+**Статус:** **фазы 0–2b + visual sweep выполнены**; закрытие issue = **BACKLOG 3.4** (плейлист без FM2). Harness N6 — диагностика FCEUX movie mode (не целевой replay).
+
+### Гипотеза (историческая → пересмотр после visual)
+
+| Наблюдение | Вывод |
+| ---------- | ----- |
+| GUI: Record input → Play Movie | Клип воспроизводится **как записан** (ожидание; сверить с автоматическим probe) |
+| Пайплайн: `run_inference` → `export_episode_fm2_from_steps` → `play_inference_fm2` | **PPU title** @ mf=8; RAM `x=129` (N6 visual) |
+| M2 (ручная запись с savestate) | Правдоподобна, **не автоматизирована** |
+| M-proto-1/2 | Ранний RAM `x=0` на synthetic; N6 — RAM `x=129`, PPU title |
+| N6 фаза 0 (2026-07-16) | `movie.record(save_type=1)` → RAM **PASS** @ mf=8; **PPU title** (§ visual) |
+
+**Актуальная формулировка:** симптом — **RAM↔PPU desync** в movie readonly, не различие «native работает / synthetic ломает». Embed FCSX base64 (native) vs `0x` hex (pipeline) — вторичный слой (фаза 3). Критерий закрытия — **визуальный** gameplay-start.
+
+### Два контракта (запись)
+
+| | GUI / `movie.record` | Пайплайн |
+| --- | --- | --- |
+| Режим | Movie **record** | Emulation **без** movie |
+| Старт | Start / Now / `.fc0` — FCEUX фиксирует state сессии | `bridge -loadstate inference_cp0` |
+| Inputs | В movie в реальном времени | `step_log` → `fm2_frame_line` после эпизода |
+| Embed | FCEUX вшивает при `movie.record(..., save_type)` | `build_fm2_header` + `inference_cp0` + `ensure_savestate_movie_guid` |
+| Проверка «правильно пишем» | Round-trip record→play | Только метрики emulation + тесты формата файла |
+
+### API FCEUX (программный путь вне пайплайна)
+
+Документация: [Lua Functions List — movie](https://fceux.com/web/help/LuaFunctionsList.html).
+
+| API | Назначение | Аналог GUI |
+| --- | ---------- | ---------- |
+| `movie.record(path, save_type, author)` | начать запись | Record input |
+| `movie.stop()` | завершить запись | Stop recording |
+| `movie.play(path, read_only)` | воспроизведение | Replay Movie |
+| `joypad.set(1, input)` | ввод при записи | клавиатура / bridge |
+| `savestate.load(slot)` | state перед record | Record From `.fc0` / Now |
+
+`save_type`: `0` = Start (power-on), `1` = savestate, `2` = SaveRAM.
+
+В репо: **playback**-probe (`movie_playback_probe.lua`, `probe_movie_playback`); **record**-harness (`movie_record_replay_probe.lua`, `probe_native_record_replay`); **visual**-probe movie (`movie_playback_visual_probe.lua`); **jsonl**-probe (`inference_replay_visual_probe.lua`, `scripts/inference_replay_visual_check.py`). Одноразовые `n6_phase*.py` CLI **удалены** (артефакты в `tmp/bench/fceux_native/`).
+
+### Чистота эксперимента (фазы 0–2)
+
+**Принцип:** сначала изолированно проверить **контракт FCEUX** (record→play), затем **минимум пайплайна**, и только после pass — achievements, эфир и staging. **Не приступать к выполнению** смешанных прогонов до явного старта N6.
+
+#### Порядок проработки
+
+| Этап | Что проверяем | Инструменты |
+| ---- | ------------- | ----------- |
+| **A** | API вне пайплайна | `movie.record` / `movie.play`, `movie_record_replay_probe.lua` |
+| **B** | Минимум в пайплайне | `export_episode_fm2_from_steps` или `run_inference --episodes 1 --save-episode-fm2` **без** `--build-playlist`; probe через `probe_movie_playback` |
+| **C** | Обвязка (только после pass A–B) | achievements, `.overlay.json`, `play_inference_fm2`, playlist, dedupe, именование `YYYYMMDD_ep*` |
+
+Каждый слой этапа **C** — отдельный регрессионный шаг. Visual @ mf=8: staging **не** меняет PPU (raw = staged).
+
+#### Вне scope фаз 0–2 (не подключать)
+
+| Компонент | Почему мешает |
+| --------- | ------------- |
+| `play_inference_fm2.py` | `remap_fm2_guid`, `refresh_fm2_embedded_savestate` — меняет FM2 перед playback (P1–P4 уже крутили) |
+| `achievement_overlay.lua` | HUD/overlay; для probe достаточно `movie_playback_probe.lua` |
+| `evaluate_records` / tags | не в байтах FM2, но тянет sidecar и смешивает критерии |
+| `build_playlist` / dedupe | копии FM2, новые GUID, номинации |
+| `write_fm2_artifacts` / `.overlay.json` | sidecar не в заголовке FM2, но лишняя переменная на ранних фазах |
+| Правки `refresh_fm2_embedded_savestate` / GUID «для лечения» | маскируют разницу native vs synthetic |
+
+#### Минимальный чистый probe (эталон для A–B)
+
+- **Запись:** `movie.record` (фаза 0) или один вызов `export_episode_fm2_from_steps` (фаза 2).
+- **Воспроизведение:** `probe_movie_playback` + `movie_playback_probe.lua` — CLI `-playmovie … -readonly 1`, **без** overlay.
+- **Не использовать** для критерия pass/fail: `play_inference_fm2.py`.
+
+#### Минимальный прогон пайплайна (этап B, после pass фазы 0)
+
+```bash
+./.venv/Scripts/python.exe src/stream/run_inference.py \
+  --checkpoint m1_v0.zip --episodes 1 --save-episode-fm2 --skip-preflight
+# без --build-playlist
+```
+
+Проверка: `probe_movie_playback` на `logs/YYYYMMDD_ep0001.fm2`. Артефакты bench — в `tmp/bench/`, не полагаться на очистку `inference_preflight`.
+
+#### Гигиена окружения
+
+- `fceux/portable/movies/` — пуст (preflight / `warn_portable_movies_pollution`).
+- **Frame skip:** 4 NES-кадра на env step при сравнении с native record.
+- **Headless probe** ненадёжен (P22); фаза 0 — окно или `gui.savescreenshot`.
+
+#### Этап C — порядок включения (после pass A–B)
+
+1. `.overlay.json` / `write_fm2_artifacts`
+2. `play_inference_fm2.py` (staging + overlay)
+3. `eval_achievements` + tags в `attempts.jsonl`
+4. `build_playlist` + dedupe + `YYYYMMDD_playlist.json` / `.play.cmd`
+
+### Протокол (поэтапно)
+
+Артефакты: `tmp/bench/fceux_native/` (`artifact_quarantine_dir("bench", "fceux_native")`). Одноразовые harness — удалять после фиксации JSON; не писать в `games/.../logs/` / `checkpoints/`.
+
+#### Фаза 0 — Baseline native round-trip (**RAM PASS**, PPU FAIL @ mf=8, 2026-07-16)
+
+**Цель:** доказать record→play с gameplay-start **вне** `fm2_export` / `run_inference`.
+
+| Шаг | Действие | Статус | Результат |
+| --- | -------- | ------ | --------- |
+| 0.1 | ROM + `-loadstate inference_cp0.fc0` + Lua harness | **OK** | `room=0`, `x=129`, `gameplay_like_ram=true`, `movie_active=false` |
+| 0.2 | `movie.record(out.fm2, 1)` + 60 кадров `joypad.set` (пустой ввод) | **OK** | `movie_mode=record` |
+| 0.3 | `movie.stop()` | **OK** | `native_phase0.fm2`, 7147 B |
+| 0.4 | `movie.play(out.fm2, true)` + RAM-probe @ mf=8 | **OK** | `x=129`, `gameplay_like_ram=true` |
+| 0.4b | `probe_movie_playback` (CLI `-playmovie`) на том же FM2 | **OK** | идентичный RAM @ mf=8 |
+| 0.5 | скриншот @ mf=8 | **FAIL** | title («1 PLAYER»); см. § «Визуальная проверка playback» |
+
+**Вердикт фазы 0 (уточнённый):** RAM round-trip **PASS** (`x=129` @ mf=8) для native `movie.record(save_type=1)` после CLI `-loadstate inference_cp0`. **PPU @ mf=8 — title**, как у pipeline — § visual. Ранняя гипотеза «корень в сборке FM2, не в FCEUX» **снята**: native и synthetic/pipeline **одинаково** FAIL по PPU. Контраст M-proto-1 (`build_empty_fm2` → RAM `x=0`) — отдельная хронология условий.
+
+Запуск (исторический; CLI `n6_phase0_native_record.py` удалён):
+
+```bash
+# Эквивалент: src/fm2_playback.probe_native_record_replay + tmp/bench/fceux_native/
+```
+
+Артефакты: `tmp/bench/fceux_native/phase0_result.json`, `native_phase0.fm2`.
+
+```json
+{
+  "step_0_4": {"mf": 8, "room": 0, "x": 129, "gameplay_like_ram": true},
+  "probe_movie_playback": {"mf": 8, "room": 0, "x": 129, "gameplay_like_ram": true}
+}
+```
+
+**Заметки:** `save_type=1` без отдельного `savestate.load` — достаточно CLI `-loadstate`. Окно FCEUX (без `-noicon`); headless не тестировался на фазе 0.
+
+#### Фаза 1 — Матрица Record From (**PASS**, 2026-07-16)
+
+Тот же harness, три варианта `save_type` / подготовки:
+
+| ID | Вариант | Подготовка | `movie.record` | embed | `is_from_savestate` | probe @ mf=8 |
+| -- | ------- | ---------- | -------------- | ----- | ------------------- | ------------ |
+| N6-A | Start | power-on | `save_type=0` | нет (1665 B) | false | `x=0` (title; ожидаемо) |
+| N6-B | Now | CLI `-loadstate inference_cp0` | `save_type=1` | `savestate base64:` (~4096 B decoded) | true | **`x=129` PASS** |
+| N6-C | Browse `.fc0` | `fcs/{rom}.fc0` → `savestate.create(1); load` | `save_type=1` | `savestate base64:` (~4089 B) | true | **`x=129` PASS** |
+
+Запуск (исторический; CLI удалён):
+
+```bash
+# Артефакты: tmp/bench/fceux_native/phase1_results.json
+```
+
+Артефакты: `tmp/bench/fceux_native/phase1_results.json`, `native_n6-{a,b,c}.fm2`.
+
+**Вердикт фазы 1:**
+
+- **N6-B ≡ N6-C** для gameplay replay: оба дают `gameplay_like_ram=true` @ mf=8; embed чуть отличается по размеру (7135 vs 7147 B), формат одинаковый (`savestate base64:`).
+- **N6-A** — power-on без embed; probe @ mf=8 на title (`x=0`) — контроль, не критерий inference.
+- Нативный embed **не** `savestate 0x…` (синтетика пайплайна) — **`savestate base64:…`**; `fm2_has_embedded_savestate()` в репо **не видит** native embed без доработки (важно для фазы 2 diff).
+- N6-C: `savestate.load` требует **handle** `savestate.create(slot+1)`, не номер слота напрямую.
+
+#### Фаза 2 — Synthetic vs native (**выполнена**, 2026-07-16)
+
+| Шаг | Действие | Результат |
+| --- | -------- | --------- |
+| 2.1 | Inputs из `native_n6-b.fm2` (60 кадров, пустой joypad) | `all_empty=true` |
+| 2.2 | `build_empty_fm2` + embed `inference_cp0` | `synthetic_phase2.fm2` |
+| 2.3 | `probe_movie_playback` @ mf=8 | **оба PASS** `x=129` |
+| 2.4 | Diff заголовка / кадров | см. ниже |
+
+Запуск (исторический; CLI удалён):
+
+```bash
+# Артефакты: tmp/bench/fceux_native/phase2_results.json
+```
+
+Артефакты: `tmp/bench/fceux_native/phase2_results.json`, `synthetic_phase2.fm2`.
+
+**Diff (native N6-B vs synthetic):**
+
+| Поле | Native | Synthetic |
+| ---- | ------ | --------- |
+| Кадры (60) | `\|0\|........\|........\|\|` | **идентичны** |
+| `guid` | per-record | `episode_fm2_guid` |
+| Embed формат | `savestate base64:` (FCSX, **4096 B**) | `savestate 0x:` (raw FCS, **79305 B**) |
+| `embed_sha256` | ≠ | ≠ (разные blob) |
+| RAM @ mf=8 | `x=129` PASS | `x=129` PASS |
+
+**Вердикт фазы 2 (уточнённый):**
+
+- Гипотеза «синтетика FAIL / native PASS» на **RAM-probe** — **не воспроизведена** (оба PASS). Это расходится с § M-proto-1 (`x=0` на `build_empty_fm2` 2026-07-16) — вероятно смена условий или состояния `inference_cp0`/FCEUX; требует отдельной сверки, если снова появится `x=0`.
+- **Подтверждено:** пайплайн и native пишут **разный контракт embed** (сжатый FCSX+base64 vs полный FCS+hex) при **одинаковых** frame lines.
+- Pipeline `logs/*_ep0001.fm2` @ mf=8 (2026-07-16): **RAM PASS** `x=129` через `probe_movie_playback` (без staging `play_inference_fm2`).
+- Issue **не закрыт** по чеклисту: **визуальный** gameplay-start (PPU) и эфир через `play_inference_fm2` — отдельно от RAM-probe (P22).
+
+**Следующий шаг:** visual sweep @ mf>8; фаза 3 (`movie.record` с FCSX embed); сверка ручного GUI record→play.
+
+#### Фаза 2b — Минимум пайплайна (**PASS**, 2026-07-16)
+
+| Шаг | Действие | Результат |
+| --- | -------- | --------- |
+| 2b.1 | `run_inference --episodes 1 --save-episode-fm2 --skip-preflight` | `logs/20260716_ep0001.fm2` (817 steps, 3268 frames, 234 KB) |
+| 2b.2 | `probe_movie_playback` @ mf=8 | **`x=129` PASS** |
+| 2b.3 | Сравнение с native/synthetic ф2 | RAM идентичен; embed pipeline = `0x` 79305 B (как synthetic), ≠ native FCSX 4 KB |
+
+Запуск (исторический; CLI удалён):
+
+```bash
+# Артефакты: tmp/bench/fceux_native/phase2b_results.json
+```
+
+Артефакты: `tmp/bench/fceux_native/phase2b_results.json`, `games/…/logs/20260716_ep0001.fm2`.
+
+Эпизод: `max_cp=4`, `reward≈456`, `died=True`, tags `deep_run`. Sidecar `.overlay.json` создаётся автоматически (`write_fm2_artifacts`) — на байты FM2 probe не влияет.
+
+**Вердикт 2b:** минимальный пайплайн `export_episode_fm2_from_steps` → `probe_movie_playback` — **RAM PASS**. Контракт embed совпадает с синтетикой (`0x`), не с native (`base64` FCSX). Issue остаётся открытым по **визуальному** критерию — см. § «Визуальная проверка playback».
+
+#### Визуальная проверка playback (**FAIL** @ mf≤50, **частичный PASS** @ mf≥200, 2026-07-16)
+
+Скриншот PPU @ mf (`gui.gdscreenshot` → PNG) при `probe_movie_playback` / staging `play_inference_fm2`:
+
+```bash
+# Movie FM2 visual (pytest):
+./.venv/Scripts/python.exe -m pytest tests/test_fm2_playback_fceux.py -k visual -q
+
+# Jsonl emulation (BACKLOG 3.4):
+./.venv/Scripts/python.exe scripts/inference_replay_visual_check.py \
+  --jsonl games/rushn_attack/missions/m1/logs/20260716_inference_inputs.jsonl
+```
+
+##### mf=8 (исходная фиксация)
+
+| Кейс | RAM @ mf=8 | PPU @ mf=8 | MSE vs native |
+| ---- | ---------- | ---------- | ------------- |
+| native N6-B | `x=129` PASS | **title** («1 PLAYER») | 0 |
+| pipeline raw | `x=129` PASS | **title** | 54.84 |
+| pipeline staged (`play_inference_fm2`) | `x=129` PASS | **title** | 54.84 |
+
+Артефакты: `tmp/bench/fceux_visual/visual_*_mf8.png`, `visual_playback_results.json`.
+
+##### Visual sweep (длинный ep `20260716_ep0001.fm2`, 3268 frames)
+
+| mf | Кейс | RAM | PPU | Примечание |
+| -- | ---- | --- | --- | ---------- |
+| 18 | native N6-B / pipeline | `x=129` PASS | **title** | MSE native↔pipeline ≈16 |
+| 50 | native N6-B / pipeline | `x=129` PASS | **title** | title держится ≥50 кадров |
+| 200 | pipeline raw / staged | `x=155` | **gameplay** (мост, HUD) | RAM уже не bootstrap |
+| 500 | pipeline raw / staged | `x=5` | **gameplay** | агент в уровне |
+
+Артефакты sweep: `tmp/bench/fceux_visual/visual_playback_sweep.json`, `visual_*_mf{18,50,200,500}.png`.
+
+**Вывод sweep:**
+
+1. **Симптом эфира — front-loaded:** первые ~50 movie-кадров PPU = title, RAM = bootstrap `x=129` (ложноположительный RAM-probe). С mf≈200 inputs «догоняют» — на экране gameplay, RAM = реальная позиция (`x≠129`).
+2. **Native N6-B ≡ pipeline @ mf≤50:** оба title при `x=129` — **не** различие synthetic vs native embed.
+3. **Ручной GUI record→play (N6-B):** автоматический harness (`movie.record(save_type=1)` + CLI `-loadstate inference_cp0`) **эквивалентен** контракту GUI «Record From Now»; сверка @ mf=18/50 даёт тот же title. Ручной прогон в GUI — опциональная верификация, ожидается идентичный результат.
+4. **Фаза 3 (`movie.record` + FCSX embed)** **не устраняет** title @ mf≤50: native уже пишет FCSX base64 и FAIL по PPU на старте.
+5. **BACKLOG 3.4:** embed FM2 + `-playmovie` **убрать** из inference-пайплайна; replay = emulation + `inference_inputs.jsonl`.
+
+**N4 PPU-assert:** `test_inference_embed_fm2_ppu_title_at_mf8` — фиксирует title @ mf=8 при RAM pass; при закрытии issue инвертировать assert (`title_like=False`).
+
+#### Фаза 3 — снята
+
+N6 фаза 3 (`movie.record` в пайплайне) **не лечит** title @ mf≤50. Закрытие issue — переписать replay на emulation+jsonl (**BACKLOG 3.4**), убрать FM2 из inference-плейлиста.
+
+### Компоненты N6 (репо)
+
+| Компонент | Назначение |
+| --------- | ---------- |
+| `fceux/lua/movie_record_replay_probe.lua` | record → stop → play → RAM-probe; config через `WAIT_FCEUX_LUA_CONFIG` |
+| `src/fm2_playback.probe_native_record_replay` | Python: staging, subprocess, чтение result JSON |
+| `tests/test_fm2_playback_fceux.py` | pytest: native record, movie playback visual |
+| `scripts/inference_replay_visual_check.py` | CLI: jsonl emulation visual @ gameplay frame |
+| `fceux/lua/movie_playback_visual_probe.lua` | RAM + `gdscreenshot` probe (movie) |
+| `tmp/bench/fceux_native/*.json` | результаты фаз 0–2 |
+
+CLI record (без `-playmovie` на старте):
+
+```bash
+fceux64.exe -noicon 1 -turbo 1 -nothrottle 1 \
+  -lua fceux/lua/movie_record_replay_probe.lua \
+  -loadstate inference_cp0.fc0 \
+  rushn_attack.nes
+```
+
+### Ограничения / заметки
+
+- **Frame skip:** inference = 4 NES-кадра на env step; в native record явно подавать 4 кадра на action.
+- **Headless:** probe без GUI ненадёжен (P22); фаза 0 — с окном или скриншот.
+- **`save_type=1`:** CLI `-loadstate` (N6-B) или `savestate.create(slot+1); load` (N6-C) — оба **PASS** @ mf=8.
+- **Не смешивать** с правками `refresh_fm2_embedded_savestate` / GUID до завершения фазы 2.
+- **Фазы 0–2 / 2b:** achievements, playlist, `play_inference_fm2` — вне scope (§ «Чистота эксперимента»).
 
 ---
 
@@ -696,13 +1080,15 @@ Lua:     диагностический HUD; без savestate bootstrap
 
 
 
-- [ ] Визуальный gameplay-start при playback (не title / black)
+- [ ] Визуальный gameplay-start при playback (не title / black) — **не достигнут** @ mf≤50; @ mf≥200 gameplay на экране, но RAM≠bootstrap
 
-- [ ] HUD `REPLAY/GAMEPLAY` **и** совпадение PPU (x≈129, комната 1)
+- [x] N6 visual probe @ mf=8 (`test_fm2_playback_fceux` / `movie_playback_visual_probe.lua`) — native = pipeline = staged → **title**; `tmp/bench/fceux_visual/`
+
+- [x] Visual sweep @ mf 18,50,200,500 на длинном ep (`20260716_ep0001.fm2`) — title ≤50, gameplay @200+; `visual_playback_sweep.json`
 
 - [x] Контракт win64 документирован (§ «Фактический контракт FCEUX»)
 
-- [x] Smoke `requires_fceux` с RAM assert (`tests/test_fm2_playback_fceux.py`; **fail** пока issue открыт)
+- [x] Smoke `requires_fceux` с RAM assert (`tests/test_fm2_playback_fceux.py`; **pass** RAM, issue открыт по PPU)
 
 - [x] BACKLOG 3.1 критерий уточнён под фактический контракт (§ «Расхождение с BACKLOG 3.1»)
 
@@ -716,7 +1102,21 @@ Lua:     диагностический HUD; без savestate bootstrap
 
 - [x] N2 / § N2-proto — 2.6.6 + 2.2.2
 
-- [x] N4 / N5 — smoke + pipeline export
+- [ ] HUD `REPLAY/GAMEPLAY` **и** совпадение PPU (x≈129, комната 1)
+
+- [x] N4 — RAM smoke + PPU assert (`test_inference_embed_fm2_ppu_title_at_mf8` фиксирует title @ mf=8)
+
+- [x] N5 — embed при export (**формат**; PPU не лечит)
+
+- [x] N6 фаза 0 — native record→play (**RAM PASS**; PPU title @ mf=8; `phase0_result.json`)
+
+- [x] N6 фаза 1 — матрица Record From (**PASS**, `tmp/bench/fceux_native/phase1_results.json`)
+
+- [x] N6 фаза 2 — native vs `build_empty_fm2` (**RAM оба PASS**; embed FCSX≠0x; `phase2_results.json`)
+
+- [x] N6 фаза 2b — минимум пайплайна (**PASS**, `phase2b_results.json`, `20260716_ep0001.fm2`)
+
+- [ ] Закрытие issue = **BACKLOG [3.4](BACKLOG.md#34-плейлист-попыток-inference-replay)** — jsonl контракт есть; **GUI gameplay не подтверждён** (§ «BACKLOG 3.4»)
 
 
 
@@ -732,13 +1132,16 @@ Lua:     диагностический HUD; без savestate bootstrap
 
 | ---- | ---- |
 
-| `scripts/play_inference_fm2.py` | staging, запуск FCEUX |
-
-| `src/fm2_playback.py` | argv, staging helpers |
-
-| `src/fm2_export.py` | embed, GUID, `refresh_fm2_embedded_savestate` |
-
-| `fceux/lua/achievement_overlay.lua` | overlay + HUD + sync bootstrap |
+| `scripts/play_inference_fm2.py` | jsonl replay, плейлист |
+| `src/inference_replay.py` | staging, `run_inference_playback`, visual probe |
+| `fceux/lua/inference_replay_visual_probe.lua` | headless visual probe (sync loop) |
+| `fceux/lua/achievement_overlay.lua` | overlay + jsonl joypad replay (GUI) |
+| `scripts/inference_replay_visual_check.py` | CLI headless visual check |
+| `scripts/inference_playlist_e2e.py` | E2E inference → playlist → play |
+| `tests/test_inference_replay_fceux.py` | N4 jsonl replay (headless) |
+| `tests/test_playback_overlay_fceux.py` | overlay hook smoke (headless) |
+| `src/fm2_playback.py` | argv, staging helpers; movie probe (N6, не inference path) |
+| `src/fm2_export.py` | embed, GUID (N6/tests; inference export удалён) |
 
 | `games/…/states/inference_cp0.fc0` | gameplay-start state |
 
@@ -756,6 +1159,16 @@ Lua:     диагностический HUD; без savestate bootstrap
 
 | `src/fceux_bridge.py` | emulation mode: `-loadstate` без `-playmovie` |
 
-| `tests/test_fm2_playback_fceux.py` | N4: RAM probe smoke (`requires_fceux`; fail до fix) |
+| `tests/test_fm2_playback_fceux.py` | N4: RAM probe smoke (`requires_fceux`; **pass** RAM, не ловит PPU) |
+
+| `fceux/lua/movie_playback_visual_probe.lua` | PPU screenshot + RAM @ mf (N6 movie, не 3.4) |
+
+| `fceux/lua/movie_record_replay_probe.lua` | N6: native `movie.record` → play → probe |
+
+| `src/fm2_playback.probe_native_record_replay` | N6 Python harness |
+
+| `tmp/bench/fceux_native/` | N6 артефакты фаз 0–2 |
+
+| `tmp/bench/fceux_visual/` | N6 visual screenshots + JSON |
 
 
