@@ -97,14 +97,28 @@ def resolve_rom(game_id: str) -> Path:
     return rom
 
 
-def resolve_fceux_binary() -> Path:
+def resolve_fceux_home() -> Path:
+    """Каталог portable FCEUX: env FCEUX_HOME или fceux/runtime.yaml → home."""
+    env = os.environ.get("FCEUX_HOME")
+    if env:
+        home = Path(env)
+        if not home.is_absolute():
+            home = repo_root() / home
+        return home.resolve()
     runtime = load_yaml(repo_root() / "fceux" / "runtime.yaml")
-    binary = Path(runtime.get("binary", "fceux/portable/fceux64.exe"))
-    if not binary.is_absolute():
-        binary = repo_root() / binary
-    if not binary.is_file():
-        raise FileNotFoundError(f"FCEUX binary not found: {binary}")
-    return binary
+    home = Path(runtime.get("home", "fceux/portable"))
+    if not home.is_absolute():
+        home = repo_root() / home
+    return home.resolve()
+
+
+def resolve_fceux_binary() -> Path:
+    home = resolve_fceux_home()
+    for name in ("fceux64.exe", "fceux.exe"):
+        binary = home / name
+        if binary.is_file():
+            return binary
+    raise FileNotFoundError(f"FCEUX binary not found in {home} (tried fceux64.exe, fceux.exe)")
 
 
 def parse_fm2_rom_basename(fm2_path: Path) -> str:

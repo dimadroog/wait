@@ -198,6 +198,8 @@ def ensure_savestate_movie_guid(fcs: bytes, target_guid: str) -> bytes:
     target = target_guid.upper().encode("ascii")
     if len(target) != FCS_MOVIE_GUID_LEN:
         raise ValueError(f"invalid GUID length: {target_guid!r}")
+    if target in fcs:
+        return fcs
     matches = list(_GUID_BYTES_RE.finditer(fcs))
     if len(matches) == 1:
         start, end = matches[0].span()
@@ -265,6 +267,32 @@ def action_to_fm2_port(action: str) -> str:
 def fm2_frame_line(action: str, *, rerecord: int = 0) -> str:
     p1 = action_to_fm2_port(action)
     return f"|{rerecord}|{p1}|{EMPTY_PORT}||"
+
+
+def build_empty_fm2(
+    out_path: Path,
+    *,
+    template: Path,
+    save_state_path: Path,
+    guid: str,
+    num_frames: int = 60,
+) -> int:
+    """FM2 с embed и пустыми кадрами (probe / тесты N4)."""
+    if num_frames < 1:
+        raise ValueError("num_frames must be >= 1")
+    header = build_fm2_header(
+        template,
+        guid=guid,
+        embed_savestate=True,
+        save_state_path=save_state_path,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8", newline="\n") as f:
+        for line in header:
+            f.write(line + "\n")
+        for _ in range(num_frames):
+            f.write(fm2_frame_line("") + "\n")
+    return num_frames
 
 
 def iter_episode_frames(

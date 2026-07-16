@@ -142,6 +142,8 @@ def run_fceux_movie(
     cwd: Path,
     timeout_sec: float,
     done_flag: Path | None = None,
+    *,
+    noicon: bool = True,
 ) -> None:
     fceux = resolve_fceux_binary()
     env = os.environ.copy()
@@ -150,29 +152,35 @@ def run_fceux_movie(
     if done_flag and done_flag.exists():
         done_flag.unlink()
 
-    cmd = [
-        str(fceux),
-        "-readonly",
-        "1",
-        "-turbo",
-        "1",
-        "-nothrottle",
-        "1",
-        "-noicon",
-        "1",
-        "-lua",
-        str(lua_script.resolve()),
-        "-playmovie",
-        str(staged_fm2),
-        str(staged_rom),
-    ]
+    cmd = [str(fceux)]
+    if noicon:
+        cmd.extend(["-noicon", "1"])
+    cmd.extend(
+        [
+            "-turbo",
+            "1",
+            "-nothrottle",
+            "1",
+            "-lua",
+            str(lua_script.resolve()),
+            "-playmovie",
+            staged_fm2.name,
+            "-readonly",
+            "1",
+            staged_rom.name,
+        ]
+    )
+
+    popen_flags = 0
+    if sys.platform == "win32" and noicon:
+        popen_flags = subprocess.CREATE_NO_WINDOW
 
     with fceux_sound_off(fceux.parent):
         proc = subprocess.Popen(
             cmd,
             cwd=str(cwd),
             env=env,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            creationflags=popen_flags,
         )
         deadline = time.time() + timeout_sec
         while proc.poll() is None:

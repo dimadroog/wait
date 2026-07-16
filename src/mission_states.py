@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from fceux_launch import run_fceux_movie
-from project_paths import load_yaml, parse_fm2_rom_basename, repo_root
+from project_paths import parse_fm2_rom_basename, repo_root, resolve_fceux_home
 
 
 def stage_fm2_for_fceux(fm2: Path, rom: Path, staging: Path) -> tuple[Path, Path]:
@@ -21,9 +21,7 @@ def stage_fm2_for_fceux(fm2: Path, rom: Path, staging: Path) -> tuple[Path, Path
 
 
 def _fceux_fcs_dir() -> Path:
-    runtime = load_yaml(repo_root() / "fceux" / "runtime.yaml")
-    home = runtime.get("home", "fceux/portable")
-    return repo_root() / home / "fcs"
+    return resolve_fceux_home() / "fcs"
 
 
 def collect_slot_states(mission: Path, fm2: Path, plan: list[dict], rom_base: str) -> None:
