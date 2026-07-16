@@ -33,7 +33,7 @@ fceux/
 https://github.com/TASEmulators/fceux/releases/download/v2.6.6/fceux-2.6.6-win64.zip
 ```
 
-Для side-by-side тестов (N2 / другой portable без замены рабочего): распаковать в `fceux/portable_<label>/` и задать `FCEUX_HOME` (см. ниже). Примеры: `portable_github_v266/` (2.6.6), `portable_222_win32/` (2.2.2, `fceux.exe`).
+Для side-by-side тестов другой сборки: распаковать в произвольный каталог и задать `FCEUX_HOME` (см. ниже). Артефакты N2 — в `tmp/bench/fceux-n2/`.
 
 ## Режимы (один binary, разные профили)
 
@@ -56,5 +56,5 @@ Launcher (`src/env/`) читает `runtime.yaml` + `profiles/<mode>.yaml`.
 `FCEUX_HOME` — каталог portable (если не `fceux/portable/`). Реализовано в `src/project_paths.resolve_fceux_home()`; влияет на `fceux64.exe` и `fcs/`.
 
 ```bash
-FCEUX_HOME=fceux/portable_github_v266 ./.venv/Scripts/python.exe scripts/play_inference_fm2.py ...
+FCEUX_HOME=/path/to/other/fceux ./.venv/Scripts/python.exe scripts/play_inference_fm2.py ...
 ```

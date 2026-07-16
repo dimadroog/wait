@@ -4,8 +4,6 @@ games/**/rom/*.fds
 
 # FCEUX portable (официальный дистрибутив; см. fceux/README.md)
 fceux/portable/
-fceux/portable_github_v266/
-fceux/portable_222_win32/
 
 # ML artifacts (вся ветка checkpoints, включая runs/)
 games/**/checkpoints/**

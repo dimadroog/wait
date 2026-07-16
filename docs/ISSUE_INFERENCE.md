@@ -466,7 +466,7 @@ Bootstrap embed **отличается** от `inference_cp0` (185537 vs ~79 KB)
 | Шаг | Результат |
 | --- | --------- |
 | Download | `tmp/bench/fceux-n2/fceux-2.6.6-win64.zip` |
-| Extract | `fceux/portable_github_v266/` (side-by-side, не заменяет `portable/`) |
+| Extract | side-by-side в `fceux/portable_github_v266/` (удалено после N2) |
 | MD5 `fceux64.exe` | `a8a75e0a20627d822d467c46dee9744b` — **совпадает** с `fceux/portable/` |
 | Probe @ mf=8 (`FCEUX_HOME=portable_github_v266`) | `room=0`, `x=0`, `gameplay_like_ram=false` — **как win64 portable** |
 
@@ -477,7 +477,7 @@ Bootstrap embed **отличается** от `inference_cp0` (185537 vs ~79 KB)
 | Шаг | Результат |
 | --- | --------- |
 | Download | `tmp/bench/fceux-n2/fceux-2.2.2-win32.zip` |
-| Extract | `fceux/portable_222_win32/` (`fceux.exe`, не `fceux64.exe`) |
+| Extract | side-by-side в `fceux/portable_222_win32/` (удалено после N2) |
 | `FCEUX_HOME` | `resolve_fceux_binary()` пробует `fceux64.exe`, затем `fceux.exe` |
 | Probe @ mf=8 | `room=0`, `x=0`, `gameplay_like_ram=false` — **как 2.6.6 win64** |
 
