@@ -79,7 +79,7 @@ local function ram_snapshot()
   local room = ROOM_ADDR and memory.readbyte(ROOM_ADDR) or -1
   local x_pos = X_ADDR and memory.readbyte(X_ADDR) or -1
   local lives = LIVES_ADDR and memory.readbyte(LIVES_ADDR) or -1
-  local gameplay_like = (room == 0 and x_pos == 129)
+  local gameplay_like = (lives >= 1 and lives <= 9)
   return room, x_pos, lives, gameplay_like
 end
 

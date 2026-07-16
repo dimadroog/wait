@@ -27,13 +27,14 @@ end
 local DONE_FLAG, PROBE_FLAG, PROBE_AT_MF, ROOM_ADDR, X_ADDR, LIVES_ADDR = read_config()
 local finished = false
 local probed = false
-local MAX_EMU_FRAMES = 600
+local MAX_EMU_FRAMES = math.max(600, PROBE_AT_MF + 200)
 
 local function ram_snapshot()
   local room = ROOM_ADDR and memory.readbyte(ROOM_ADDR) or -1
   local x_pos = X_ADDR and memory.readbyte(X_ADDR) or -1
   local lives = LIVES_ADDR and memory.readbyte(LIVES_ADDR) or -1
-  local gameplay_like = (room == 0 and x_pos == 129)
+  -- lives 1..9 = controllable play; room=0+x=129 alone is title/attract (ISSUE G0)
+  local gameplay_like = (lives >= 1 and lives <= 9)
   return room, x_pos, lives, gameplay_like
 end
 

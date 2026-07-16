@@ -49,6 +49,20 @@
 
 Обработка каждого 4-го кадра NES → 15 decision/sec [BC](#bc) при 60 [FPS](#fps) эмулятора.
 
+### Harness
+
+**Harness** (обвязка эксперимента) — одноразовый или bench-only код для **изолированной** проверки гипотезы **вне** production-пайплайна: минимальный Lua + Python (или pytest `requires_fceux`), без playlist, overlay, staging продакшн-скриптов. Цель — чистота эксперимента (как N6, M-proto, B-proto, **F-proto**): сначала контракт [FCEUX](#fceux), потом внедрение.
+
+| Аспект | Правило |
+| ------ | ------- |
+| Где | `tmp/bench/<session>/` через `artifact_quarantine_dir("bench", …)` |
+| Артефакты | JSON результатов, скриншоты PPU; не `games/…/logs/`, не `checkpoints/` |
+| Жизненный цикл | после фиксации вердикта в [ISSUE_INFERENCE.md](ISSUE_INFERENCE.md) — harness-скрипт удалить, JSON оставить |
+| Gate | [PPU](#ppu) на GUI оператором; headless probe — вспомогательный, не закрывает issue (P22) |
+| Не путать с | `play_inference_fm2.py`, `run_inference.py`, `smoke_*.py` (регрессия/production) |
+
+Примеры в репо: `movie_record_replay_probe.lua` + `probe_native_record_replay` (N6); `movie_playback_probe.lua` (M-proto); bridge replay probe (B-proto, **закрыт FAIL**); активный — **[BACKLOG 3.6](BACKLOG.md#36-inference-replay-fm2-gameplay-capture-f-proto)** § F-proto. См. [ISSUE_INFERENCE.md § F-proto](ISSUE_INFERENCE.md#f-proto--fm2-gameplay-capture-m2--capture--gameplay-2026-07-16).
+
 ### Inference
 
 Режим `model.predict()`: модель играет **без** обновления весов. Этап A — локально ([ML_CONCEPT.md](ML_CONCEPT.md)); этап B — на эфире ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)).
@@ -106,9 +120,13 @@
 
 **Proximal Policy Optimization** — алгоритм RL; реализация в [SB3](#sb3).
 
+### PPU
+
+**Picture Processing Unit** — чип отрисовки [NES](#nes); в проекте: **картинка на экране** [FCEUX](#fceux) (кадр 256×240), то, что видит оператор на эфире. Не путать с [RAM](#ram) (адреса `room`, `x`, `hp` через Lua) и с [obs](#obs) (стек 84×84 для CNN). Visual probe и критерий playback — по **PPU** (title vs gameplay); RAM-probe может не совпадать с экраном (RAM↔PPU desync, см. [ISSUE_INFERENCE.md](ISSUE_INFERENCE.md)). Снимок в probe: `gui.gdscreenshot` в Lua.
+
 ### RAM
 
-**Память NES** — адреса в картридже (`room`, `x`, `y`, `hp`…); читается через Lua в [FCEUX](#fceux). Не путать с ОЗУ ПК и не путать с [obs](#obs) (пиксели экрана).
+**Память NES** — адреса в картридже (`room`, `x`, `y`, `hp`…); читается через Lua в [FCEUX](#fceux). Не путать с ОЗУ ПК, с [PPU](#ppu) (экран) и с [obs](#obs) (пиксели для ML).
 
 ### RL
 

@@ -320,6 +320,45 @@ def write_fm2_sidecar(
     return sidecar
 
 
+def export_fm2(
+    jsonl_path: Path,
+    out_path: Path,
+    *,
+    template: Path | None = None,
+    episode: int | None = None,
+    frame_skip: int = DEFAULT_FRAME_SKIP,
+    overlay: dict[str, Any] | None = None,
+    save_state_path: Path,
+    game_id: str = "rushn_attack",
+    mission_id: str = "m1",
+) -> int:
+    """jsonl → self-contained .fm2; возвращает число FM2-кадров."""
+    tmpl = template or default_fm2_template(game_id, mission_id)
+    rows = list(iter_jsonl(jsonl_path))
+    if not rows:
+        raise ValueError(f"No rows in {jsonl_path}")
+
+    frame_lines = list(iter_episode_frames(rows, episode=episode, frame_skip=frame_skip))
+    if not frame_lines:
+        raise ValueError(f"No frames for episode={episode!r} in {jsonl_path}")
+
+    header = build_fm2_header(
+        tmpl,
+        guid=episode_fm2_guid(episode),
+        embed_savestate=True,
+        save_state_path=save_state_path,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8", newline="\n") as f:
+        for line in header:
+            f.write(line + "\n")
+        for frame_line in frame_lines:
+            f.write(frame_line + "\n")
+    if overlay:
+        write_fm2_sidecar(out_path, overlay=overlay)
+    return len(frame_lines)
+
+
 def export_episode_fm2_from_steps(
     steps: list[dict[str, Any]],
     out_path: Path,

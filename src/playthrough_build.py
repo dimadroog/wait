@@ -190,15 +190,44 @@ def load_human_playthrough_rows(path: Path) -> list[dict]:
     return rows
 
 
+def _has_gameplay_input(action: str | None) -> bool:
+    """Направление / удар — не Start (intro) и не пустой кадр."""
+    a = (action or "").lower()
+    return any(tok in a for tok in ("right", "left", "up", "down", "+a", "+b", "a+", "b+")) or a in {
+        "a",
+        "b",
+    }
+
+
 def gameplay_start_frame_from_rows(
-    rows: list[dict], *, transition_rooms: frozenset[int]
+    rows: list[dict],
+    *,
+    transition_rooms: frozenset[int],
+    lives_min: int = 1,
+    lives_max: int = 9,
 ) -> int:
-    """Первый кадр gameplay: room вне transition_rooms (из etalon_build.yaml)."""
+    """Первый кадр управляемого gameplay.
+
+    Только ``room ∉ transition_rooms`` недостаточно: на title/attract у Rush'n Attack
+    уже бывает ``room=0x00`` при ``lives=0`` и ``x=129`` (ложный gameplay-start @18).
+    ``lives`` 1..9 тоже недостаточно: перед уровнем идёт fade (room 0x11→0x01, чёрный
+    экран @1226). Нужен ещё кадр с реальным вводом (right/left/…).
+    """
     for row in rows:
         room = int(str(row["room"]), 16)
-        if room not in transition_rooms:
-            return int(row["frame"])
-    raise ValueError("No gameplay start frame found in human_playthrough rows")
+        lives = int(row.get("lives", 0))
+        if room in transition_rooms:
+            continue
+        if not (lives_min <= lives <= lives_max):
+            continue
+        if not _has_gameplay_input(row.get("action")):
+            continue
+        return int(row["frame"])
+    raise ValueError(
+        "No gameplay start frame found in human_playthrough rows "
+        f"(need room outside transition, lives in [{lives_min}, {lives_max}], "
+        "and a movement/attack action)"
+    )
 
 
 def inference_save_state_plan(gameplay_frame: int) -> list[dict]:

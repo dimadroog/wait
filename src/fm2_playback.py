@@ -273,6 +273,12 @@ def probe_native_record_replay(
         staged_rom = _stage_rom(rom, staging)
         _mirror_fc0_to_fcs(loadstate, rom, slot=savestate_slot)
         load_slot_before_record = True
+    elif variant == "F0":
+        if loadstate is None or not loadstate.is_file():
+            return {"ok": False, "error": "loadstate_required", "variant": variant}
+        staged_rom, staged_state, _ = _stage_rom_loadstate(rom, loadstate, staging)
+        extra_args = ["-loadstate", staged_state.name]
+        load_slot_before_record = True
     else:
         staged_rom = _stage_rom(rom, staging)
 
@@ -348,6 +354,87 @@ def probe_native_record_replay(
         result["has_embed"] = False
         result["embed_size"] = 0
     return result
+
+
+def run_f0_operator_gate(
+    rom: Path,
+    loadstate: Path,
+    bench_dir: Path,
+    *,
+    ram: dict[str, int],
+    probe_mfs: tuple[int, ...] = (8, 28),
+    num_record_frames: int = 60,
+    noicon_record: bool = True,
+    noicon_visual: bool = False,
+    timeout_sec: float = 120.0,
+) -> dict:
+    """F-proto F0: emulation capture → native record → PPU gate @ mf=8, 28."""
+    bench_dir.mkdir(parents=True, exist_ok=True)
+    record_dir = bench_dir / "record"
+    out_fm2 = bench_dir / "f0_native.fm2"
+    record = probe_native_record_replay(
+        rom,
+        out_fm2,
+        record_dir,
+        ram=ram,
+        variant="F0",
+        loadstate=loadstate,
+        num_record_frames=num_record_frames,
+        probe_at_mf=probe_mfs[0],
+        noicon=noicon_record,
+        timeout_sec=timeout_sec,
+    )
+    visual: dict[str, dict] = {}
+    for mf in probe_mfs:
+        staging = bench_dir / f"play_staging_mf{mf}"
+        tmp = bench_dir / f"play_tmp_mf{mf}"
+        shot = bench_dir / f"f0_visual_mf{mf}.png"
+        probe = probe_movie_playback_visual(
+            out_fm2,
+            rom,
+            staging,
+            tmp,
+            shot,
+            ram=ram,
+            probe_at_mf=mf,
+            timeout_sec=timeout_sec,
+            noicon=noicon_visual,
+        )
+        gd_path = Path(probe.get("screenshot_gd_path") or str(shot) + ".gd")
+        png_path = shot.with_suffix(".png")
+        if gd_screenshot_to_png(gd_path, png_path):
+            probe["screenshot_png"] = str(png_path)
+        probe["ppu_heuristic"] = ppu_screenshot_heuristic(
+            png_path if png_path.is_file() else gd_path
+        )
+        visual[str(mf)] = probe
+
+    ppu_gameplay = all(
+        (visual[str(mf)].get("ppu_heuristic") or {}).get("gameplay_like_ppu_heuristic") is True
+        for mf in probe_mfs
+    )
+    ram_pass = record.get("ok") is True
+    operator_pass = ram_pass and ppu_gameplay
+
+    summary = {
+        "phase": "F0",
+        "variant": "F0",
+        "record": record,
+        "visual": visual,
+        "verdict": {
+            "ram_pass": ram_pass,
+            "ppu_gameplay": ppu_gameplay,
+            "operator_pass": operator_pass,
+            "operator_note": (
+                "PASS" if operator_pass else "FAIL — PPU heuristic @ mf=8/28 (GUI оператор подтверждает)"
+            ),
+        },
+        "out_fm2": str(out_fm2),
+    }
+    out_path = bench_dir / "f0_results.json"
+    out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary["results_path"] = str(out_path)
+    return summary
 
 
 def gd_screenshot_to_png(gd_path: Path, png_path: Path) -> bool:

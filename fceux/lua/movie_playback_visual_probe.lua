@@ -28,13 +28,18 @@ end
 local DONE_FLAG, PROBE_FLAG, SCREENSHOT_PATH, PROBE_AT_MF, ROOM_ADDR, X_ADDR, LIVES_ADDR = read_config()
 local finished = false
 local probed = false
-local MAX_EMU_FRAMES = math.max(600, PROBE_AT_MF + 150)
+local MAX_EMU_FRAMES = math.max(600, PROBE_AT_MF + 200)
+
+-- Planes must stay on for the whole movie; toggling only at capture yields a black GD.
+if FCEU and FCEU.setrenderplanes then
+  FCEU.setrenderplanes(true, true)
+end
 
 local function ram_snapshot()
   local room = ROOM_ADDR and memory.readbyte(ROOM_ADDR) or -1
   local x_pos = X_ADDR and memory.readbyte(X_ADDR) or -1
   local lives = LIVES_ADDR and memory.readbyte(LIVES_ADDR) or -1
-  local gameplay_like = (room == 0 and x_pos == 129)
+  local gameplay_like = (lives >= 1 and lives <= 9)
   return room, x_pos, lives, gameplay_like
 end
 
@@ -81,9 +86,6 @@ emu.registerafter(function()
         gd_path = SCREENSHOT_PATH .. ".gd"
       end
       if gui and gui.gdscreenshot then
-        if FCEU and FCEU.setrenderplanes then
-          FCEU.setrenderplanes(true, true)
-        end
         local ok, err = pcall(function()
           local shot = gui.gdscreenshot()
           local f = io.open(gd_path, "wb")
@@ -96,9 +98,6 @@ emu.registerafter(function()
         shot_ok = ok
         if not ok then
           shot_err = tostring(err)
-        end
-        if FCEU and FCEU.setrenderplanes then
-          FCEU.setrenderplanes(false, false)
         end
       else
         shot_err = "gui.gdscreenshot unavailable"

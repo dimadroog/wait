@@ -21,9 +21,10 @@ from achievements.playlist import build_playlist  # noqa: E402
 from attempt_logger import AttemptLogger  # noqa: E402
 from env.loader import make_env  # noqa: E402
 from fceux_launch import load_fceux_profile  # noqa: E402
+from fm2_export import export_episode_fm2_from_steps, write_fm2_sidecar  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
 from inference_input_logger import InferenceInputLogger  # noqa: E402
-from jsonl_logs import dated_log_path, load_jsonl_window, utc_date_prefix  # noqa: E402
+from jsonl_logs import load_jsonl_window, utc_date_prefix  # noqa: E402
 from project_paths import mission_dir, repo_root  # noqa: E402
 
 
@@ -106,6 +107,7 @@ def run_inference(args: argparse.Namespace) -> None:
             done = False
             last_info = info
             steps = 0
+            step_log: list[dict] = []
 
             while not done and steps < args.max_steps:
                 action, _ = model.predict(obs, deterministic=not args.stochastic)
@@ -117,6 +119,20 @@ def run_inference(args: argparse.Namespace) -> None:
                 action_str = info.get("action", "")
                 frame = int((info.get("ram") or {}).get("frame", 0))
                 input_logger.log_step(step=steps - 1, frame=frame, action=action_str)
+                step_log.append({"action": action_str, "frame": frame})
+
+            fm2_path: Path | None = None
+            if args.save_episode_fm2:
+                save_state_path = mission / save_state
+                fm2_path = logs_dir / f"{date_prefix}_ep{ep:04d}.fm2"
+                export_episode_fm2_from_steps(
+                    step_log,
+                    fm2_path,
+                    save_state_path=save_state_path,
+                    episode=ep,
+                    game_id=args.game,
+                    mission_id=args.mission,
+                )
 
             record = attempt_logger.log_episode(
                 mission=args.mission.replace("m", ""),
@@ -126,15 +142,24 @@ def run_inference(args: argparse.Namespace) -> None:
                 save_state=save_state,
                 inference_inputs_ref=input_logger.log_path.name,
             )
+            if fm2_path:
+                record["fm2_path"] = str(fm2_path.resolve())
 
             history = load_jsonl_window(attempt_logger.log_path)
             tagged = evaluate_records(history, achievements_cfg)
+            if fm2_path:
+                for row in tagged:
+                    if int(row.get("episode", -1)) == ep:
+                        row["fm2_path"] = str(fm2_path.resolve())
+                        break
             write_tagged_attempts(attempt_logger.log_path, tagged)
             record = next((r for r in tagged if r.get("episode") == ep), record)
 
             overlay = overlay_payload(record, config=achievements_cfg)
             _write_overlay(args.session, overlay)
             ep_overlay = _write_episode_overlay(logs_dir, date_prefix, ep, overlay)
+            if fm2_path:
+                write_fm2_sidecar(fm2_path, overlay=overlay)
 
             print(
                 f"episode {ep}: steps={steps} max_cp={last_info.get('max_checkpoint')} "
@@ -142,6 +167,9 @@ def run_inference(args: argparse.Namespace) -> None:
                 f"tags={record.get('tags', [])}"
             )
             print(f"  overlay: {ep_overlay}")
+            if fm2_path:
+                print(f"  fm2: {fm2_path}")
+                print(f"  visual: ./.venv/Scripts/python.exe scripts/play_fm2_gui.py {fm2_path.as_posix()}")
 
         if args.build_playlist:
             created, manifest_path, clip_count = build_playlist(
@@ -187,6 +215,11 @@ def main() -> None:
         "--playlist-no-dedupe",
         action="store_true",
         help="плейлист без дедупликации одинаковых эпизодов",
+    )
+    parser.add_argument(
+        "--save-episode-fm2",
+        action="store_true",
+        help="писать logs/YYYYMMDD_epNNNN.fm2 с embed inference_cp0 (фаза C1)",
     )
     parser.add_argument(
         "--skip-preflight",

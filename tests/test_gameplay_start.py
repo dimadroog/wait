@@ -34,6 +34,11 @@ def test_gameplay_start_frame_m1() -> None:
     frame = gameplay_start_frame_from_rows(
         rows, transition_rooms=transition_rooms_from_etalon_build(etalon_build)
     )
-    assert frame == 18
+    # Not frame 18 (title) or 1226 (fade): need lives + movement input → 1250.
+    assert frame == 1250
     start = rows[frame - 1]
-    assert start["room"] == "0x00"
+    assert 1 <= int(start["lives"]) <= 9
+    assert "right" in str(start.get("action", "")).lower()
+    assert int(str(start["room"]), 16) not in transition_rooms_from_etalon_build(
+        etalon_build
+    )

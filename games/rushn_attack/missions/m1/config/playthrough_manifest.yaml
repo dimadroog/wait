@@ -86,5 +86,5 @@ segments:
   demo_file: demos/seg_005.npz
   save_state: states/cp4.fc0
 inference:
-  gameplay_start_frame: 18
+  gameplay_start_frame: 1250
   save_state: states/inference_cp0.fc0

@@ -60,6 +60,7 @@ local probed = false
 local finished = false
 local init_checked = false
 local pre_record = nil
+local emulation_capture = nil
 local record_step = nil
 local stop_step = nil
 local MAX_EMU_FRAMES = 1200
@@ -68,7 +69,7 @@ local function ram_snapshot()
   local room = ROOM_ADDR and memory.readbyte(ROOM_ADDR) or -1
   local x_pos = X_ADDR and memory.readbyte(X_ADDR) or -1
   local lives = LIVES_ADDR and memory.readbyte(LIVES_ADDR) or -1
-  local gameplay_like = (room == 0 and x_pos == 129)
+  local gameplay_like = (lives >= 1 and lives <= 9)
   return room, x_pos, lives, gameplay_like
 end
 
@@ -132,6 +133,38 @@ emu.registerafter(function()
   if phase == "init" then
     if not init_checked and emu_frame >= 1 then
       init_checked = true
+      if VARIANT == "F0" then
+        local movie_active = movie and movie.active and movie.active() or false
+        if movie_active then
+          fail("f0_movie_active", ',"movie_active":true')
+          return
+        end
+        local fceux_slot = SAVESTATE_SLOT + 1
+        local ok_cap, err_cap = pcall(function()
+          local st = savestate.create(fceux_slot)
+          savestate.save(st)
+        end)
+        if not ok_cap then
+          local err_msg = tostring(err_cap):gsub("\\", "\\\\"):gsub('"', '\\"')
+          fail("emulation_capture", string.format(',"slot":%d,"capture_error":"%s"', SAVESTATE_SLOT, err_msg))
+          return
+        end
+        local cap_room, cap_x, cap_lives, cap_gameplay = ram_snapshot()
+        emulation_capture = string.format(
+          '{"ok":%s,"slot":%d,"emu_frame":%d,"room":%d,"x":%d,"lives":%d,"gameplay_like_ram":%s,"movie_active":false}',
+          cap_gameplay and "true" or "false",
+          SAVESTATE_SLOT,
+          emu_frame,
+          cap_room,
+          cap_x,
+          cap_lives,
+          cap_gameplay and "true" or "false"
+        )
+        if REQUIRE_GAMEPLAY_RAM and not cap_gameplay then
+          fail("f0_capture_ram", ',"emulation_capture":' .. emulation_capture)
+          return
+        end
+      end
       if LOAD_SLOT_BEFORE_RECORD then
         local fceux_slot = SAVESTATE_SLOT + 1
         local ok_load, err_load = pcall(function()
@@ -227,15 +260,17 @@ emu.registerafter(function()
         gameplay_like and "true" or "false"
       )
       local pass = REQUIRE_GAMEPLAY_RAM and gameplay_like or true
+      local cap_field = emulation_capture and (',"emulation_capture":' .. emulation_capture) or ""
       finish(string.format(
-        '{"ok":%s,"variant":"%s","save_type":%d,"pre_record":%s,"record":%s,"stop":%s,"playback_probe":%s}',
+        '{"ok":%s,"variant":"%s","save_type":%d,"pre_record":%s,"record":%s,"stop":%s,"playback_probe":%s%s}',
         pass and "true" or "false",
         VARIANT,
         SAVE_TYPE,
         pre_record,
         record_step,
         stop_step,
-        playback_probe
+        playback_probe,
+        cap_field
       ))
       return
     end
