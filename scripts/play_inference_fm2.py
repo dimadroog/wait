@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Проигрывание inference: .fm2 (-playmovie) или playlist/jsonl (фаза C2 / legacy 3.4)."""
+"""Проигрывание inference FM2 (-playmovie) и playlist.json (эфир)."""
 from __future__ import annotations
 
 import argparse
@@ -23,7 +23,6 @@ from fm2_export import (  # noqa: E402
     remap_fm2_guid,
 )
 from fm2_playback import fceux_playmovie_argv  # noqa: E402
-from inference_replay import replay_frame_count, run_inference_playback  # noqa: E402
 from inference_states import gameplay_start_frame, resolve_inference_reset_state  # noqa: E402
 from project_paths import (  # noqa: E402
     count_fm2_frames,
@@ -184,7 +183,6 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
     )
     if overlay_path.is_file():
         print(f"Overlay: {overlay_path}")
-    print("Expect: gameplay (мост) + overlay HUD — не title «1 PLAYER»", flush=True)
 
     _run_fceux_movie_clip(
         fceux=fceux,
@@ -199,47 +197,6 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
     )
 
 
-def _play_episode_jsonl(
-    args: argparse.Namespace,
-    *,
-    jsonl_path: Path,
-    episode: int,
-    overlay_path: Path | None,
-    block_label: str | None = None,
-) -> None:
-    """Legacy 3.4 jsonl replay (до C3 playlist на FM2)."""
-    staging = repo_root() / "tmp" / "play_inference" / f"ep{episode:04d}"
-    tmp = staging / "tmp"
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
-
-    env = os.environ.copy()
-    if overlay_path and overlay_path.is_file():
-        env["WAIT_ACHIEVEMENT_OVERLAY"] = str(overlay_path.resolve())
-    if block_label:
-        env["WAIT_BLOCK_LABEL"] = block_label
-    _playback_ram_env(args.game, args.mission, env)
-
-    frames = replay_frame_count(jsonl_path, episode)
-    hold = _overlay_hold_frames(overlay_path)
-    timeout = max(args.timeout, (frames + hold) / 30.0 + 15.0)
-
-    print(f"Playing episode {episode} from {jsonl_path.name} ({frames} frames, jsonl)", flush=True)
-    run_inference_playback(
-        jsonl_path=jsonl_path,
-        episode=episode,
-        staging=staging,
-        tmp_dir=tmp,
-        overlay_path=overlay_path,
-        timeout_sec=timeout,
-        turbo=args.turbo,
-        game=args.game,
-        mission=args.mission,
-        extra_env=env,
-    )
-
-
 def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
     logs_dir = playlist_path.parent
     playlist = json.loads(playlist_path.read_text(encoding="utf-8"))
@@ -250,57 +207,30 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
     print(f"Playlist {playlist_path.name}: {len(clips)} clip(s)", flush=True)
     for clip_idx, clip in enumerate(clips, start=1):
         fm2_name = clip.get("fm2") or clip.get("fm2_path")
-        if fm2_name:
-            fm2 = Path(fm2_name)
-            if not fm2.is_file():
-                fm2 = logs_dir / Path(fm2_name).name
-            if not fm2.is_file():
-                raise SystemExit(f"FM2 not found for playlist clip: {fm2_name}")
-            overlay_name = clip.get("overlay")
-            if overlay_name:
-                args.overlay = str(logs_dir / overlay_name)
-            if clip.get("block_label"):
-                os.environ["WAIT_BLOCK_LABEL"] = str(clip["block_label"])
-            print(
-                f"  clip {clip_idx}/{len(clips)}: {fm2.name} ({clip.get('block_label', '')})",
-                flush=True,
-            )
-            _play_single_fm2(args, fm2.resolve())
-            continue
-
-        inputs_name = clip.get("inference_inputs")
-        if not inputs_name:
-            raise SystemExit(f"Clip missing fm2/inference_inputs: {clip}")
-        jsonl_path = logs_dir / inputs_name
-        episode = int(clip.get("episode", -1))
+        if not fm2_name:
+            raise SystemExit(f"Clip missing fm2: {clip}")
+        fm2 = Path(fm2_name)
+        if not fm2.is_file():
+            fm2 = logs_dir / Path(fm2_name).name
+        if not fm2.is_file():
+            raise SystemExit(f"FM2 not found for playlist clip: {fm2_name}")
         overlay_name = clip.get("overlay")
-        overlay_path = logs_dir / overlay_name if overlay_name else None
+        if overlay_name:
+            args.overlay = str(logs_dir / overlay_name)
+        if clip.get("block_label"):
+            os.environ["WAIT_BLOCK_LABEL"] = str(clip["block_label"])
         print(
-            f"  clip {clip_idx}/{len(clips)}: ep={episode} jsonl ({clip.get('block_label', '')})",
+            f"  clip {clip_idx}/{len(clips)}: {fm2.name} ({clip.get('block_label', '')})",
             flush=True,
         )
-        _play_episode_jsonl(
-            args,
-            jsonl_path=jsonl_path,
-            episode=episode,
-            overlay_path=overlay_path if overlay_path and overlay_path.is_file() else None,
-            block_label=clip.get("block_label"),
-        )
+        _play_single_fm2(args, fm2.resolve())
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Play inference FM2 (-playmovie) or playlist/jsonl"
-    )
-    parser.add_argument(
-        "input",
-        nargs="?",
-        help=".fm2 | YYYYMMDD_playlist.json | опустить при --inputs + --episode",
-    )
+    parser = argparse.ArgumentParser(description="Play inference FM2 (-playmovie) or playlist")
+    parser.add_argument("input", help=".fm2 | YYYYMMDD_playlist.json")
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
-    parser.add_argument("--inputs", type=Path, default=None, help="jsonl (legacy)")
-    parser.add_argument("--episode", type=int, default=None)
     parser.add_argument("--overlay", type=Path, default=None)
     parser.add_argument("--turbo", action="store_true", help="ускорить replay")
     parser.add_argument(
@@ -317,15 +247,6 @@ def main() -> None:
 
         require_playback_preflight(label="play_inference_fm2")
 
-    if args.inputs and args.episode is not None:
-        jsonl = _resolve_input_path(args.inputs, args.game, args.mission)
-        overlay = _resolve_input_path(args.overlay, args.game, args.mission) if args.overlay else None
-        _play_episode_jsonl(args, jsonl_path=jsonl, episode=args.episode, overlay_path=overlay)
-        return
-
-    if not args.input:
-        raise SystemExit("Provide .fm2, playlist.json, or --inputs + --episode")
-
     input_path = _resolve_input_path(Path(args.input), args.game, args.mission)
     if not input_path.is_file():
         raise SystemExit(f"Input not found: {input_path}")
@@ -338,7 +259,7 @@ def main() -> None:
         _play_playlist(args, input_path)
         return
 
-    raise SystemExit("Expected .fm2, YYYYMMDD_playlist.json, or --inputs + --episode")
+    raise SystemExit("Expected .fm2 or YYYYMMDD_playlist.json")
 
 
 if __name__ == "__main__":

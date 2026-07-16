@@ -994,7 +994,7 @@ wait/
 │   │   └── fceux64.exe
 │   ├── lua/
 │   │   ├── bridge.lua                  # IPC train/inference + overlay
-│   │   ├── achievement_overlay.lua     # справочный парсер overlay
+│   │   ├── achievement_overlay_movie.lua  # overlay HUD при FM2 -playmovie
 │   │   ├── record_logger.lua           # запись эталона
 │   │   └── common/                     # RAM per game (Phase 0+)
 │   ├── profiles/

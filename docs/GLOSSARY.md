@@ -61,7 +61,7 @@
 | Gate | [PPU](#ppu) на GUI оператором; headless probe — вспомогательный, не закрывает issue (P22) |
 | Не путать с | `play_inference_fm2.py`, `run_inference.py`, `smoke_*.py` (регрессия/production) |
 
-Примеры в репо: `movie_record_replay_probe.lua` + `probe_native_record_replay` (N6); `movie_playback_probe.lua` (M-proto); bridge replay probe (B-proto, **закрыт FAIL**); активный — **[BACKLOG 3.6](BACKLOG.md#36-inference-replay-fm2-gameplay-capture-f-proto)** § F-proto. См. [ISSUE_INFERENCE.md § F-proto](ISSUE_INFERENCE.md#f-proto--fm2-gameplay-capture-m2--capture--gameplay-2026-07-16).
+После закрытия [ISSUE_INFERENCE](ISSUE_INFERENCE.md) / **[3.6](BACKLOG.md#36-inference-replay-fm2-gameplay-capture-f-proto)** одноразовые N6/F0 harnesses удалены. Регрессия embed: `movie_playback_probe.lua` + `probe_movie_playback` / `_ppu` в `tests/test_fm2_playback_fceux.py`.
 
 ### Inference
 

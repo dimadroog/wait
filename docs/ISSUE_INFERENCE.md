@@ -1352,46 +1352,18 @@ Harness: расширить `movie_record_replay_probe.lua` (variant `F0`) + `pr
 
 
 | Файл | Роль |
-
 | ---- | ---- |
-
-| `scripts/play_inference_fm2.py` | FM2 `-playmovie` + playlist; legacy jsonl |
-| `src/inference_replay.py` | staging, `run_inference_playback`, visual probe |
-| `fceux/lua/inference_replay_visual_probe.lua` | headless visual probe (sync loop) |
-| `fceux/lua/achievement_overlay.lua` | overlay + jsonl joypad replay (GUI) |
-| `scripts/inference_replay_visual_check.py` | CLI headless visual check |
-| `scripts/inference_playlist_e2e.py` | E2E inference → playlist → play |
-| `tests/test_inference_replay_fceux.py` | N4 jsonl replay (headless) |
-| `tests/test_playback_overlay_fceux.py` | overlay hook smoke (headless) |
-| `src/fm2_playback.py` | argv, staging helpers; movie probe (N6, не inference path) |
+| `scripts/play_inference_fm2.py` | FM2 `-playmovie` + playlist |
+| `fceux/lua/achievement_overlay_movie.lua` | overlay HUD при `-playmovie` |
 | `src/fm2_export.py` | embed, GUID; `export_fm2` / `--save-episode-fm2` |
+| `src/achievements/playlist.py` | FM2-клипы плейлиста |
+| `src/stream/run_inference.py` | запись; опц. `--save-episode-fm2` |
+| `games/…/states/inference_cp0.fc0` | gameplay-start (@1250 после G0) |
+| `src/fm2_playback.py` | `fceux_playmovie_argv` + RAM/PPU probe (регрессия G0) |
+| `fceux/lua/movie_playback_probe.lua` | RAM-probe при `-playmovie` |
+| `fceux/lua/movie_playback_visual_probe.lua` | PPU screenshot + RAM @ mf |
+| `tests/test_fm2_playback_fceux.py` | G0: lives + PPU gameplay @ mf=8 |
 
-| `games/…/states/inference_cp0.fc0` | gameplay-start state |
-
-| `games/…/reference/human_playthrough.jsonl` | эталон room/x по кадрам |
-
-| `src/stream/run_inference.py` | запись с bridge `-loadstate` |
-
-| `fceux/lua/save_states.lua` | capture @ movie → `cp*.fc0` / `inference_cp0` |
-
-| `fceux/lua/movie_playback_probe.lua` | RAM-probe при `-playmovie` (M-proto-1 шаги 4–5, N4) |
-
-| `src/fm2_playback.probe_movie_playback` | Python-обёртка probe |
-
-| `src/fm2_export.build_empty_fm2` | тестовые FM2 с embed (N4) |
-
-| `src/fceux_bridge.py` | emulation mode: `-loadstate` без `-playmovie` |
-
-| `tests/test_fm2_playback_fceux.py` | N4: RAM probe smoke (`requires_fceux`; **pass** RAM, не ловит PPU) |
-
-| `fceux/lua/movie_playback_visual_probe.lua` | PPU screenshot + RAM @ mf (N6 movie, не 3.4) |
-
-| `fceux/lua/movie_record_replay_probe.lua` | N6: native `movie.record` → play → probe |
-
-| `src/fm2_playback.probe_native_record_replay` | N6 Python harness |
-
-| `tmp/bench/fceux_native/` | N6 артефакты фаз 0–2 |
-
-| `tmp/bench/fceux_visual/` | N6 visual screenshots + JSON |
+Исторические harnesses (jsonl standalone, N6 native-record, F0) **удалены** после закрытия issue; описание остаётся в тексте выше.
 
 

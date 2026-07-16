@@ -154,7 +154,7 @@ flowchart LR
 | 3.3  | `src/inference_states.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`                                                                         |
 | 3.4  | `src/achievements/playlist.py`, `scripts/build_playlist.py`, `scripts/play_inference_fm2.py` (переписать), `fceux/lua/`, `src/stream/run_inference.py`, `docs/ISSUE_INFERENCE.md` |
 | 3.5  | `docs/ISSUE_INFERENCE.md` § B-proto — **закрыт (B0 FAIL)** |
-| 3.6  | `docs/ISSUE_INFERENCE.md` § F-proto; `fm2_playback.py`, `movie_record_replay_probe.lua` |
+| 3.6  | `docs/ISSUE_INFERENCE.md` § C; `fm2_export` / `play_inference_fm2` / `playlist` / `achievement_overlay_movie.lua` |
 | 4.1  | `scripts/run_smoke.py`, `scripts/smoke_*.py`, `scripts/test_parallel_env.py`, `docs/DESIGN.md`                                                                                               |
 | 4.2  | `src/train/train_ppo.py`, `docs/SCRIPTS.md`                                                                                                                                                  |
 | 4.3  | `tests/conftest.py`, `tests/smoke/`, `requirements.txt` (pytest)                                                                                                                             |
@@ -1101,7 +1101,7 @@ Standalone `play_inference_fm2.py` (CLI `-loadstate` + `achievement_overlay.lua`
 **Приоритет:** —
 **Зависит от:** 3.4 (jsonl), ISSUE § G0
 **Ветка:** `issue/inference-fm2-replay` (готово к merge)
-**Файлы:** `src/fm2_export.py`, `scripts/export_fm2.py`, `scripts/play_fm2_gui.py`, `src/stream/run_inference.py`, `scripts/play_inference_fm2.py`, `src/achievements/playlist.py`, `docs/ISSUE_INFERENCE.md` § C
+**Файлы:** `src/fm2_export.py`, `scripts/export_fm2.py`, `scripts/play_fm2_gui.py`, `src/stream/run_inference.py`, `scripts/play_inference_fm2.py`, `src/achievements/playlist.py`, `fceux/lua/achievement_overlay_movie.lua`, `docs/ISSUE_INFERENCE.md` § C
 **Контекст в чат:** [ISSUE § фаза C](ISSUE_INFERENCE.md#фаза-c--внедрение-fm2-в-pipeline-после-g0) + § G0
 
 ### Цель

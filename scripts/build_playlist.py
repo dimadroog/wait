@@ -40,25 +40,23 @@ def main() -> None:
 
     parser.add_argument("--attempts", default=None)
 
-    parser.add_argument("--inputs", default=None, help="inference_inputs.jsonl (обязателен)")
+    parser.add_argument(
+        "--inputs",
+        default=None,
+        help="inference_inputs.jsonl (fallback export, если нет YYYYMMDD_epNNNN.fm2)",
+    )
     parser.add_argument("--no-dedupe", action="store_true", help="не пропускать дубликаты эпизодов в плейлисте")
 
     args = parser.parse_args()
 
-
-
     mission = mission_dir(args.game, args.mission)
-
     logs = mission / "logs"
-
     attempts = Path(args.attempts) if args.attempts else dated_log_path(logs, "attempts")
-
-    inputs = Path(args.inputs) if args.inputs else dated_log_path(logs, "inference_inputs")
+    inputs_candidate = Path(args.inputs) if args.inputs else dated_log_path(logs, "inference_inputs")
+    inputs = inputs_candidate if inputs_candidate.is_file() else None
 
     if not attempts.is_file():
         raise SystemExit(f"Attempts log not found: {attempts}")
-    if not inputs.is_file():
-        raise SystemExit(f"inference_inputs not found: {inputs}")
 
     created, manifest_path, clip_count = build_playlist(
         attempts,
