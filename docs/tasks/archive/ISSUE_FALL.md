@@ -1,12 +1,14 @@
 # ISSUE_FALL — провал e2e gate [5.0]
 
+> **Архив.** Новые расследования — внутри [`TASK_`](../TASK_BLANK.md), не отдельный `ISSUE_*`.
+
 **Дата сессии:** 2026-07-10 (отчёт); stress-диагностика — 2026-07-13  
 **Этап BACKLOG:** [5.0] Аудит: финальный e2e train  
 **Ветка:** `main` (после merge [4.4], commit `dabb7af`)  
 **Статус [5.0]:** закрыт 2026-07-13 (R5); документ фиксирует инцидент, диагностику и план устранения
 
-**Скрипт stress:** [`scripts/stress_e2e_gate.py`](../scripts/stress_e2e_gate.py)  
-**CLI-справка:** [SCRIPTS.md](SCRIPTS.md) § Parallel IPC stress / E2E gate stress
+**Скрипт stress:** [`scripts/stress_e2e_gate.py`](../../../scripts/stress_e2e_gate.py)  
+**CLI-справка:** [stress_e2e_gate.py](../../SCRIPTS.md#stress_e2e_gatepy), [test_parallel_env.py](../../SCRIPTS.md#test_parallel_envpy)
 
 ---
 
@@ -379,7 +381,7 @@ gate / train_ppo 2048           → IPC timeout / OpenBLAS OOM
 
 ## План работ по устранению
 
-Ограничения [DESIGN.md](DESIGN.md): IPC в Adapter (`src/fceux_bridge.py`), домен env в `src/env/`, train-оркестрация в `src/train/` и `scripts/`; smoke через `run_smoke.py`; артефакты только в `tmp/`; без одноразовых скриптов в `scripts/`.
+Ограничения [DESIGN.md](../../DESIGN.md): IPC в Adapter (`src/fceux_bridge.py`), домен env в `src/env/`, train-оркестрация в `src/train/` и `scripts/`; smoke через `run_smoke.py`; артефакты только в `tmp/`; без одноразовых скриптов в `scripts/`.
 
 ### Фаза R0 — гигиена и наблюдаемость (1–2 дня)
 
@@ -436,7 +438,7 @@ gate / train_ppo 2048           → IPC timeout / OpenBLAS OOM
 | 5 | `src/train/train_ppo.py --n-envs 8 --timesteps 2048` | tier 3, дубль |
 | 6 | `cleanup_artifact_quarantine("bench")`, `find_stray_smoke_artifacts` → пусто | DESIGN § гигиена |
 
-**Критерий закрытия [5.0]:** gate 8×2048 завершается **2 раза подряд** на чистой машине без IPC timeout / worker crash; fps в [MEASUREMENTS.md](MEASUREMENTS.md) без регрессии к ~5 env-steps/s (вердикт 1.9).
+**Критерий закрытия [5.0]:** gate 8×2048 завершается **2 раза подряд** на чистой машине без IPC timeout / worker crash; fps в [MEASUREMENTS.md](../../MEASUREMENTS.md) без регрессии к ~5 env-steps/s (вердикт 1.9).
 
 ### Зависимости и порядок
 
@@ -454,7 +456,7 @@ flowchart LR
 ### Вне scope (не смешивать с hotfix [5.0])
 
 - Переход на IPC v2 / shared memory ([1.8] — out of scope train).
-- Снижение `n_envs` или откат дефолтов 1.3/1.7 ([BACKLOG 1.9](BACKLOG.md) — чинить стабильность, не throughput).
+- Снижение `n_envs` или откат дефолтов 1.3/1.7 ([BACKLOG 1.9](TASK_FIRST_CAMPAIGN.md) — чинить стабильность, не throughput).
 - Длинный train «первая модель» — только после зелёного R5.
 
 ---
@@ -505,8 +507,8 @@ flowchart LR
 - [x] **R5.5** `benchmark_train.py --mode gate` — tier 3, **прогон 2/2** (1.95 env-steps/s, без crash)
 - [x] **R5.6** `src/train/train_ppo.py --n-envs 8 --timesteps 2048` — tier 3, дубль
 - [x] **R5.7** `cleanup_artifact_quarantine("bench")`; `find_stray_smoke_artifacts` → пусто
-- [x] **R5.8** fps зафиксированы в [MEASUREMENTS.md](MEASUREMENTS.md)
-- [x] **R5.✓** [5.0] закрыт в [BACKLOG.md](BACKLOG.md)
+- [x] **R5.8** fps зафиксированы в [MEASUREMENTS.md](../../MEASUREMENTS.md)
+- [x] **R5.✓** [5.0] закрыт в [TASK_FIRST_CAMPAIGN.md](TASK_FIRST_CAMPAIGN.md)
 
 ---
 
@@ -514,8 +516,8 @@ flowchart LR
 
 | Документ | Содержание |
 | -------- | ---------- |
-| [SCRIPTS.md](SCRIPTS.md) | Аргументы CLI, команды stress/gate |
-| [MEASUREMENTS.md](MEASUREMENTS.md) | Эталонные fps, критерий 5.0 |
-| [ISSUE_TRAIN_FPS_DEGRADATION.md](ISSUE_TRAIN_FPS_DEGRADATION.md) | Деградация fps при длинном train |
-| [DESIGN.md](DESIGN.md) | Гигиена артефактов, границы слоёв |
-| [BACKLOG.md](BACKLOG.md) | Этап [5.0] и зависимости |
+| [SCRIPTS.md](../../SCRIPTS.md) | Аргументы CLI, команды stress/gate |
+| [MEASUREMENTS.md](../../MEASUREMENTS.md) | Эталонные fps, критерий 5.0 |
+| [TASK_TRAIN_FPS_DEGRADATION.md](../TASK_TRAIN_FPS_DEGRADATION.md) | Деградация fps при длинном train |
+| [DESIGN.md](../../DESIGN.md) | Гигиена артефактов, границы слоёв |
+| [TASK_FIRST_CAMPAIGN.md](TASK_FIRST_CAMPAIGN.md) | Этап [5.0] и зависимости |

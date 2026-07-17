@@ -1,21 +1,17 @@
 # GLOSSARY — термины проекта
 
-> Единый словарь для [ML_CONCEPT.md](ML_CONCEPT.md) и [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).  
+> Единый словарь для [ML_CONCEPT.md](ML_CONCEPT.md), [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md), [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).  
 > Перекрёстные ссылки `#term` работают внутри этого файла (Preview).
 
 ---
 
 ### Achievement (inference)
 
-Номинация попытки после [inference](#inference) (🏆 или 💀): правила в `config/achievements.yaml`, теги в `tags[]`, FM2-плейлист `{YYYYMMDD}_{idx}_{slug}_{seq}.fm2`. См. [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных).
+Номинация попытки после [inference](#inference) (🏆 или 💀): правила в `config/achievements.yaml`, теги в `tags[]`, FM2-плейлист `{idx}_{slug}_{seq}.fm2`. Pipeline — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
 
 ### AI
 
 **Artificial Intelligence** — в проекте: нейросеть ([PPO](#ppo)), которая играет в [NES](#nes) через [inference](#inference).
-
-### BC
-
-**Behavioral Cloning** — предобучение: модель копирует actions из записи [эталона](#etalon) (`demos/seg_*.npz`).
 
 ### Checkpoint (модель)
 
@@ -35,7 +31,7 @@
 
 ### FCEUX
 
-Эмулятор NES: portable **2.6.6 win64** в `fceux/portable/fceux64.exe`; Lua проекта в `fceux/lua/`. Единый runtime для [эталона](#etalon), train и [inference](#inference). Окно для OBS Game Capture на эфире. Не Qt/SDL.
+Эмулятор NES: portable **2.6.6 win64** в `fceux/portable/fceux64.exe`; Lua проекта в `fceux/lua/`. Единый runtime для [эталона](#etalon), train и [inference](#inference). Окно для OBS Game Capture на эфире.
 
 ### FM2
 
@@ -47,7 +43,7 @@
 
 ### Frame skip
 
-Обработка каждого 4-го кадра NES → 15 decision/sec [BC](#bc) при 60 [FPS](#fps) эмулятора.
+Обработка каждого 4-го кадра NES → 15 decision/sec при 60 [FPS](#fps) эмулятора.
 
 ### Harness
 
@@ -57,27 +53,23 @@
 | ------ | ------- |
 | Где | `tmp/bench/<session>/` через `artifact_quarantine_dir("bench", …)` |
 | Артефакты | JSON результатов, скриншоты PPU; не `games/…/logs/`, не `checkpoints/` |
-| Жизненный цикл | после фиксации вердикта в [ISSUE_INFERENCE.md](ISSUE_INFERENCE.md) — harness-скрипт удалить, JSON оставить |
+| Жизненный цикл | после фиксации вердикта в [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md) — harness-скрипт удалить, JSON оставить |
 | Gate | [PPU](#ppu) на GUI оператором; headless probe — вспомогательный, не закрывает issue (P22) |
 | Не путать с | `play_inference_fm2.py`, `run_inference.py`, `smoke_*.py` (регрессия/production) |
 
-После закрытия [ISSUE_INFERENCE](ISSUE_INFERENCE.md) / **[3.6](BACKLOG.md#36-inference-replay-fm2-gameplay-capture-f-proto)** одноразовые N6/F0 harnesses удалены. Регрессия embed: `movie_playback_probe.lua` + `probe_movie_playback` / `_ppu` в `tests/test_fm2_playback_fceux.py`.
+После закрытия [ISSUE_INFERENCE](tasks/archive/ISSUE_INFERENCE.md) / **[3.6](tasks/archive/TASK_FIRST_CAMPAIGN.md#36-inference-replay-fm2-gameplay-capture-f-proto)** одноразовые N6/F0 harnesses удалены. Регрессия embed: `movie_playback_probe.lua` + `probe_movie_playback` / `_ppu` в `tests/test_fm2_playback_fceux.py`.
 
 ### Inference
 
-Режим `model.predict()`: модель играет **без** обновления весов. Этап A — локально ([ML_CONCEPT.md](ML_CONCEPT.md)); этап B — на эфире ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)).
+Режим `model.predict()`: модель играет **без** обновления весов (`run_inference.py`). Попытки → плейлист; эфир — replay плейлиста ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)).
 
 ### IPC
 
 **Inter-Process Communication** — обмен Python ↔ Lua в [FCEUX](#fceux) (`fceux/lua/bridge.lua`).
 
-### LLM
-
-**Large Language Model** — в [MVP](#mvp) **не** используется для выбора сегментов; Phase 5+ (диспетчер задач).
-
 ### M1
 
-**Mission 1** — первая миссия Rush'n Attack; scope [MVP](#mvp).
+**Mission 1** — первая миссия пилота; см. [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).
 
 ### Manifest
 
@@ -86,10 +78,6 @@
 ### ML
 
 **Machine Learning** — машинное обучение; раздел [ML_CONCEPT.md](ML_CONCEPT.md).
-
-### MVP
-
-**Minimum Viable Product** — первый рабочий контур: Rush'n Attack [M1](#m1), локальный CPU, один цикл train → [inference](#inference) → [дообучение](#doobuchenie).
 
 ### NES
 
@@ -108,7 +96,7 @@
 Два значения в проекте:
 
 1. **Observation** (ML) — наблюдение среды: стек из 4 кадров 84×84 в градациях серого, форма `(4, 84, 84)`, нормализованный вход CNN; кадры из [FCEUX](#fceux) через bridge (`obs_*.raw` / decode). Не путать с [RAM](#ram).
-2. **Open Broadcaster Software** (стрим) — захват окна [FCEUX](#fceux), кодирование ([NVENC](#nvenc)), стрим на Twitch. На train не совмещать с [PPO](#ppo).
+2. **Open Broadcaster Software** (стрим) — захват окна [FCEUX](#fceux) (playlist replay), кодирование ([NVENC](#nvenc)), стрим на Twitch.
 
 
 
@@ -122,7 +110,7 @@
 
 ### PPU
 
-**Picture Processing Unit** — чип отрисовки [NES](#nes); в проекте: **картинка на экране** [FCEUX](#fceux) (кадр 256×240), то, что видит оператор на эфире. Не путать с [RAM](#ram) (адреса `room`, `x`, `hp` через Lua) и с [obs](#obs) (стек 84×84 для CNN). Visual probe и критерий playback — по **PPU** (title vs gameplay); RAM-probe может не совпадать с экраном (RAM↔PPU desync, см. [ISSUE_INFERENCE.md](ISSUE_INFERENCE.md)). Снимок в probe: `gui.gdscreenshot` в Lua.
+**Picture Processing Unit** — чип отрисовки [NES](#nes); в проекте: **картинка на экране** [FCEUX](#fceux) (кадр 256×240), то, что видит оператор на эфире. Не путать с [RAM](#ram) (адреса `room`, `x`, `hp` через Lua) и с [obs](#obs) (стек 84×84 для CNN). Visual probe и критерий playback — по **PPU** (title vs gameplay); RAM-probe может не совпадать с экраном (RAM↔PPU desync, см. [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md)). Снимок в probe: `gui.gdscreenshot` в Lua.
 
 ### RAM
 
@@ -176,7 +164,7 @@
 | Поле | Секция | Значение |
 | ---- | ------ | -------- |
 | **rollout/** | метрики эпизодов за последний сбор данных | |
-| `ep_len_mean` | rollout | средняя длина эпизода в [env-steps](#env-step). При Rush'n Attack [M1](#m1) типично **≈2** — короткие эпизоды, частые `reset()` ([reset storm](MEASUREMENTS.md)). |
+| `ep_len_mean` | rollout | средняя длина эпизода в [env-steps](#env-step). На пилоте [M1](#m1) типично **≈2** — короткие эпизоды, частые `reset()` ([reset storm](MEASUREMENTS.md)). |
 | `ep_rew_mean` | rollout | средняя суммарная награда за эпизод за последний [rollout](#rollout) (профиль наград миссии). |
 | **time/** | время и прогресс обучения | |
 | `fps` | time | **не** [FPS](#fps) видео. Пропускная способность train: [env-steps](#env-step) / [wall-секунду](#wall-clock) **с начала сессии** (кумулятивный показатель [SB3](#sb3)). Сравнение с эталоном — [MEASUREMENTS.md](MEASUREMENTS.md). |
@@ -186,7 +174,7 @@
 | `progress_pct` | time | доля цели в %: `100 × total_timesteps / target_timesteps` (проектный callback). |
 | `target_timesteps` | time | целевое число [env-steps](#env-step) из CLI `--timesteps` или sidecar `.train.json` при `--resume`. |
 
-Связанные команды: [`train_local.sh`](../scripts/train_local.sh), [SCRIPTS.md](SCRIPTS.md) § train. Деградация `fps` на длинном train — [ISSUE_TRAIN_FPS_DEGRADATION.md](ISSUE_TRAIN_FPS_DEGRADATION.md).
+Связанные команды: [`train_local.sh`](../scripts/train_local.sh), [train_ppo.py](SCRIPTS.md#train_ppopy). Деградация `fps` на длинном train — [TASK_TRAIN_FPS_DEGRADATION.md](tasks/TASK_TRAIN_FPS_DEGRADATION.md).
 
 ### TAS
 
@@ -210,4 +198,4 @@
 
 ### Эталон
 
-Полное прохождение миссии автором: [FM2](#fm2) + `reference/human_playthrough.jsonl` + save states в `games/<game>/missions/<m>/`; для [BC](#bc), [seg](#seg) и [дообучения](#doobuchenie).
+Полное прохождение миссии автором: [FM2](#fm2) + `reference/human_playthrough.jsonl` + save states в `games/<game>/missions/<m>/`; для [seg](#seg) и [дообучения](#doobuchenie).

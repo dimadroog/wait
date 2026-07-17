@@ -1,7 +1,7 @@
 # DESIGN — паттерны проектирования wait/
 
 > **Конституция кода:** куда класть новую логику и какие паттерны обязательны.  
-> Индекс: [PROJECT_CONCEPT.md](PROJECT_CONCEPT.md) · Задачи: [BACKLOG.md](BACKLOG.md) · Структура: [ML_CONCEPT.md §10](ML_CONCEPT.md#10-структура-репозитория)
+> Индекс: [README.md](README.md) · Задачи: [TASK_BLANK](tasks/TASK_BLANK.md) · ML: [ML_CONCEPT.md](ML_CONCEPT.md)
 
 ---
 
@@ -25,6 +25,114 @@
 ```
 
 **Правило:** новая игра = новый каталог в `games/`, не копия `src/train/` или `src/stream/`.
+
+---
+
+## Структура репозитория
+
+Единственный полный список каталогов и классов артефактов (git / локально / хост).
+
+### Слои
+
+
+| Слой | Каталог | Содержимое |
+| ---- | ------- | ---------- |
+| **Игры** | `games/<game_id>/` | ROM, миссии, эталон, модели, логи, env-пакет, `env_config.yaml` |
+| **Код (общий)** | `src/`, `scripts/` | FCEUX bridge, `BaseNesEnv`, награды, train/inference |
+| **Эмулятор** | `fceux/` | Portable FCEUX 2.6.6 win64 + Lua + профили |
+| **Документация** | `docs/` | Концепция ядра + `GAME_*.md`; `ram_map.md` — в миссии |
+
+**Правило:** меняется только при смене игры → `games/<game_id>/`. Каркас (`BaseNesEnv`, `CheckpointRewardWrapper`, `make_env`) → `src/`.
+
+- Пути в YAML/JSON миссии — **относительно** `games/<game_id>/missions/<mission_id>/`.
+- Как добавить игру — [ML_CONCEPT.md §10](ML_CONCEPT.md#10-структура-репозитория).
+
+### В проекте vs окружение
+
+
+| Класс | Смысл | Git |
+| ----- | ----- | --- |
+| **A — репозиторий** | Исходники, документация, конфиги, контракты | да |
+| **B — локально в** `wait/` | Portable, ROM, ML-артефакты, venv, tmp | нет (`.gitignore`) |
+| **C — окружение хоста** | ОС, Python, системные программы | вне репо |
+
+#### A — в git
+
+| Путь | Содержимое |
+| ---- | ---------- |
+| `docs/` | Концепция |
+| `config/achievements.yaml` | Номинации achievements (текущая игра) |
+| `src/` | Общий bridge, env, rewards, train, inference |
+| `scripts/` | CLI |
+| `fceux/lua/`, `fceux/profiles/`, `fceux/runtime.yaml`, `fceux/README.md` | Контракт эмулятора |
+| `games/<game>/game.yaml`, `env_config.yaml`, `env/` | Плагин игры |
+| `games/…/missions/…/config/`, `ram_map.md` | CP, rewards, heuristics (в git — контракты; данные эталона — часто B) |
+| `requirements.txt`, `.gitignore` | Зависимости / исключения B |
+
+#### B — в `wait/`, не в git
+
+| Путь | Содержимое | Как появляется |
+| ---- | ---------- | -------------- |
+| `fceux/portable/` | FCEUX 2.6.6 win64 | распаковка ([fceux/README.md](../fceux/README.md)) |
+| `games/<game>/rom/*.nes` | ROM | вручную (legal) |
+| `games/…/reference/` | FM2, jsonl, scout | запись эталона |
+| `games/…/config/` runtime | `ram_resolve.json`, `inference.*` | scout / build |
+| `games/…/states/`, `demos/`, `checkpoints/`, `logs/`, `tasks/` | ML-артефакты | train / inference |
+| `.venv/` | pip-пакеты | `requirements.txt` |
+| `tmp/` | IPC FCEUX ↔ Python | runtime |
+
+#### C — хост
+
+| Компонент | Этап |
+| --------- | ---- |
+| Windows 10, Python 3.10/3.11, Git | A |
+| pip в `.venv/` | A |
+| NVIDIA + NVENC, OBS, Twitch, upload ≥5 Mbps | B (эфир) |
+
+**Правило:** воспроизводимость ML — git (A) + `requirements.txt` / скрипты (B+C). ROM и checkpoints — копированием `games/`, не через git.
+
+### Дерево
+
+```
+wait/
+├── config/achievements.yaml
+├── docs/                    # README (вход), ML, STREAMING, DESIGN, GAME_*
+├── games/<game_id>/
+│   ├── game.yaml
+│   ├── env_config.yaml
+│   ├── env/
+│   ├── rom/
+│   └── missions/<mission_id>/
+│       ├── ram_map.md
+│       ├── config/
+│       ├── reference/
+│       ├── states/
+│       ├── demos/
+│       ├── checkpoints/
+│       ├── logs/
+│       └── tasks/
+├── src/
+├── fceux/                   # portable + lua/profiles
+├── scripts/
+├── requirements.txt
+├── .venv/
+├── tmp/
+└── .gitignore
+```
+
+`streaming/` (OBS) — этап B, класс A, когда появится. Пилот — [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).
+
+### FCEUX: portable и режимы
+
+Один бинарник — [FCEUX 2.6.6 win64](https://fceux.com/web/download.html) в `fceux/portable/`; контракт — `fceux/runtime.yaml`.
+
+| Режим | Профиль | Процессов | Lua | Turbo | Окно |
+| ----- | ------- | --------- | --- | ----- | ---- |
+| Запись эталона | `profiles/record.yaml` | 1 | `record_logger.lua` | выкл | да |
+| Обучение | `profiles/train.yaml` | 4–8 | `bridge.lua` | вкл | headless |
+| Inference | `profiles/inference.yaml` | 1 | `bridge.lua` | вкл | headless (`--show-window`) |
+
+Launcher: `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Override: `FCEUX_HOME`. Платформа: Windows 10; portable win64.
 
 ---
 
@@ -71,7 +179,7 @@ CP, heuristics, профили наград — в `games/.../config/` (мисс
 
 Ориентиры: PEP 8, PEP 20 («Explicit is better than implicit»), выразительные имена (Clean Code).  
 Функция — действие или результат; переменная — роль или значение; класс — сущность.  
-Ясность важнее краткости. Roadmap ML («Phase 0», «Phase 1»…) — только в `ML_CONCEPT.md` / `PROJECT_CONCEPT.md`, **не** в идентификаторах кода.
+Ясность важнее краткости. Roadmap ML («Phase 0», «Phase 1»…) — только в `ML_CONCEPT.md` / `README.md`, **не** в идентификаторах кода.
 
 **Плохо:** `if game_id == "rushn_attack": ...` в ядре.  
 **Хорошо:** правило в YAML плагина; ядро читает и интерпретирует.
@@ -128,8 +236,8 @@ FCEUX, FM2, OBS (этап B) — за адаптером с узким API.
 | Награды в `BaseNesEnv.step` | Нельзя менять профиль без форка env | `CheckpointRewardWrapper` |
 | Бизнес-логика в `scripts/` | Дубли, нет переиспользования | `src/` + тонкий Facade |
 | Копия train под игру | Два контура обучения | Один `train_ppo.py` + `make_env` |
-| Новый конфиг-модуль на 3 константы | Шум, лишние импорты | Константа рядом с владельцем (см. BACKLOG 3.3) |
-| Smoke через `train_ppo` + `smoke_*` в checkpoints | Засоряет `games/` | `smoke_*.py` / `run_smoke.py` (BACKLOG 4.1); карантин `tmp/smoke/` |
+| Новый конфиг-модуль на 3 константы | Шум, лишние импорты | Константа рядом с владельцем (см. archive [3.3](tasks/archive/TASK_FIRST_CAMPAIGN.md#33-inference-без-legacy-replay--убрать-inference_configpy)) |
+| Smoke через `train_ppo` + `smoke_*` в checkpoints | Засоряет `games/` | `smoke_*.py` / `run_smoke.py`; карантин `tmp/smoke/` |
 
 ---
 
@@ -148,12 +256,72 @@ FCEUX, FM2, OBS (этап B) — за адаптером с узким API.
 
 ## Для AI-сессий
 
-При задаче из [BACKLOG.md](BACKLOG.md):
+При объёмной работе — [TASK_BLANK](tasks/TASK_BLANK.md) (open в `docs/tasks/`, done → `archive/`). Архив первой кампании: [TASK_FIRST_CAMPAIGN](tasks/archive/TASK_FIRST_CAMPAIGN.md) (не подключать без нужды).
 
 1. Определить слот (ядро / плагин / adapter / decorator).
 2. Не нарушать шесть правил выше.
 3. Smoke-проверка после изменений bridge/env — **`scripts/run_smoke.py`** (см. [SCRIPTS.md](SCRIPTS.md)).
-4. В конце сессии — [гигиена артефактов](#гигиена-артефактов) (обязательно).
+4. CLI: новый / удалённый / изменённый скрипт или флаги — [алгоритм регистрации](#регистрация-скриптов-в-scriptsmd) в той же сессии.
+5. В конце сессии — [гигиена артефактов](#гигиена-артефактов) (обязательно).
+
+---
+
+<a id="регистрация-скриптов-в-scriptsmd"></a>
+
+## Регистрация скриптов в SCRIPTS.md
+
+Цель: [SCRIPTS.md](SCRIPTS.md) остаётся **прозрачным каталогом**, а не журналом проекта.
+
+### Когда трогать
+
+| Событие | Действие |
+| ------- | -------- |
+| Новый постоянный CLI в `scripts/` или entry point (`train_ppo`, `run_inference`) | зарегистрировать |
+| Удалён скрипт | вычеркнуть из всех трёх мест |
+| Изменились флаги / дефолты / вход·выход | обновить **только карточку** |
+| Одноразовый отладочный скрипт | **не** регистрировать — удалить в конце сессии |
+| Замеры, контракты данных, pytest, журнал кампаний | **не** в SCRIPTS → [MEASUREMENTS](MEASUREMENTS.md) / [ML §8](ML_CONCEPT.md#8-форматы-данных) / [tasks/archive](tasks/archive/) |
+
+### Алгоритм (add)
+
+1. **Нужен ли постоянный entry point?** Если нет — не добавлять файл в `scripts/`, либо удалить до конца сессии.
+2. **Карта задач** — одна строка «Хочу… → скрипт», только если это типовой сценарий оператора. Редкие/внутренние утилиты — только индекс + карточка.
+3. **Индекс** — одна строка: путь | одно предложение.
+4. **Карточка** по шаблону ниже. Без истории, baseline-таблиц, номеров этапов старых кампаний.
+5. Сверить флаги с `argparse` / `-h`: в карточке — обязательные, частые, неочевидные. Не дублировать полный `-h`.
+6. Общие `--game` / `--mission` не раздувать, если дефолты стандартные.
+
+### Алгоритм (change / remove)
+
+1. Найти карточку по имени файла.
+2. **Change:** поправить флаги и вход/выход; устаревшие флаги удалить сразу.
+3. **Remove:** убрать строку из карты задач (если была), из индекса и всю карточку. Починить битые ссылки из других docs на якорь карточки.
+
+### Шаблон карточки (не раздувать)
+
+```markdown
+### `name.py`
+
+Одно–два предложения: зачем.
+
+\`\`\`bash
+# одна каноническая команда (+ опц. вторая для отладки)
+\`\`\`
+
+| Флаг | Описание |
+| ---- | -------- |
+| … | … |
+```
+
+Допустимо кратко: вход → выход. Запрещено в карточке: таблицы ms/FPS, «этап 1.x», длинные runbook, дубли ML/STREAMING.
+
+### Антипаттерны (снова «тёмный лес»)
+
+- Писать в SCRIPTS результаты бенчей или выводы расследований (TASK/archive).
+- Дублировать одну и ту же прозу в карте + индексе + карточке.
+- Регистрировать скрипты «на всякий случай» без постоянного CLI.
+- Оставлять флаги, которых уже нет в коде.
+- Заводить отдельные `ISSUE_*` — гипотезы только внутри TASK.
 
 ---
 
@@ -188,6 +356,7 @@ Smoke и benchmark **не засоряют** `games/`. Временный выв
 - [ ] `cleanup_mission_smoke_checkpoints(mission_dir(...))` или вручную удалить `smoke_*`
 - [ ] Нет новых одноразовых скриптов в `scripts/`
 - [ ] `find_stray_smoke_artifacts` → пусто
+- [ ] [SCRIPTS.md](SCRIPTS.md) синхронизирован по [алгоритму регистрации](#регистрация-скриптов-в-scriptsmd)
 
 Правило для агента: [.cursor/rules/artifact-hygiene.mdc](../.cursor/rules/artifact-hygiene.mdc).
 
@@ -195,4 +364,4 @@ Smoke и benchmark **не засоряют** `games/`. Временный выв
 
 ## Что не является главным паттерном
 
-MVC, Repository, полный DDD, Event Sourcing, microservices — не подходят как основа для этого репозитория (CLI + эмулятор + файловые артефакты, solo/MVP).
+MVC, Repository, полный DDD, Event Sourcing, microservices — не подходят как основа для этого репозитория (CLI + эмулятор + файловые артефакты, solo).

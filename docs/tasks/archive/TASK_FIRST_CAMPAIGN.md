@@ -1,13 +1,17 @@
-# BACKLOG
+# TASK_FIRST_CAMPAIGN — архив первой кампании (бывший BACKLOG)
 
-Задачи вне текущего спринта. Формат: краткое описание, контекст, критерий готовности, **чеклист сессии**.  
-Паттерны кода: [DESIGN.md](DESIGN.md). Гигиена артефактов (уровни 1–3): DESIGN § [Гигиена](DESIGN.md#гигиена-артефактов); уровни 4–6 — этапы [4.1–4.3](#41-smoke-единый-run_smokepy-facade).
+> **Архив (done).** Не использовать как активный backlog.  
+> Новые задачи: [`docs/tasks/TASK_BLANK.md`](../TASK_BLANK.md) → `docs/tasks/TASK_….md`.  
+> Паттерны: [DESIGN.md](../../DESIGN.md) · гигиена: [DESIGN § Гигиена](../../DESIGN.md#гигиена-артефактов).
+
+Исторический журнал этапов 1.x–5.0: описание, контекст, DoD, **чеклист сессии**.  
+Уровни гигиены 4–6 в тексте ниже — этапы [4.1–4.3](#41-smoke-единый-run_smokepy-facade).
 
 ### Как пользоваться чеклистом
 
 1. Выберите этап из [таблицы порядка](#порядок-выполнения) (один этап = одно контекстное окно).
 2. Откройте секцию `## [X.X] …` ниже — там `### Чеклист сессии` с шагами `- [ ]`.
-3. В чат: `@docs/BACKLOG.md` + «проработай [1.2]»; подгрузите файлы из [шпаргалки](#чеклист-шпаргалка).
+3. В чат: `@docs/tasks/archive/TASK_FIRST_CAMPAIGN.md` + «проработай [1.2]»; подгрузите файлы из [шпаргалки](#чеклист-шпаргалка).
 4. По ходу работы отмечайте `- [x]`; критерии в `### Критерий готовности` — определение «этап закрыт».
 5. Этапы с подфазами (напр. **[1.9]**) — чеклист по фазам A→B→C; длинные прогоны только в финальной фазе.
 6. **Полный аудит** — см. [ниже](#полный-аудит); **e2e train — только последний шаг** (долгий wall-clock).
@@ -123,7 +127,7 @@ flowchart LR
 
 **Комфортный train на Windows:** 1.2 перед повышением `n_envs` — иначе 8 окон FCEUX усилят перехват фокуса.
 
-**Эфир / inference-демо:** **3.0** (@1250) → **3.4** (jsonl артефакты) → **[3.6](BACKLOG.md#36-inference-replay-fm2-gameplay-capture-f-proto) done** (FM2-native C1–C3, оператор PASS). Standalone jsonl (**3.4**) и bridge (**3.5**) — GUI FAIL; эфир = FM2 `-playmovie`.
+**Эфир / inference-демо:** **3.0** (@1250) → **3.4** (jsonl артефакты) → **[3.6](TASK_FIRST_CAMPAIGN.md#36-inference-replay-fm2-gameplay-capture-f-proto) done** (FM2-native C1–C3, оператор PASS). Standalone jsonl (**3.4**) и bridge (**3.5**) — GUI FAIL; эфир = FM2 `-playmovie`.
 
 **Чистка репозитория (Phase 0):** этап 2 закрыт; fallback `logs/ram_`* — удалить в **[4.4](#44-рефакторинг-именование-и-техдолг-перед-e2e)**.
 
@@ -152,9 +156,9 @@ flowchart LR
 | 3.1  | `src/fm2_export.py`, `scripts/export_fm2.py`, `src/stream/run_inference.py`                                                                                                                  |
 | 3.2  | `src/achievements/playlist.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`, `fceux/lua/achievement_overlay.lua`                                                            |
 | 3.3  | `src/inference_states.py`, `src/fm2_export.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`                                                                         |
-| 3.4  | `src/achievements/playlist.py`, `scripts/build_playlist.py`, `scripts/play_inference_fm2.py` (переписать), `fceux/lua/`, `src/stream/run_inference.py`, `docs/ISSUE_INFERENCE.md` |
-| 3.5  | `docs/ISSUE_INFERENCE.md` § B-proto — **закрыт (B0 FAIL)** |
-| 3.6  | `docs/ISSUE_INFERENCE.md` § C; `fm2_export` / `play_inference_fm2` / `playlist` / `achievement_overlay_movie.lua` |
+| 3.4  | `src/achievements/playlist.py`, `scripts/build_playlist.py`, `scripts/play_inference_fm2.py` (переписать), `fceux/lua/`, `src/stream/run_inference.py`, `docs/tasks/archive/ISSUE_INFERENCE.md` |
+| 3.5  | `docs/tasks/archive/ISSUE_INFERENCE.md` § B-proto — **закрыт (B0 FAIL)** |
+| 3.6  | `docs/tasks/archive/ISSUE_INFERENCE.md` § C; `fm2_export` / `play_inference_fm2` / `playlist` / `achievement_overlay_movie.lua` |
 | 4.1  | `scripts/run_smoke.py`, `scripts/smoke_*.py`, `scripts/test_parallel_env.py`, `docs/DESIGN.md`                                                                                               |
 | 4.2  | `src/train/train_ppo.py`, `docs/SCRIPTS.md`                                                                                                                                                  |
 | 4.3  | `tests/conftest.py`, `tests/smoke/`, `requirements.txt` (pytest)                                                                                                                             |
@@ -950,12 +954,12 @@ games/…/missions/m1/
 **Этап:** 3.4  
 **Приоритет:** **high**  
 **Зависит от:** 3.0, ISSUE_INFERENCE (N6 visual sweep)  
-**Файлы:** `src/achievements/playlist.py`, `scripts/build_playlist.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`, `src/stream/run_inference.py`, `docs/ISSUE_INFERENCE.md`, `docs/SCRIPTS.md`  
-**Контекст в чат:** эта секция + `docs/ML_CONCEPT.md` § achievements/плейлист + `docs/ISSUE_INFERENCE.md`
+**Файлы:** `src/achievements/playlist.py`, `scripts/build_playlist.py`, `scripts/play_inference_fm2.py`, `fceux/lua/achievement_overlay.lua`, `src/stream/run_inference.py`, `docs/tasks/archive/ISSUE_INFERENCE.md`, `docs/SCRIPTS.md`  
+**Контекст в чат:** эта секция + `docs/ML_CONCEPT.md` § achievements/плейлист + `docs/tasks/archive/ISSUE_INFERENCE.md`
 
 ### Цель (единственная)
 
-Собирать в **плейлист** попытки агента **текущего уровня обучения** (номинации achievements) и **проигрывать их подряд** на эфире: gameplay с первого кадра, overlay метрик/трофеев. Это требование концепции ([ML_CONCEPT.md](ML_CONCEPT.md) § achievements/плейлист). **Артефакты плейлиста готовы**; **визуальный replay** — в **[3.6](#36-inference-replay-fm2-gameplay-capture-f-proto)** § F-proto (FM2-native).
+Собирать в **плейлист** попытки агента **текущего уровня обучения** (номинации achievements) и **проигрывать их подряд** на эфире: gameplay с первого кадра, overlay метрик/трофеев. Это требование концепции ([ML_CONCEPT.md](../../ML_CONCEPT.md) § achievements/плейлист). **Артефакты плейлиста готовы**; **визуальный replay** — в **[3.6](#36-inference-replay-fm2-gameplay-capture-f-proto)** § F-proto (FM2-native).
 
 Цепочка:
 
@@ -1024,7 +1028,7 @@ Standalone `play_inference_fm2.py` (CLI `-loadstate` + `achievement_overlay.lua`
 **Приоритет:** — (закрыт)  
 **Зависит от:** 3.4 (jsonl + `playlist.json`), ISSUE_INFERENCE § B-proto  
 **Ветка:** `issue/inference-fm2-replay`  
-**Файлы:** `docs/ISSUE_INFERENCE.md` (вердикт B0); harness удалён  
+**Файлы:** `docs/tasks/archive/ISSUE_INFERENCE.md` (вердикт B0); harness удалён  
 **Контекст в чат:** эта секция + [ISSUE_INFERENCE.md § B-proto](ISSUE_INFERENCE.md#b-proto--bridge-playback-2026-07-16)  
 **Следующий этап:** **[3.6](#36-inference-replay-fm2-gameplay-capture-f-proto)** § F-proto
 
@@ -1101,7 +1105,7 @@ Standalone `play_inference_fm2.py` (CLI `-loadstate` + `achievement_overlay.lua`
 **Приоритет:** —
 **Зависит от:** 3.4 (jsonl), ISSUE § G0
 **Ветка:** `issue/inference-fm2-replay` (готово к merge)
-**Файлы:** `src/fm2_export.py`, `scripts/export_fm2.py`, `scripts/play_fm2_gui.py`, `src/stream/run_inference.py`, `scripts/play_inference_fm2.py`, `src/achievements/playlist.py`, `fceux/lua/achievement_overlay_movie.lua`, `docs/ISSUE_INFERENCE.md` § C
+**Файлы:** `src/fm2_export.py`, `scripts/export_fm2.py`, `scripts/play_fm2_gui.py`, `src/stream/run_inference.py`, `scripts/play_inference_fm2.py`, `src/achievements/playlist.py`, `fceux/lua/achievement_overlay_movie.lua`, `docs/tasks/archive/ISSUE_INFERENCE.md` § C
 **Контекст в чат:** [ISSUE § фаза C](ISSUE_INFERENCE.md#фаза-c--внедрение-fm2-в-pipeline-после-g0) + § G0
 
 ### Цель
@@ -1151,7 +1155,7 @@ F0/F1/F2 (старый F-proto) — **superseded by G0**.
 **Приоритет:** medium  
 **Зависит от:** — (уровни 1–3 гигиены — в DESIGN.md / `project_paths`)  
 **Файлы:** новый `scripts/run_smoke.py`, существующие `scripts/smoke_*.py`, `scripts/test_parallel_env.py`  
-**Контекст в чат:** эта секция + [DESIGN.md § Гигиена](DESIGN.md#гигиена-артефактов)
+**Контекст в чат:** эта секция + [DESIGN.md § Гигиена](../../DESIGN.md#гигиена-артефактов)
 
 ### Контекст
 
@@ -1224,7 +1228,7 @@ Smoke-скрипты не дают autouse cleanup и CI exit code из коро
 **Статус:** done
 **Этап:** 4.4
 **Приоритет:** medium  
-**Зависит от:** **3.3** (рекомендуется — после стабилизации inference API); DESIGN § [Именование в коде](DESIGN.md#2-игровая-логика--strategy-в-yaml)  
+**Зависит от:** **3.3** (рекомендуется — после стабилизации inference API); DESIGN § [Именование в коде](../../DESIGN.md#2-игровая-логика--strategy-в-yaml)  
 **Блокирует:** **[5.0]** (e2e train — только после этого этапа)  
 **Файлы:** см. чеклист; ориентир — `grep` по `phase0`, `Phase 0`, `logs/ram_`, `ipc_transport.*v2`, `request.v2`  
 **Контекст в чат:** эта секция + `docs/DESIGN.md`

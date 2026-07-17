@@ -1,6 +1,6 @@
 # Замеры производительности train
 
-Сводка метрик bridge IPC и end-to-end PPO. Источники: этапы **1.5–1.9** BACKLOG, `docs/SCRIPTS.md`, прогоны `scripts/benchmark_bridge.py` и `scripts/benchmark_train.py`.
+Сводка метрик bridge IPC и end-to-end PPO. Источники: этапы **1.5–1.9** BACKLOG, прогоны `scripts/benchmark_bridge.py` и `scripts/benchmark_train.py`. CLI — [SCRIPTS.md](SCRIPTS.md).
 
 **Эталон для финального прогона [5.0]:** вердикт **1.9** (2026-07-09) — без регрессии по e2e и bridge.
 
@@ -18,7 +18,7 @@
 | Типичный `ep_len_mean` | ≈2 (короткие эпизоды → reset storm) |
 | JSON-отчёты | `tmp/bench/` (gitignored, локально) |
 
-Команды воспроизведения — в [SCRIPTS.md](SCRIPTS.md) § IPC benchmark / E2E train benchmark.
+Команды воспроизведения — [benchmark_bridge.py](SCRIPTS.md#benchmark_bridgepy), [benchmark_train.py](SCRIPTS.md#benchmark_trainpy).
 
 ---
 
@@ -88,13 +88,13 @@
 
 - **pre-1.x ~0.5:** грубый замер до IPC-оптимизаций (4 env); зафиксирован в BACKLOG 1.3/1.5, константа `HISTORICAL_E2E_ENV_STEPS_PER_S` в `benchmark_train.py`.
 - **wall vs steady:** на 2048 steps wall **занижен** из‑за stagger 8×5 с (~35 с) и cold start; для steady — `--mode fps` (8192) или `--warmup-rollouts 1`.
-- **5.0 (2026-07-13):** приёмка R5 на i7-3770 / Win10. Bridge без регрессии (~23 parallel STEP-only в `stress_e2e_gate --full`). Gate `benchmark_train --mode gate` **2/2** без IPC timeout / worker crash: прогон 1 — **5.78** env-steps/s wall; прогон 2 подряд — **1.95** (накопительная нагрузка сессии, см. [ISSUE_FALL.md](ISSUE_FALL.md)). `train_ppo --timesteps 2048` — зелёный. JSON: `tmp/bench/train_e2e_r5_{1,2}/`, `tmp/smoke/stress_e2e/report.json`.
+- **5.0 (2026-07-13):** приёмка R5 на i7-3770 / Win10. Bridge без регрессии (~23 parallel STEP-only в `stress_e2e_gate --full`). Gate `benchmark_train --mode gate` **2/2** без IPC timeout / worker crash: прогон 1 — **5.78** env-steps/s wall; прогон 2 подряд — **1.95** (накопительная нагрузка сессии, см. [ISSUE_FALL.md](tasks/archive/ISSUE_FALL.md)). `train_ppo --timesteps 2048` — зелёный. JSON: `tmp/bench/train_e2e_r5_{1,2}/`, `tmp/smoke/stress_e2e/report.json`.
 
 ---
 
 ## Деградация fps — базовая линия (до нагрузочного тестирования)
 
-**Статус:** зафиксировано **до** фаз T0–T5 из [ISSUE_TRAIN_FPS_DEGRADATION.md](ISSUE_TRAIN_FPS_DEGRADATION.md). После проработки — заполнить колонку **«после проработки»** и обновить статус плана.
+**Статус:** зафиксировано **до** фаз T0–T5 из [TASK_TRAIN_FPS_DEGRADATION.md](tasks/TASK_TRAIN_FPS_DEGRADATION.md). После проработки — заполнить колонку **«после проработки»** и обновить статус плана.
 
 **Среда:** i7-3770, Win10 19045, `n_envs=8`, `frame_skip=4`, `ep_len_mean≈2`, train no-focus.
 
@@ -186,7 +186,7 @@
 
 ### R6 dual train+measure (заполнить после прогона)
 
-План и команды: [ISSUE_TRAIN_FPS_DEGRADATION.md § R6](ISSUE_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
+План и команды: [TASK_TRAIN_FPS_DEGRADATION.md § R6](tasks/TASK_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
 
 | Метрика | R6.1 n=4 | R6.1 n=6 | R6.1 n=8 | R6.2 long n=6 |
 | ------- | -------- | -------- | -------- | ------------- |
@@ -227,7 +227,7 @@
 
 | Документ | Содержание |
 | -------- | ---------- |
-| [SCRIPTS.md](SCRIPTS.md) | Команды benchmark, аргументы CLI |
-| [BACKLOG.md](BACKLOG.md) | Этапы 1.5–1.9, вердикты, критерий 5.0 |
+| [SCRIPTS.md](SCRIPTS.md) | CLI benchmark (`benchmark_bridge`, `benchmark_train`) |
+| [TASK_FIRST_CAMPAIGN](tasks/archive/TASK_FIRST_CAMPAIGN.md) | Архив этапов 1.5–1.9, вердикты, критерий 5.0 |
+| [TASK_TRAIN_FPS…](tasks/TASK_TRAIN_FPS_DEGRADATION.md) | Open: деградация fps, гипотезы H1–H6, R6 |
 | [DESIGN.md](DESIGN.md) | `tmp/bench/`, карантин артефактов |
-| [ISSUE_TRAIN_FPS_DEGRADATION.md](ISSUE_TRAIN_FPS_DEGRADATION.md) | План нагрузочного тестирования fps, гипотезы H1–H6 |

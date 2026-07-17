@@ -38,5 +38,6 @@ API карантина: `artifact_quarantine_dir()`, `artifact_session()`, `clea
 2. `cleanup_mission_smoke_checkpoints(mission_dir(...))` — удалить ошибочные `smoke_*` в checkpoints.
 3. Удалить одноразовые скрипты, созданные только для отладки.
 4. `find_stray_smoke_artifacts(mission)` должен быть пуст; иначе удалить найденное.
+5. Если менялся CLI `scripts/` / `train_ppo` / `run_inference` — [алгоритм регистрации](docs/DESIGN.md#регистрация-скриптов-в-scriptsmd) → `docs/SCRIPTS.md`.
 
 Детали: `docs/DESIGN.md` § «Гигиена артефактов».

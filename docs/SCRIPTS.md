@@ -1,59 +1,150 @@
-# SCRIPTS — консольные скрипты wait/
+# SCRIPTS — каталог консольных entry point'ов
 
-> Запуск из корня репозитория: `D:\wait\`  
-> Python-скрипты: активировать `.venv` или использовать `.venv\Scripts\python.exe`
+> Запуск из корня репозитория.  
+> Python: `.venv\Scripts\python.exe` (или активированный `.venv`).
+
+**Область документа:** только скрипты и CLI entry point'ы (`scripts/*`, `src/train/train_ppo.py`, `src/stream/run_inference.py`) — назначение, типовая команда, вход/выход, флаги.
+
+**Не писать сюда:** замеры FPS/ms, таблицы baseline, backlog-номера этапов, runbook расследований, описания контрактов данных, pytest-сюиты.  
+→ метрики: [MEASUREMENTS.md](MEASUREMENTS.md) · контракты: [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных) · задачи: [TASK_BLANK](tasks/TASK_BLANK.md) · гигиена: [DESIGN.md](DESIGN.md#гигиена-артефактов).
+
+**Синхронизация:** алгоритм add/change/remove — [DESIGN § Регистрация скриптов](DESIGN.md#регистрация-скриптов-в-scriptsmd). Здесь — только каталог; устаревшие флаги не оставлять.
 
 ---
 
-## Установка окружения
+## Карта задач
+
+| Хочу… | Скрипт |
+| ----- | ------ |
+| Поставить `.venv` | [`setup_all.ps1`](#setup_allps1) → [`verify_env.py`](#verify_envpy) |
+| RAM-разведка эталона | [`ram_scout.py`](#ram_scoutpy) |
+| Собрать эталон (jsonl, states, demos-stub) | [`build_playthrough.py`](#build_playthroughpy) |
+| Только inference save state | [`build_inference_states.py`](#build_inference_statespy) |
+| Demos с реальными obs (BC) | [`record_demos.py`](#record_demospy) |
+| Smoke после правок bridge/env | [`run_smoke.py`](#run_smokepy) |
+| Обучение PPO | [`train_local.sh`](#train_localsh) → [`train_ppo.py`](#train_ppopy) |
+| Inference + плейлист | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
+| Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
+| Benchmark bridge / e2e train | [`benchmark_bridge.py`](#benchmark_bridgepy), [`benchmark_train.py`](#benchmark_trainpy) |
+| Разбор `rollouts.jsonl` | [`parse_train_rollouts.py`](#parse_train_rolloutspy) |
+
+---
+
+## Индекс
 
 | Скрипт | Назначение |
 | ------ | ---------- |
-| [`scripts/setup_venv.ps1`](../scripts/setup_venv.ps1) | Создаёт `.venv`, ставит `requirements.txt` |
-| [`scripts/setup_all.ps1`](../scripts/setup_all.ps1) | `setup_venv` (FCEUX — вручную в `fceux/portable/`) |
-| [`scripts/verify_env.py`](../scripts/verify_env.py) | Проверка импортов ML-стека |
+| [`bench_parallel_step.py`](#bench_parallel_steppy) | Быстрый замер latency parallel step (4 env, без CLI) |
+| [`benchmark_bridge.py`](#benchmark_bridgepy) | Benchmark IPC bridge → `tmp/bench/` |
+| [`benchmark_train.py`](#benchmark_trainpy) | E2E PPO benchmark → `tmp/bench/` |
+| [`build_inference_states.py`](#build_inference_statespy) | `states/inference_cp0.fc0` + блок `inference` в manifest |
+| [`build_playlist.py`](#build_playlistpy) | FM2-плейлист по номинациям |
+| [`build_playthrough.py`](#build_playthroughpy) | Эталон: jsonl, routes, states, demos |
+| [`eval_achievements.py`](#eval_achievementspy) | `tags[]` в `attempts.jsonl` |
+| [`export_fm2.py`](#export_fm2py) | `inference_inputs.jsonl` → self-contained `.fm2` |
+| [`inference_local.sh`](#inference_localsh) | Фасад: preflight → `run_inference` |
+| [`inference_preflight.py`](#inference_preflightpy) | Очистка перед inference / playback |
+| [`parse_train_rollouts.py`](#parse_train_rolloutspy) | Сводка `rollouts.jsonl` |
+| [`play_fm2_gui.py`](#play_fm2_guipy) | GUI replay одного FM2 (отладка) |
+| [`play_inference_fm2.py`](#play_inference_fm2py) | Replay FM2 или `playlist.json` |
+| [`ram_scout.py`](#ram_scoutpy) | RAM scout эталонного FM2 |
+| [`record_demos.py`](#record_demospy) | Demos с реальными obs |
+| [`run_smoke.py`](#run_smokepy) | Единый smoke entry point |
+| [`segment_playthrough.py`](#segment_playthroughpy) | Demos actions-only (obs=stub) |
+| [`setup_all.ps1`](#setup_allps1) | Setup: venv (+ FCEUX вручную) |
+| [`setup_venv.ps1`](#setup_venvps1) | Создать `.venv`, `requirements.txt` |
+| [`smoke_bridge.py`](#smoke_bridgepy) | Smoke IPC bridge |
+| [`smoke_env.py`](#smoke_envpy) | Smoke Gymnasium env |
+| [`stress_e2e_gate.py`](#stress_e2e_gatepy) | Длительный IPC/gate stress |
+| [`stress_parallel_reset.py`](#stress_parallel_resetpy) | Короткий parallel reset stress (устаревший относительно gate) |
+| [`test_parallel_env.py`](#test_parallel_envpy) | Parallel vec step + reset |
+| [`train_fps_round_prep.py`](#train_fps_round_preppy) | Prep checkpoints для fps-раунда |
+| [`train_local.sh`](#train_localsh) | Фасад: preflight → `train_ppo` (`--n-envs 6`) |
+| [`train_preflight.py`](#train_preflightpy) | Очистка перед train |
+| [`verify_env.py`](#verify_envpy) | Проверка импортов ML-стека |
+| [`src/stream/run_inference.py`](#run_inferencepy) | Локальный inference |
+| [`src/train/train_ppo.py`](#train_ppopy) | PPO train |
+
+Модуль без CLI: `src/train/bc_pretrain.py` (вызывается из `train_ppo` при `--bc-epochs`).
+
+---
+
+## Карточки
+
+Шаблон: **назначение** → команда → вход/выход → флаги (частые сверху).  
+Общие `--game` / `--mission` (default `rushn_attack` / `m1`) у многих скриптов ниже не дублируются, если нет особого смысла.
+
+---
+
+### `setup_venv.ps1`
+
+Создаёт `.venv`, ставит `requirements.txt`.
 
 ```powershell
-.\scripts\setup_all.ps1
-.\.venv\Scripts\python.exe scripts\verify_env.py
+.\scripts\setup_venv.ps1
 ```
 
 ---
 
-## Эталон и RAM
+### `setup_all.ps1`
 
-| Скрипт | Вход | Выход |
-| ------ | ---- | ----- |
-| [`scripts/ram_scout.py`](../scripts/ram_scout.py) | FM2 в `reference/` | `reference/scout/ram_scout.jsonl`, `config/ram_resolve.json`, `ram_map.md` |
-| [`scripts/build_playthrough.py`](../scripts/build_playthrough.py) | FM2 + `reference/scout/ram_scout.jsonl` | `human_playthrough.jsonl`, `config/`, `states/cp*.fc0`, `demos/` |
-| [`scripts/build_inference_states.py`](../scripts/build_inference_states.py) | FM2 + `human_playthrough.jsonl` | `states/inference_cp0.fc0`, блок `inference` в manifest |
-| [`scripts/segment_playthrough.py`](../scripts/segment_playthrough.py) | manifest + human jsonl | `demos/seg_*.npz` (actions only, obs=stub) |
-| [`scripts/record_demos.py`](../scripts/record_demos.py) | manifest + human jsonl + env | `demos/seg_*.npz` (реальные obs для BC) |
+Вызывает `setup_venv` (FCEUX — вручную в `fceux/portable/`).
 
-### RAM scout
+```powershell
+.\scripts\setup_all.ps1
+```
+
+---
+
+### `verify_env.py`
+
+Проверка импортов ML-стека. CLI нет.
+
+```bash
+./.venv/Scripts/python.exe scripts/verify_env.py
+```
+
+---
+
+### `ram_scout.py`
+
+FM2 → `reference/scout/ram_scout.jsonl`, `config/ram_resolve.json`, `ram_map.md`.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/ram_scout.py games/rushn_attack/missions/m1/reference/clear.fm2
 ```
 
-1. Положите `.fm2` в `games/<game>/missions/<m>/reference/`
-2. FCEUX → `reference/scout/ram_scout.jsonl` → авто-resolve → `config/ram_resolve.json`, `ram_map.md`
-
-| Аргумент / флаг | Описание |
-| --------------- | -------- |
-| `fm2` (позиционный) | путь к FM2 |
-| `--timeout` | лимит секунд (FCEUX) |
+| Флаг | Описание |
+| ---- | -------- |
+| `fm2` | путь к FM2 |
+| `--timeout` | лимит секунд FCEUX (default 600) |
 | `--no-ram-map` | не обновлять `ram_map.md` |
 
-### Эталон (после ram_scout)
+---
+
+### `build_playthrough.py`
+
+После `ram_scout`: `human_playthrough.jsonl`, `config/routes.yaml`, `playthrough_manifest.yaml`, train `states/cp*.fc0`, demos (stub obs), опц. inference state.
+
+`cp0.fc0` — reset train; `inference_cp0.fc0` — старт gameplay для inference/плейлиста.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/build_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2
 ```
 
-Создаёт `reference/human_playthrough.jsonl`, `config/routes.yaml`, `config/playthrough_manifest.yaml` (в т.ч. `inference.gameplay_start_frame`), save states **train** `states/cp0..cpN.fc0` (кадр 1 сегмента = intro для seg_001), demos в `demos/`.
+| Флаг | Описание |
+| ---- | -------- |
+| `fm2` | путь к FM2 |
+| `--timeout` | лимит FCEUX (default 600) |
+| `--skip-states` | без train `cp*.fc0` |
+| `--skip-inference-states` | без `inference_cp0.fc0` |
+| `--skip-demos` | без `demos/seg_*.npz` |
 
-**Train vs inference save state:** `cp0.fc0` — reset env/train по manifest (кадр 1 эталона); `inference_cp0.fc0` — старт gameplay (первый кадр вне intro), для `run_inference.py` / эфира. Пересборка inference state:
+---
+
+### `build_inference_states.py`
+
+Только `states/inference_cp0.fc0` + блок `inference` в manifest.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/build_inference_states.py games/rushn_attack/missions/m1/reference/clear.fm2
@@ -61,473 +152,461 @@
 
 | Флаг | Описание |
 | ---- | -------- |
-| `--skip-states` | без save states train (`cp*.fc0`) |
-| `--skip-inference-states` | без `inference_cp0.fc0` (если `--skip-states` не задан) |
-| `--skip-demos` | без `demos/seg_*.npz` |
-
-### Demos с реальными obs (BC)
-
-После Phase 1 env — пересборка `demos/seg_*.npz` с кадрами из FCEUX (тот же pipeline, что train/inference):
-
-```bash
-./.venv/Scripts/python.exe scripts/record_demos.py games/rushn_attack/missions/m1/reference/clear.fm2
-```
-
-По умолчанию сегменты пишутся **параллельно** (`min(segments, cpu, 8)` процессов FCEUX — см. ML_CONCEPT §2).
-
-Один сегмент / отладка:
-
-```bash
-./.venv/Scripts/python.exe scripts/record_demos.py games/rushn_attack/missions/m1/reference/clear.fm2 --segment seg_001 --max-steps 20 --jobs 1
-```
-
-| Аргумент / флаг | Описание |
-| --------------- | -------- |
-| `fm2` (позиционный) | путь к FM2 (определение миссии) |
-| `--segment ID` | только `seg_001` и т.д. (можно несколько раз) |
-| `--max-steps` | лимит env steps на сегмент (отладка) |
-| `--jobs` | parallel FCEUX (default `min(segments, cpu, 8)`; `1` = последовательно) |
-| `--session` | id сессии FCEUX bridge (default `record_demos`) |
-| `--no-turbo` | без turbo (медленнее, стабильнее) |
-
-Выход: `demos/seg_*.npz` с `obs` `(N, 4, 84, 84)` float32, `actions` int64, `meta.obs_stub: false`.  
-`N` ≈ число NES-кадров сегмента / `frame_skip` (4). Нужен для `--bc-epochs` в `train_ppo.py`.
+| `fm2` | путь к FM2 |
+| `--timeout` | лимит FCEUX (default 600) |
 
 ---
 
-## Phase 1 — bridge
+### `segment_playthrough.py`
 
-### Smoke (единый entry point, BACKLOG 4.1)
+`demos/seg_*.npz` с actions only (`obs` stub). Для BC с кадрами — `record_demos.py`.
+
+```bash
+./.venv/Scripts/python.exe scripts/segment_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `fm2` | путь к FM2 (миссия) |
+
+---
+
+### `record_demos.py`
+
+Demos с реальными obs `(N, 4, 84, 84)` для `--bc-epochs`. Параллельно по умолчанию (`min(segments, cpu, 8)`).
+
+```bash
+./.venv/Scripts/python.exe scripts/record_demos.py games/rushn_attack/missions/m1/reference/clear.fm2
+./.venv/Scripts/python.exe scripts/record_demos.py games/rushn_attack/missions/m1/reference/clear.fm2 --segment seg_001 --max-steps 20 --jobs 1
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `fm2` | путь к FM2 |
+| `--segment ID` | только указанные сегменты (можно несколько раз) |
+| `--max-steps` | лимит env steps (отладка) |
+| `--jobs` | parallel FCEUX (`1` = последовательно) |
+| `--session` | id bridge (default `record_demos`) |
+| `--no-turbo` | без turbo |
+
+---
+
+### `run_smoke.py`
+
+Единый smoke после правок bridge/env. Subprocess: `smoke_bridge`, `smoke_env --steps 20`, `test_parallel_env`, опц. `stress_e2e_gate --quick`. Exit 0/1; cleanup quarantine в `finally`.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/run_smoke.py
 ./.venv/Scripts/python.exe scripts/run_smoke.py --suite bridge,env,parallel
-./.venv/Scripts/python.exe scripts/run_smoke.py --suite stress   # длительный IPC stress (см. ниже)
+./.venv/Scripts/python.exe scripts/run_smoke.py --suite stress
 ```
 
-| Аргумент | Описание |
-| -------- | -------- |
-| `--suite` | подмножество: `bridge`, `env`, `parallel`, `stress` (default — первые три) |
+| Флаг | Описание |
+| ---- | -------- |
+| `--suite` | `bridge`, `env`, `parallel`, `stress` (default — первые три) |
 
-Subprocess: `smoke_bridge.py`; `smoke_env.py --steps 20`; `test_parallel_env.py --n-envs 8 --cycles 10 --reset-every 5`; `stress_e2e_gate.py --quick` (только suite `stress`). В `finally`: `cleanup_bridge_sessions`, `cleanup_artifact_quarantine("smoke")`, проверка stray `smoke_*` в checkpoints. Exit code 0/1.
+Pytest-аналог: `pytest tests/smoke/` (не часть этого каталога).
 
-**Pytest (BACKLOG 4.3):** то же покрытие + autouse cleanup в `tests/conftest.py`.
+---
 
-```bash
-./.venv/Scripts/pip.exe install pytest   # или pip install -r requirements.txt
-./.venv/Scripts/python.exe -m pytest tests/smoke/ -v
-./.venv/Scripts/python.exe -m pytest tests/smoke/ -m requires_fceux
-```
+### `smoke_bridge.py`
 
-Интеграционные тесты помечены `@pytest.mark.requires_fceux` (skip без бинарника FCEUX).
-
-После правок bridge/env — **`run_smoke.py`** или **`pytest tests/smoke/`**, не короткий `train_ppo`.
-
-| Скрипт | Вход | Выход |
-| ------ | ---- | ----- |
-| [`scripts/run_smoke.py`](../scripts/run_smoke.py) | `--suite` | stdout; exit 0/1 |
-| [`scripts/smoke_bridge.py`](../scripts/smoke_bridge.py) | `states/cp1.fc0` (после `build_playthrough.py`) | stdout: PING, RAM, OBS, turbo |
+Smoke IPC `FceuxBridge` (нужен `states/cp1.fc0`). CLI нет.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/smoke_bridge.py
 ```
 
-Smoke-тест IPC Python ↔ FCEUX (`FceuxBridge`): load state, ping, step, RAM, obs 84×84, turbo.
+---
 
-**1.6 (2026-07-07):** hot reset — один IPC `LOAD_OBS`; `POLL_INTERVAL=2ms`. ms/hot reset **−21% / −34%** vs 1.5.
+### `smoke_env.py`
 
-**Train / inference no-focus:** при `no_focus: true` в профиле (`train.yaml`, `inference.yaml`) или `WAIT_FCEUX_NO_FOCUS=1` окна стартуют свёрнутыми (`STARTUPINFO` / `SW_SHOWMINNOACTIVE`); опционально `-bginput 1`. Отключить: `WAIT_FCEUX_NO_FOCUS=0`. Inference по умолчанию **headless** (`CREATE_NO_WINDOW`); окно — только с `--show-window`.
-
-**Fast obs (этап 1.7):** `train.yaml` и `inference.yaml` → `obs_format: raw`; override `WAIT_FCEUX_OBS_FORMAT=gd`.
-
-### Train defaults (проверено 1.1–1.8)
-
-Единый стек без известных проблем на Windows (i7-3770, 8 env):
-
-| Параметр | Значение | Где задано |
-| -------- | -------- | ---------- |
-| IPC | JSON `request.json`/`response.json` + `obs_*.raw` | `fceux/lua/bridge.lua`, `src/fceux_bridge.py` |
-| obs format | **raw** 84×84 | `train.yaml`, `WAIT_FCEUX_OBS_FORMAT` |
-| no-focus | **on** | `train.yaml`, `WAIT_FCEUX_NO_FOCUS` |
-| frame_skip | **4** | `train.yaml`, env default |
-| n_envs | **8** | `train_ppo.py` |
-| torch threads | **2** (cap при `n_envs≥8`; `OPENBLAS_NUM_THREADS` синхронно) | `train_ppo.py` |
-| PPO n_steps / batch | **128 / 256** | `train_ppo.py` |
-| turbo (FCEUX) | **on** | env default (`--no-turbo` для отладки) |
-
-Inference: тот же `obs_format: raw` / headless (`inference.yaml`); окно — `--show-window`.
-
-**Гигиена:** smoke не пишет в `games/.../checkpoints/`; карантин — `tmp/smoke/` ([DESIGN.md](DESIGN.md#гигиена-артефактов)). После правок bridge/env — эти скрипты, не короткий `train_ppo`.
-
-| Аргумент / флаг | Описание |
-| --------------- | -------- |
-| `fm2` (опционально) | путь к FM2 для определения миссии; по умолчанию `games/rushn_attack/missions/m1/reference/clear.fm2` |
-
-### IPC benchmark (baseline, этап 1.5)
+Random agent / короткий env smoke. `--log` пишет в `games/.../logs/` — только при необходимости.
 
 ```bash
-./.venv/Scripts/python.exe scripts/benchmark_bridge.py --n-envs 8
+./.venv/Scripts/python.exe scripts/smoke_env.py --steps 100
 ```
 
-JSON-отчёт: `tmp/bench/bridge_baseline/baseline_report.json` (или `--json-out`). Секция `breakdown.ep_len2`: доля STEP vs reset при `ep_len≈2` (default `--ep-len2-cycles 64`); `gate_rollout_projection` — оценка wall одного vec-rollout gate.
+| Флаг | Описание |
+| ---- | -------- |
+| `--steps` | число шагов (default 100) |
+| `--save-state` | относительно миссии (default `states/cp1.fc0`) |
+| `--session` | id bridge (default `smoke_env`) |
+| `--log` | append в `logs/YYYYMMDD/attempts.jsonl` |
+| `--game` / `--mission` | игра / миссия |
 
-| Аргумент | Описание |
-| -------- | -------- |
-| `--ep-len2-cycles` | циклов 2×step+reset (0 = пропустить; default 64) |
-| `--ep-len2-steps` | шагов на эпизод в профиле (default 2) |
-| `--gate-vec-cycles` | vec cycles для проекции gate (default 128) |
+---
 
-**Baseline (i7-3770, Win10 19045, 2026-07-07, `frame_skip=4`, train no-focus on):**
+### `test_parallel_env.py`
 
-| Режим | ms/step | ms/hot reset | env-steps/s (1 proc) | env-steps/s (parallel) | reset/step |
-| ----- | ------- | ------------ | -------------------- | ---------------------- | ---------- |
-| n_envs=1 (1.5) | 28.6 | 41.5 | **35.0** | — | 1.45 |
-| n_envs=8 (1.5) | 27.7 | 43.5 | **36.1** | **19.5** (8×15 steps) | 1.57 |
-| n_envs=1 (**1.6**) | 29.7 | **32.7** | 33.6 | — | 1.10 |
-| n_envs=8 (**1.6**) | 28.0 | **28.8** | 35.8 | 18.9 | 1.03 |
-| n_envs=1 (**1.7 raw**) | **24.0** | 27.2 | **41.7** | — | 1.14 |
-| n_envs=8 (**1.7 raw**) | **13.8** | **14.6** | **72.5** | **21.1** | 1.06 |
-| n_envs=1 (**1.8 v1**, повтор) | 16.6 | 16.4 | 60.2 | — | 0.99 |
-| n_envs=8 (**1.8 v1**, повтор) | 22.4 | 21.7 | 44.6 | **21.9** | 0.97 |
-
-**1.7 (2026-07-07):** train `obs_format: raw` — downscale/grayscale в Lua → `obs_*.raw` (7 KB); Python без cv2; STEP без лишнего `frameadvance`. ms/step **−16% / −50%** vs 1.5; decode ~0.3 ms.
-
-**1.8 (2026-07-07):** вердикт — оставить JSON IPC + file obs (v1). PoC бинарного inline-obs (этап 1.8) был медленнее (+61% ms/step n=1) и удалён в **4.4** §C.
-
-Исторический end-to-end train до baseline: ~**0.5 env-step/s** (4 env, BACKLOG) vs ~**1.9** (train-smoke dummy-vec) vs ~**20** (parallel step-only, 8 proc) — разрыв из‑за PPO, `bridge_load_lock` на reset и коротких эпизодов.
-
-**E2E train после 1.9 (i7-3770, Win10 19045, 2026-07-09, `n_envs=8`, `frame_skip=4`, `ep_len_mean≈2`):**
-
-| Метрика | env-steps/s | Методика |
-| ------- | ----------- | -------- |
-| bridge step-only parallel (1.7–1.8) | **~22** | `benchmark_bridge.py --n-envs 8` (таблица выше) |
-| bridge step-only 1 proc (регрессия 1.9) | **~38** | `benchmark_bridge.py --n-envs 1`, 2026-07-09 |
-| **e2e PPO wall** | **~5.0** | `benchmark_train.py --mode gate`; cold start 8 FCEUX в rollout 1 |
-| **e2e PPO steady** | **~5.9** | rollout 2+ (`--warmup-rollouts 1`) |
-| e2e PPO (SB3 `time/fps`) | **4–5** | `train_ppo.py --n-envs 8 --timesteps 2048` |
-| historical pre-1.x | **~0.5** | 4 env, до IPC-оптимизаций |
-
-**Вывод:** e2e **~10×** исторического ~0.5 (wall); **~0.21×** bridge parallel step-only — узкое место PPO update + reset storm при `ep_len≈2`, не raw STEP IPC. Перед gate/stress: `preflight_bridge_sessions()` (`train_` + `bench_` IPC; orphan `fceux64.exe` и зависший `python` train/benchmark); при orphan > 0 — `WARNING` в stdout.
-
-Отчёты: `tmp/bench/train_e2e_gate/train_report.json`, checkpoint smoke: `tmp/bench/train_smoke_gate/`.
-
-| Аргумент | Описание |
-| -------- | -------- |
-| `--n-envs` | parallel FCEUX для aggregate throughput (default 8) |
-| `--step-samples` | число STEP замеров (default 30) |
-| `--reset-samples` | число hot reset замеров (default 10) |
-| `--parallel-steps` | steps на env в parallel-фазе (default 20) |
-
-### E2E train benchmark (BACKLOG 1.9)
-
-```bash
-./.venv/Scripts/python.exe scripts/benchmark_train.py --dry-run
-./.venv/Scripts/python.exe scripts/benchmark_train.py --mode gate    # 2048 timesteps, фаза C gate
-./.venv/Scripts/python.exe scripts/benchmark_train.py --mode fps     # 8192 timesteps, steady fps
-```
-
-**Preflight (R0.1–R0.2):** перед `learn` скрипт вызывает `preflight_bridge_sessions()` — `cleanup_bridge_sessions('train_')` + `bench_`, подсчёт orphan `fceux64.exe` (bridge.lua / `tmp/bridge`) и зависших `python` (train/benchmark scripts). При orphan > 0 — `WARNING`; иначе `preflight [...]: no orphan processes ...`. Снятие: `kill_orphan_fceux_bridge()` в `src/train/env_factory.py`.
-
-JSON + checkpoint: `tmp/bench/train_e2e/` (`train_report.json`, `bench_train.zip`) — **не** `games/.../checkpoints/`.
-
-| Аргумент | Описание |
-| -------- | -------- |
-| `--mode gate\|fps\|custom` | gate=2048 steps; fps=8192; custom=--timesteps |
-| `--timesteps` | override режима |
-| `--n-envs` | SubprocVecEnv (default 8) |
-| `--warmup-rollouts` | rollout'ы вне steady fps (default 1) |
-| `--session` | подкаталог `tmp/bench/<session>/` |
-| `--bridge-report` | JSON `benchmark_bridge` для сравнения |
-| `--dry-run` | только пути, без `learn` |
-| `--learn-stall-timeout` | abort `learn` без прогресса timesteps, с (default **300**; `0`=off) |
-| `--session-wall-timeout` | abort `learn` по wall-clock сессии, с (default **3600**; `0`=off); Ctrl+C/SIGTERM через `InterruptHandler` |
-
-JSON `train_report.json` (`schema_version` 1): `phases[]` с `rollout_N`, `wall_s`, `auto_dones`, `error`, `rank`; top-level `ok`, `error`, `preflight_orphans_before`.
-
-Метрики: `env_steps/s (wall)` — полный wall-clock; `env_steps/s (steady)` — после `--warmup-rollouts`. Сравнение с `benchmark_bridge.py` parallel и историческим ~0.5 env-step/s (4 env, pre-1.x). См. таблицу **E2E train после 1.9** в секции IPC benchmark выше.
-
-**train-smoke (фаза C):**
-
-```bash
-./.venv/Scripts/python.exe src/train/train_ppo.py --n-envs 8 --timesteps 2048 --no-resume --no-bc \
-  --checkpoint-out "$(pwd)/tmp/bench/train_smoke_gate/train_smoke.zip" --no-progress-pct
-```
-
-### Gymnasium env
-
-| Скрипт | Вход | Выход |
-| ------ | ---- | ----- |
-| [`scripts/smoke_env.py`](../scripts/smoke_env.py) | `states/cp1.fc0`, `config/routes.yaml` | stdout: obs, reward, max_cp; опц. `logs/YYYYMMDD/attempts.jsonl` |
-
-```bash
-./.venv/Scripts/python.exe scripts/smoke_env.py --steps 100 --log
-```
-
-Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWrapper`.
-
-| Аргумент / флаг | Описание |
-| --------------- | -------- |
-| `--steps` | число шагов (по умолчанию 100) |
-| `--save-state` | save state относительно миссии (по умолчанию `states/cp1.fc0`) |
-| `--session` | id сессии FCEUX bridge (по умолчанию `smoke_env`) |
-| `--log` | дописать эпизод в `logs/YYYYMMDD/attempts.jsonl` |
-
-**Parallel IPC stress (BACKLOG 1.9 tier 1):** [`scripts/test_parallel_env.py`](../scripts/test_parallel_env.py) — `SubprocVecEnv`, 8 env, циклы step + периодический `reset` (без PPO).
+`SubprocVecEnv`: step + периодический reset (без PPO).
 
 ```bash
 ./.venv/Scripts/python.exe scripts/test_parallel_env.py --n-envs 8 --cycles 30 --reset-every 5
 ```
 
-| Аргумент | Описание |
-| -------- | -------- |
+| Флаг | Описание |
+| ---- | -------- |
 | `--n-envs` | parallel env (default 8) |
-| `--cycles` | раундов step на все env (default 30) |
-| `--reset-every` | принудительный `vec.reset()` каждые N циклов (default 5; 0 = только initial) |
+| `--cycles` | раундов step (default 30) |
+| `--reset-every` | `vec.reset()` каждые N циклов (default 5; `0` = только initial) |
+| `--save-state` | default `states/cp0.fc0` |
+| `--game` / `--mission` | |
 
-**E2E gate stress (BACKLOG 5.0, диагностика [ISSUE_FALL.md](ISSUE_FALL.md)):** [`scripts/stress_e2e_gate.py`](../scripts/stress_e2e_gate.py) — пять фаз без полного `benchmark_train`: bridge STEP-only, два rollout'а `SubprocVecEnv` с reset storm, `ppo_spike` и `ppo_spike_with_vec` между ними. Подробности и оценка времени — [ISSUE_FALL.md § Стрессовый smoke](ISSUE_FALL.md#стрессовый-smoke--диагностика).
+---
+
+### `stress_e2e_gate.py`
+
+Пять фаз gate-shaped stress (без полного `benchmark_train`). Детали расследования — [ISSUE_FALL.md](tasks/archive/ISSUE_FALL.md).
 
 ```bash
-./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --quick   # ~8–12 min
-./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --full    # ~18–25 min
-./.venv/Scripts/python.exe scripts/run_smoke.py --suite stress
-
-# одна фаза (точечная диагностика)
+./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --quick
+./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --full
 ./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --phase vec_rollout_2 --full
 ```
 
-**Preflight (R0.1–R0.2):** в начале — `preflight_bridge_sessions(label='stress_e2e_gate')` (см. секцию E2E train benchmark).
-
-| Аргумент | Описание |
-| -------- | -------- |
-| `--quick` / `--full` | половина / полная глубина rollout (64 vs 128 cycles; default `--quick`) |
-| `--phase` | подмножество фаз: `bridge_parallel`, `vec_rollout_1`, `ppo_spike`, `ppo_spike_with_vec`, `vec_rollout_2` |
-| `--n-envs` | parallel env (default 8) |
-| `--cycles` | vec steps за rollout (override quick/full) |
-| `--bridge-steps` | STEP-only steps на env в `bridge_parallel` |
-| `--batch-size`, `--n-epochs`, `--threads` | параметры фазы `ppo_spike` (default как `train_ppo`) |
-| `--json-out` | default: `tmp/smoke/stress_e2e/report.json` (`schema_version` 1: `phase`, `wall_s`, `rank`, `auto_dones`, `error` на фазу) |
-
-| Фаза | Что проверяет |
-| ---- | ------------- |
-| `bridge_parallel` | 8 FCEUX, только STEP (класс падений `benchmark_bridge --n-envs 8`) |
-| `vec_rollout_1` | ~1 rollout SubprocVecEnv, reset storm при `ep_len≈2` |
-| `ppo_spike` | пик CPU/RAM как PPO update (родитель, без vec) |
-| `ppo_spike_with_vec` | spike + живой SubprocVecEnv (8 FCEUX); диагностика OpenBLAS OOM (B4) |
-| `vec_rollout_2` | второй rollout в той же vec-сессии (типичная зона падения gate) |
-
-**Pytest (slow):** `pytest tests/smoke/test_suites.py::test_stress_e2e_gate_quick -m "requires_fceux and slow"`.
-
-Устаревший короткий stress: [`scripts/stress_parallel_reset.py`](../scripts/stress_parallel_reset.py) — 4 env, 90 s auto-reset (без gate-shaped глубины).
+| Флаг | Описание |
+| ---- | -------- |
+| `--quick` / `--full` | глубина rollout (default quick) |
+| `--phase` | `bridge_parallel`, `vec_rollout_1`, `ppo_spike`, `ppo_spike_with_vec`, `vec_rollout_2` |
+| `--n-envs` | default 8 |
+| `--cycles` | vec steps (override quick/full) |
+| `--bridge-steps` | STEP-only на env в `bridge_parallel` |
+| `--batch-size`, `--n-epochs`, `--threads` | фаза `ppo_spike` |
+| `--fail-fast` / `--no-fail-fast` | (default fail-fast on) |
+| `--json-out` | default `tmp/smoke/stress_e2e/report.json` |
+| `--save-state`, `--frame-skip`, `--game`, `--mission` | |
 
 ---
 
-## Phase 2 — обучение и inference
+### `stress_parallel_reset.py`
 
-| Скрипт | Вход | Выход |
-| ------ | ---- | ----- |
-| [`src/train/train_ppo.py`](../src/train/train_ppo.py) | env + опц. `tasks/train_task.json` | `checkpoints/m1_vN.zip`, промежуточные в `checkpoints/runs/` |
-| [`src/train/bc_pretrain.py`](../src/train/bc_pretrain.py) | `demos/seg_*.npz` (реальные obs) | warm-start policy (вызывается из train_ppo) |
-| [`scripts/train_local.sh`](../scripts/train_local.sh) | task JSON или CLI | preflight cleanup → `train_ppo` (**default `--n-envs 6`**, H2 RAM) |
-| [`scripts/train_preflight.py`](../scripts/train_preflight.py) | — | обязательная очистка перед train (вызывается из `train_local.sh`) |
-| [`scripts/train_fps_round_prep.py`](../scripts/train_fps_round_prep.py) | checkpoints миссии | archive frozen + promote `m1_v0_n6`; runbook R6 ([ISSUE_TRAIN_FPS_DEGRADATION](ISSUE_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17)) |
-| [`scripts/parse_train_rollouts.py`](../scripts/parse_train_rollouts.py) | `tmp/bench/*/rollouts.jsonl` | сводка wall_rollout / degradation |
-| [`src/stream/run_inference.py`](../src/stream/run_inference.py) | checkpoint `.zip` | `logs/YYYYMMDD/attempts.jsonl`, `logs/YYYYMMDD/inference_inputs.jsonl`, опц. FM2 / плейлист |
-| [`scripts/export_fm2.py`](../scripts/export_fm2.py) | `inference_inputs.jsonl` | `.fm2` (без `reference/`) |
-| [`scripts/eval_achievements.py`](../scripts/eval_achievements.py) | `attempts.jsonl` + `config/achievements.yaml` | `tags[]` в attempts |
-| [`scripts/build_playlist.py`](../scripts/build_playlist.py) | attempts + опц. inference_inputs | FM2 по номинациям, `playlist.json` |
-
-### Первая модель (v0)
-
-`train_local.sh` перед `learn` всегда запускает `scripts/train_preflight.py` (очистка `train_`/`bench_` IPC, kill orphan FCEUX/python). Если после cleanup остались процессы — **exit 1** (вручную: `taskkill /F /IM fceux64.exe`). Прямой вызов `train_ppo.py` делает ту же проверку (`--skip-preflight` только для отладки).
+Короткий stress: 4 env, ~90 s auto-reset. Ужее, чем `stress_e2e_gate`. CLI нет.
 
 ```bash
-# рекомендуемый старт: checkpoint для inference-пайплайна, промежуточные saves каждые 10k
+./.venv/Scripts/python.exe scripts/stress_parallel_reset.py
+```
+
+---
+
+### `benchmark_bridge.py`
+
+IPC throughput → JSON в `tmp/bench/` (не `games/.../checkpoints/`). Числа baseline — [MEASUREMENTS.md](MEASUREMENTS.md).
+
+```bash
+./.venv/Scripts/python.exe scripts/benchmark_bridge.py --n-envs 8
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--n-envs` | parallel FCEUX (default 8) |
+| `--step-samples` / `--reset-samples` | число замеров (30 / 10) |
+| `--parallel-steps` | steps на env в parallel-фазе (default 20) |
+| `--step-warmup` | default 5 |
+| `--ep-len2-cycles` / `--ep-len2-steps` | профиль ep_len≈2 (64 / 2; `0` cycles = skip) |
+| `--gate-vec-cycles` | проекция gate rollout (default 128) |
+| `--json-out` | путь отчёта |
+| `--session` | id bridge (default `bench_bridge`) |
+| `--save-state`, `--frame-skip`, `--game`, `--mission` | |
+
+---
+
+### `benchmark_train.py`
+
+E2E PPO `learn` → `tmp/bench/<session>/`. Перед learn — preflight orphan IPC.
+
+```bash
+./.venv/Scripts/python.exe scripts/benchmark_train.py --dry-run
+./.venv/Scripts/python.exe scripts/benchmark_train.py --mode gate
+./.venv/Scripts/python.exe scripts/benchmark_train.py --mode fps
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--mode` | `gate` (2048) / `fps` (8192) / `custom` |
+| `--timesteps` | override режима |
+| `--n-envs` | default 8 |
+| `--warmup-rollouts` | вне steady fps (default 1) |
+| `--session` | `tmp/bench/<session>/` (default `train_e2e`) |
+| `--bridge-report` | JSON `benchmark_bridge` для сравнения |
+| `--json-out` | путь `train_report.json` |
+| `--dry-run` | только пути |
+| `--dummy-vec` / `--quiet` | отладка |
+| `--learn-stall-timeout` | abort без прогресса timesteps, с (default 300; `0`=off) |
+| `--session-wall-timeout` | abort по wall сессии, с (default 3600; `0`=off) |
+| `--n-steps`, `--batch-size`, `--n-epochs`, `--gamma`, `--learning-rate`, `--threads` | PPO |
+| `--save-state`, `--game`, `--mission` | |
+
+---
+
+### `bench_parallel_step.py`
+
+Фиксированный замер: 4 env, 50 steps, stdout latency. CLI нет.
+
+```bash
+./.venv/Scripts/python.exe scripts/bench_parallel_step.py
+```
+
+---
+
+### `train_preflight.py`
+
+Очистка `train_`/`bench_` IPC + orphan FCEUX/python. Exit 1, если после cleanup остались процессы. CLI нет. Вызывается из `train_local.sh`.
+
+```bash
+./.venv/Scripts/python.exe scripts/train_preflight.py
+```
+
+---
+
+### `train_local.sh`
+
+Фасад: `train_preflight` → `train_ppo` с **`--n-envs 6`** (если не передан task JSON). Остальные аргументы — как у `train_ppo`.
+
+```bash
 ./scripts/train_local.sh --timesteps 50000 --save-every 10000 --checkpoint-out checkpoints/m1_v0.zip
-
-# полный v0: 8 parallel env (default на i7-3770), 500k steps (~1–3 суток при ~5 env-step/s)
-./scripts/train_local.sh --timesteps 500000 --checkpoint-out checkpoints/m1_v0.zip
-
-# отладка train: карантин tmp/smoke (не checkpoints/smoke_* в games/)
-./.venv/Scripts/python.exe src/train/train_ppo.py --smoke --timesteps 256 --n-envs 1 --dummy-vec --no-bc
-
-# отладка без smoke: явный tmp/ или --no-intermediate-checkpoints
-./.venv/Scripts/python.exe src/train/train_ppo.py --timesteps 256 --n-envs 1 --dummy-vec --no-intermediate-checkpoints
+./scripts/train_local.sh path/to/train_task.json
 ```
-
-| Аргумент | Описание |
-| -------- | -------- |
-| `--task` | `tasks/train_task.json` (finetune: checkpoint_in/out, hot_zone, seg) |
-| `--timesteps` | total PPO steps (default 500000) |
-| `--n-envs` | parallel FCEUX (default **8** прямой вызов; **`train_local.sh` → 6**) |
-| `--rollout-gc` / `--no-rollout-gc` | `gc.collect()` после rollout (default: on, H2) |
-| `--rollout-metrics` / `--no-rollout-metrics` | JSONL wall/rollout + RAM (`tmp/bench/<session>/rollouts.jsonl`) |
-| `--rollout-metrics-session` | имя сессии в `tmp/bench/` (default `train_fps`) |
-| `--rollout-metrics-path` | явный путь к `rollouts.jsonl` |
-| `--save-every` | checkpoint каждые N steps (default 50000) |
-| `--checkpoint-in` / `--checkpoint-out` | load/save `.zip` |
-| `--resume` / `--no-resume` | продолжить с `checkpoint_out` + sidecar `.train.json` (default: resume on) |
-| `--latest-checkpoint` / `--no-latest-checkpoint` | `checkpoints/latest.zip` на каждый rollout PPO (default: on) |
-| `--bc-epochs` | BC epochs перед PPO (0 = skip; нужны demos без obs_stub) |
-| `--dummy-vec` | DummyVecEnv вместо SubprocVecEnv |
-| `--smoke` | checkpoint в `tmp/smoke/<session>/`; `finally` удаляет сессию; без `runs/` и resume |
-| `--smoke-session` | имя подкаталога `tmp/smoke/` (default `train_smoke`) |
-| `--no-intermediate-checkpoints` | без `CheckpointCallback` / `checkpoints/runs/` |
-| `--progress` | tqdm/rich progress bar (дополнительно к таблице SB3) |
-| `--no-progress-pct` | не добавлять `progress_pct` / `target_timesteps` в секцию `time/` таблицы SB3 |
-| `--skip-preflight` | не вызывать `require_clean_preflight` (только прямой `train_ppo`; `train_local.sh` чистит отдельно) |
-
-**Smoke train:** для короткой проверки PPO — `--smoke`, не `--checkpoint-out checkpoints/smoke_*.zip` в миссии. Для bridge/env — `run_smoke.py`, не `train_ppo`.
-
-По умолчанию в таблице SB3 (`verbose=1`, секция `time/`) — **`progress_pct`** и **`target_timesteps`** от полного `target_timesteps` (в т.ч. при resume). SB3 `verbose=1` и `--save-every` не меняются.
-
-**Прерывание и resume:** Ctrl+C или SIGTERM сохраняют `checkpoint_out` атомарно (`*.tmp.zip` → rename) и обновляют sidecar `*.train.json` (`target_timesteps`, `game`, `mission`, `n_envs`, `save_state`). Повторный запуск с тем же `--checkpoint-out` продолжает до `target_timesteps` (`PPO.load`, `reset_num_timesteps=False`). BC при resume не повторяется. Несовпадение `--n-envs` с sidecar → отказ. Явный finetune: `--checkpoint-in other.zip --checkpoint-out new.zip --no-resume`.
-
-**Raise target при resume:** если CLI `--timesteps` **больше** `sidecar.target_timesteps`, цель поднимается (нужно для продолжения обучения после T5 / R6). Если CLI меньше — остаётся цель из sidecar.
-
-**Раунд R6 (fps + обучение):** сначала `scripts/train_fps_round_prep.py` (архив `m1_v0` / `m1_v0_fps_t5`, promote `m1_v0_n6`), короткие A/B только с `--smoke`, длинный прогон только в `m1_v0_n6.zip` с `--rollout-metrics`. Детали — [ISSUE_TRAIN_FPS_DEGRADATION § R6](ISSUE_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
-
-При `Bridge ready timeout` или `FCEUX exited before ready` — зависшие процессы от прошлого train. `train_ppo.py` при старте завершает headless FCEUX с `bridge.lua`; вручную: `taskkill /F /IM fceux64.exe`.
-
-### Inference
-
-```bash
-# сборка: headless (без окна), turbo, stochastic, FM2 + плейлист
-./.venv/Scripts/python.exe src/stream/run_inference.py \
-  --checkpoint m1_v0.zip --episodes 5 \
-  --stochastic --save-episode-fm2 --build-playlist
-
-# или фасад (те же дефолты):
-./scripts/inference_local.sh
-
-# смотреть агента в окне (опц.):
-./.venv/Scripts/python.exe src/stream/run_inference.py \
-  --checkpoint m1_v0.zip --episodes 1 --show-window --stochastic
-```
-
-Логи (`games/…/missions/m1/logs/YYYYMMDD/`, retention 4 ч):
-
-- `attempts.jsonl` — одна строка на эпизод (`tags[]`, death, reward, …)
-- `inference_inputs.jsonl` — покадровый `(frame, action)` для FM2
-
-| Аргумент | Описание |
-| -------- | -------- |
-| `--checkpoint` | `checkpoints/m1_v0.zip` или имя файла |
-| `--game` / `--mission` | игра и миссия (default `rushn_attack` / `m1`) |
-| `--episodes` | число эпизодов (default 5) |
-| `--max-steps` | лимит env steps на эпизод (default 8000) |
-| `--save-state` | save state на reset (default `states/inference_cp0.fc0` — gameplay start) |
-| `--reward-profile` | профиль наград из `routes.yaml` (default `default`) |
-| `--model-version` | метка в логе (default — stem checkpoint) |
-| `--session` | id сессии FCEUX bridge (default `inference`) |
-| `--stochastic` | sampling вместо argmax (рекомендуется: greedy @ gameplay-start спамит `B`) |
-| `--fceux-profile` | профиль `fceux/profiles/{name}.yaml` (default `inference` → **headless**) |
-| `--show-window` | показать окно FCEUX (override `headless: true`) |
-| `--turbo` | force turbo on (в `inference.yaml` turbo уже **true**) |
-| `--export-fm2 PATH` | экспорт FM2 последнего эпизода (для одного ep: `--episodes 1`) |
-| `--export-fm2-dir DIR` | FM2 по эпизодам в каталог |
-| `--save-episode-fm2` | без плейлиста: `logs/YYYYMMDD/epNNNN.fm2`; с `--build-playlist` — только `NN_slug_MMM.fm2` |
-| `--build-playlist` | FM2-плейлист по номинациям (`NN_slug_MMM`); сырые `epNNNN` удаляются |
-
-После эпизода overlay пишется в `tmp/bridge/inference/overlay.json` (рисуется в `bridge.lua`).
-
-### FM2 из inference (без reference/)
-
-**Self-contained FM2:** inference-клип можно открыть в FCEUX как **ROM + один `.fm2`** — Load ROM → Play Movie, без отдельного `-loadstate`. Save state вшит в заголовок (`savestate 0x…`) с inference GUID (`fm2_export.INFERENCE_FM2_GUID`); GUID эталона `clear.fm2` в `.fc0` патчится при экспорте.
-
-```bash
-# из jsonl (всегда embedded)
-./.venv/Scripts/python.exe scripts/export_fm2.py \
-  -o logs/20260705_m1_v0_ep42.fm2 --episode 42
-
-# через inference
-./.venv/Scripts/python.exe src/stream/run_inference.py \
-  --checkpoint m1_v0.zip --episodes 1 --save-episode-fm2
-```
-
-| Аргумент | Описание |
-| -------- | -------- |
-| `--input` | `logs/YYYYMMDD/inference_inputs.jsonl` (default — за сегодня UTC) |
-| `-o` / `--output` | путь к `.fm2` (обязательный) |
-| `--episode` | только один эпизод из jsonl |
-| `--frame-skip` | NES-кадров на env step (default 4) |
-| `--template` | заголовок FM2 (default `games/…/reference/header.fm2`) |
-| `--save-state` | путь к `.fc0` для embed (default `states/inference_cp0.fc0`) |
-
-**Отличие от эталона:** `reference/clear.fm2` — полное прохождение с power-on и GUID эталона; inference FM2 — короткий клип с gameplay-start state, отдельный GUID, без `length` в заголовке (не FM3).
-
-**Sidecar:** `.overlay.json` — только achievement-overlay (Lua); без `save_state`.
-
-Reset inference в env/train — `states/inference_cp0.fc0` (gameplay start, кадр из `playthrough_manifest.yaml` → `inference.gameplay_start_frame`); train env по-прежнему использует `states/cp0.fc0` из manifest сегментов.
-
-### Replay FM2 / плейлист эфира
-
-```bash
-# один клип (отладка)
-./.venv/Scripts/python.exe scripts/play_inference_fm2.py \
-  games/rushn_attack/missions/m1/logs/20260705/ep0001.fm2
-
-# эфир: весь плейлист подряд
-./.venv/Scripts/python.exe scripts/play_inference_fm2.py \
-  games/rushn_attack/missions/m1/logs/20260705/playlist.json
-```
-
-| Аргумент | Описание |
-| -------- | -------- |
-| `input` | путь к self-contained `.fm2` или `logs/YYYYMMDD/playlist.json` |
-| `--overlay` | default: `{fm2}.overlay.json` (single FM2) |
-| `--turbo` | макс. скорость |
-
-Эфирный лаунчер: `logs/YYYYMMDD/playlist.play.cmd` (генерируется `build_playlist`).
-
-Replay требует **embedded** FM2 (savestate в заголовке, `inference_cp0` @ gameplay_start_frame из manifest).  
-- Один клип: `achievement_overlay_movie.lua` + CLI `-playmovie`.  
-- Плейлист: **один** FCEUX, `achievement_overlay_playlist.lua` — `movie.play` клипов подряд (без reopen на каждый эпизод).  
-Python передаёт `WAIT_FCEUX_LUA_CONFIG` (queue) / `WAIT_ACHIEVEMENT_OVERLAY`. Окно видно по умолчанию; `--noicon` — скрыть.
-
-### Achievements и плейлист
-
-Правила: [`config/achievements.yaml`](../config/achievements.yaml).
-
-```bash
-# пересчитать tags[] в attempts
-./.venv/Scripts/python.exe scripts/eval_achievements.py
-
-# собрать FM2 + playlist.json по номинациям
-./.venv/Scripts/python.exe scripts/build_playlist.py
-```
-
-| Скрипт | Аргумент | Описание |
-| ------ | -------- | -------- |
-| `eval_achievements.py` | `--attempts` | путь к attempts (default `logs/YYYYMMDD/attempts.jsonl`) |
-| | `--config` | путь к `achievements.yaml` |
-| `build_playlist.py` | `--attempts` | то же |
-| | `--inputs` | `inference_inputs.jsonl` для on-demand FM2 |
-
-Выход плейлиста: `logs/YYYYMMDD/{idx:02d}_{slug}_{seq:03d}.fm2` + sidecar `.overlay.json`, manifest `logs/YYYYMMDD/playlist.json`, лаунчер `logs/YYYYMMDD/playlist.play.cmd`.  
-Сырые `epNNNN.fm2` после сборки плейлиста **не оставляем** (канон — имена номинаций).
-
-**Состав клипа плейлиста:**
-
-| Артефакт | Назначение |
-| -------- | ---------- |
-| `.fm2` | inputs + embedded `savestate` (gameplay start) |
-| `.overlay.json` | achievements для Lua (`achievements`, `stats`, `show_until_frame`) |
-| `playlist.json` | порядок эфира (`idx`, `slug`, `block_label`, `fm2`, `overlay`) |
-| `.play.cmd` | один запуск `play_inference_fm2.py` с manifest |
-
-ROM общий для всего плейлиста (staging в `play_inference_fm2.py`). On-demand экспорт в `build_playlist` (`--inputs`) — с `--embed-savestate` (из 3.1).
 
 ---
 
-## Запланировано (ещё не в репо)
+### `train_ppo.py`
 
-| Скрипт | Фаза | Назначение |
-| ------ | ---- | ---------- |
-| `build_train_task.py` | 3 | failure → `tasks/train_task.json` |
+<a id="train_ppopy"></a>
+
+PPO на CPU / FCEUX env. Checkpoints: `games/.../checkpoints/` (или `tmp/smoke/` при `--smoke`).  
+Модуль BC: `src/train/bc_pretrain.py` (при `--bc-epochs > 0`, demos без `obs_stub`).
+
+```bash
+./scripts/train_local.sh --timesteps 50000 --checkpoint-out checkpoints/m1_v0.zip
+./.venv/Scripts/python.exe src/train/train_ppo.py --smoke --timesteps 256 --n-envs 1 --dummy-vec --no-bc
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--task` | `tasks/train_task.json` |
+| `--timesteps` | total steps (default 500000) |
+| `--n-envs` | parallel FCEUX (default **8**; через `train_local.sh` → **6**) |
+| `--checkpoint-in` / `--checkpoint-out` | load/save `.zip` |
+| `--resume` / `--no-resume` | sidecar `.train.json` (default on) |
+| `--latest-checkpoint` / `--no-latest-checkpoint` | `checkpoints/latest.zip` (default on) |
+| `--save-every` | каждые N steps (default 50000) |
+| `--bc-epochs` / `--bc-demo` / `--no-bc` | BC warm-start |
+| `--rollout-gc` / `--no-rollout-gc` | `gc.collect` после rollout (default on) |
+| `--rollout-metrics` / `--no-rollout-metrics` | JSONL в `tmp/bench/` (default off) |
+| `--rollout-metrics-session` / `--rollout-metrics-path` | куда писать metrics |
+| `--smoke` / `--smoke-session` | карантин `tmp/smoke/` |
+| `--no-intermediate-checkpoints` | без `checkpoints/runs/` |
+| `--dummy-vec` | DummyVecEnv |
+| `--no-turbo` | отладка |
+| `--progress` / `--no-progress-pct` | UX таблицы SB3 |
+| `--learn-stall-timeout` | abort без прогресса timesteps (default 300; `0`=off) |
+| `--skip-preflight` | не вызывать preflight (только прямой вызов) |
+| `--n-steps`, `--batch-size`, `--n-epochs`, `--gamma`, `--learning-rate`, `--threads` | PPO гиперпараметры |
+| `--save-state`, `--reward-profile`, `--game`, `--mission` | |
+
+Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--checkpoint-out` продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается.
+
+---
+
+### `train_fps_round_prep.py`
+
+Архив frozen checkpoints + promote primary для fps/dual-train раунда. Runbook — [TASK_TRAIN_FPS_DEGRADATION](tasks/TASK_TRAIN_FPS_DEGRADATION.md).
+
+```bash
+./.venv/Scripts/python.exe scripts/train_fps_round_prep.py
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--force-promote` | перезаписать target даже если уже есть |
+| `--target-timesteps` | цель для длинного прогона |
+| `--session` | метка metrics-сессии |
+| `--game` / `--mission` | |
+
+---
+
+### `parse_train_rollouts.py`
+
+Сводка wall_rollout / degradation из `rollouts.jsonl`.
+
+```bash
+./.venv/Scripts/python.exe scripts/parse_train_rollouts.py --jsonl tmp/bench/train_fps/rollouts.jsonl
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--jsonl` | путь к `rollouts.jsonl` (обязательный) |
+| `--json` | только JSON в stdout |
+
+---
+
+### `inference_preflight.py`
+
+Очистка перед inference (staging/bridge; опц. wipe `logs/YYYYMMDD/`). Вызывается из `inference_local.sh` / `play_inference_fm2`.
+
+```bash
+./.venv/Scripts/python.exe scripts/inference_preflight.py
+./.venv/Scripts/python.exe scripts/inference_preflight.py --playback-only
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--playback-only` | только staging/bridge (для replay, без wipe logs) |
+| `--keep-logs` | не удалять `logs/YYYYMMDD/` |
+| `--game` / `--mission` | |
+
+---
+
+### `inference_local.sh`
+
+Фасад: preflight → `run_inference`. Без аргументов — дефолты (checkpoint, stochastic, FM2, playlist). Свои флаги оболочки: `--play`, `--skip-preflight`; остальное — в `run_inference`.
+
+```bash
+./scripts/inference_local.sh
+./scripts/inference_local.sh --checkpoint m1_v0.zip --episodes 3 --play
+```
+
+| Флаг оболочки | Описание |
+| ------------- | -------- |
+| `--play` | после прогона вызвать `play_inference_fm2` на playlist |
+| `--skip-preflight` | не вызывать `inference_preflight` |
+
+---
+
+### `run_inference.py`
+
+<a id="inference"></a>
+<a id="run_inferencepy"></a>
+
+Локальный PPO inference. Логи: `games/.../logs/YYYYMMDD/` (`attempts.jsonl`, `inference_inputs.jsonl`). Default save state: `states/inference_cp0.fc0`. Retention текущего UTC-дня — в коде логгеров (см. ML_CONCEPT §8).
+
+```bash
+./scripts/inference_local.sh
+./.venv/Scripts/python.exe src/stream/run_inference.py \
+  --checkpoint m1_v0.zip --episodes 5 --stochastic --save-episode-fm2 --build-playlist
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--checkpoint` | `.zip` или имя в `checkpoints/` (default `m1_v0.zip`) |
+| `--episodes` / `--max-steps` | default 5 / 8000 |
+| `--stochastic` | sampling (рекомендуется vs greedy) |
+| `--save-state` | reset state (default `inference_cp0.fc0`) |
+| `--save-episode-fm2` | писать FM2 эпизодов |
+| `--build-playlist` | плейлист по номинациям |
+| `--playlist-no-dedupe` | без дедупа эпизодов в плейлисте |
+| `--show-window` | видимое окно (default headless) |
+| `--fceux-profile` | default `inference` |
+| `--turbo` | force turbo on |
+| `--session` | id bridge (default `inference`) |
+| `--reward-profile` / `--model-version` | |
+| `--skip-preflight` | |
+| `--game` / `--mission` | |
+
+---
+
+### `export_fm2.py`
+
+<a id="fm2-из-inference-без-reference"></a>
+
+`inference_inputs.jsonl` → self-contained `.fm2` (embed savestate всегда). Не для BC — только просмотр / эфир.
+
+```bash
+./.venv/Scripts/python.exe scripts/export_fm2.py -o logs/clip.fm2 --episode 42
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `-o` / `--output` | путь `.fm2` (обязательный) |
+| `--input` | jsonl (default — сегодня UTC) |
+| `--episode` | один эпизод |
+| `--frame-skip` | NES-кадров на env step (default 4) |
+| `--template` | заголовок FM2 |
+| `--save-state` | `.fc0` для embed (default `inference_cp0.fc0`) |
+| `--game` / `--mission` | |
+
+---
+
+### `eval_achievements.py`
+
+Правила [`config/achievements.yaml`](../config/achievements.yaml) → `tags[]` в attempts. Номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
+
+```bash
+./.venv/Scripts/python.exe scripts/eval_achievements.py
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--attempts` | путь к attempts (default сегодня UTC) |
+| `--config` | путь к YAML |
+| `--game` / `--mission` | |
+
+---
+
+### `build_playlist.py`
+
+<a id="achievements-и-плейлист"></a>
+
+Attempts (+ опц. inputs) → `NN_slug_MMM.fm2`, `.overlay.json`, `playlist.json`, `playlist.play.cmd`.
+
+```bash
+./.venv/Scripts/python.exe scripts/build_playlist.py
+./.venv/Scripts/python.exe scripts/build_playlist.py --inputs logs/YYYYMMDD/inference_inputs.jsonl
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--attempts` | attempts.jsonl |
+| `--inputs` | on-demand FM2 из inputs |
+| `--no-dedupe` | не пропускать дубликаты эпизодов |
+| `--game` / `--mission` | |
+
+Выход в `logs/YYYYMMDD/`: `.fm2` (embed savestate), `.overlay.json`, `playlist.json`, `.play.cmd`.
+
+---
+
+### `play_inference_fm2.py`
+
+Replay одного self-contained `.fm2` или всего `playlist.json` (эфир).
+
+```bash
+./.venv/Scripts/python.exe scripts/play_inference_fm2.py games/rushn_attack/missions/m1/logs/YYYYMMDD/playlist.json
+./.venv/Scripts/python.exe scripts/play_inference_fm2.py path/to/clip.fm2
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `input` | `.fm2` или `playlist.json` |
+| `--overlay` | sidecar (default `{fm2}.overlay.json`) |
+| `--turbo` | макс. скорость |
+| `--noicon` | скрыть окно |
+| `--timeout` | default 120 |
+| `--skip-preflight` | |
+| `--game` / `--mission` | |
+
+---
+
+### `play_fm2_gui.py`
+
+GUI replay одного FM2 (отладка embed / movie).
+
+```bash
+./.venv/Scripts/python.exe scripts/play_fm2_gui.py path/to/clip.fm2
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `fm2` | путь к `.fm2` |
+| `--no-refresh-embed` | не обновлять embedded savestate |
+| `--turbo` | |
+| `--timeout` | |
+| `--game` / `--mission` | |
 
 ---
 
 ## См. также
 
-- [ML_CONCEPT.md §10](ML_CONCEPT.md#10-структура-репозитория) — структура каталогов
-- [ML_CONCEPT.md §10 «В проекте vs окружение»](ML_CONCEPT.md#в-проекте-vs-окружение) — git / venv / portable
+- [MEASUREMENTS.md](MEASUREMENTS.md) — baseline FPS / ms
+- [DESIGN.md § Структура репозитория](DESIGN.md#структура-репозитория) · [гигиена](DESIGN.md#гигиена-артефактов)
+- [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных) — контракты данных

@@ -186,7 +186,7 @@ class CheckpointRewardWrapper(gym.Wrapper):
 
         kill_bonus = float(self._rewards.get("kill_bonus", 0))
         if kill_bonus:
-            pass  # MVP: выкл
+            pass  # выкл
 
         return r
 
