@@ -38,7 +38,7 @@
 | Компонент               | Описание                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | Алгоритм                | PPO (stable-baselines3) + опционально BC на seg              |
-| Inference | CPU локально, `predict()` — окно FCEUX, **без OBS**; логи `YYYYMMDD_attempts.jsonl` + `inference_inputs.jsonl`; FM2, achievements (retention 4 ч) |
+| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи `logs/YYYYMMDD/attempts.jsonl` + `inference_inputs.jsonl`; FM2, achievements (retention 4 ч) |
 | Обучение                | **CPU локально**; запуск **вручную** по `train_task.json`                           |
 | Хостинг                 | **Только текущий ПК**; облако (RunPod/Vast) **не входит в MVP**             |
 | Эталон       | FM2 + полное прохождение M1 + manifest + ≥3 seg |
@@ -123,7 +123,7 @@ flowchart TB
     subgraph finetune [Дообучение по триггеру]
         Trigger["rules: N deaths / no progress"]
         Task[train_task.json]
-        Attempts[YYYYMMDD_attempts.jsonl]
+        Attempts[YYYYMMDD/attempts.jsonl]
         Trigger --> Task
         Task --> LocalPPO
         Attempts --> Trigger
@@ -141,7 +141,7 @@ flowchart TB
 ```
 v0: PPO (или BC + PPO) на CPU между эфирами
         ↓
-Inference + лог `logs/YYYYMMDD_attempts.jsonl` (retention 4 ч)
+Inference + лог `logs/YYYYMMDD/attempts.jsonl` (retention 4 ч)
         ↓
 Триггер → train_task.json + seg
         ↓
@@ -341,7 +341,7 @@ CP5: mission clear
 - **FM2** — запись inputs (frame-perfect); `reference/user_clear_v1.fm2` (в каталоге миссии)
 - Lua-лог кадра → `reference/human_playthrough.jsonl`
 - **Save states** на границах CP (CP0..CPn) → `states/cpN.fc`*
-- Сложные места выявляются после inference из `logs/YYYYMMDD_attempts.jsonl` (окно 4 ч текущего дня)
+- Сложные места выявляются после inference из `logs/YYYYMMDD/attempts.jsonl` (окно 4 ч текущего дня)
 - Видео без actions — слабый сигнал; нужен FM2 или лог кнопок
 
 
@@ -375,7 +375,7 @@ Lua-скрипт в FCEUX (`emu.registerafter`, каждый кадр):
 | Сценарий                        | Действие                                                       |
 | ------------------------------- | -------------------------------------------------------------- |
 | `env.reset()` для train         | Hot `LOAD` из Lua-кэша (`CACHE` при cold start); без перезапуска FCEUX |
-| Inference, смерть | Лог `death_x`, `death_room` в `logs/YYYYMMDD_attempts.jsonl`   |
+| Inference, смерть | Лог `death_x`, `death_room` в `logs/YYYYMMDD/attempts.jsonl`   |
 | Дообучение на seg       | Load save state начала seg + `hot_zone` |
 | Отладка (optional)              | Save state в кадр смерти — только для анализа, не для train    |
 
@@ -516,7 +516,7 @@ segments:
     reference_clear_sec: 35.0
     demo_file: demos/seg_003.npz
     save_state: states/cp2.fc*
-    note: "типичный seg для дообучения — выбирается build_train_task.py по YYYYMMDD_attempts.jsonl (текущий день, 4 ч)"
+    note: "типичный seg для дообучения — выбирается build_train_task.py по YYYYMMDD/attempts.jsonl (текущий день, 4 ч)"
 ```
 
 
@@ -584,15 +584,15 @@ heuristics:
 
 
 
-### `logs/YYYYMMDD_attempts.jsonl`
+### `logs/YYYYMMDD/attempts.jsonl`
 
 Одна строка JSON на inference-попытку. Поля overlay — [STREAMING_CONCEPT.md §9](STREAMING_CONCEPT.md#9-метрики-и-лог-эфира).
 
 **Путь и именование (по умолчанию, не опция):**
 
-- Каталог: `games/<game>/missions/<m>/logs/` — **плоский**, без подпапок по дням.
-- Имя файла: **`YYYYMMDD_attempts.jsonl`** (префикс — календарная дата UTC, напр. `20260705_attempts.jsonl`).
-- Активный файл — за **текущий** UTC-день; при смене даты — новый файл с новым префиксом. Старые файлы остаются в том же `logs/`.
+- Каталог: `games/<game>/missions/<m>/logs/YYYYMMDD/` — подпапка по UTC-дню.
+- Имя файла: **`attempts.jsonl`** (дата — в имени каталога, напр. `logs/20260705/attempts.jsonl`).
+- Активный файл — за **текущий** UTC-день; при смене даты — новый каталог. Старые дни остаются в `logs/`.
 
 **Retention (по умолчанию, не опция):**
 
@@ -624,9 +624,9 @@ heuristics:
 }
 ```
 
-### `logs/YYYYMMDD_inference_inputs.jsonl`
+### `logs/YYYYMMDD/inference_inputs.jsonl`
 
-Покадровый лог ввода из inference для replay и экспорта FM2. Каталог, префикс UTC-даты и retention 4 ч — как у `YYYYMMDD_attempts.jsonl`.
+Покадровый лог ввода из inference для replay и экспорта FM2. Каталог UTC-даты и retention 4 ч — как у `attempts.jsonl`.
 
 | Компонент | Путь |
 | --------- | ---- |
@@ -657,9 +657,9 @@ heuristics:
 | CLI inference | `--export-fm2`, `--export-fm2-dir`, `--save-episode-fm2` (embed по умолчанию; `--no-embed-savestate`) |
 | CLI export | `--embed-savestate` в `export_fm2.py` |
 | Просмотр FCEUX | Load ROM → Play Movie (без внешнего `-loadstate`) |
-| Окно FCEUX | профиль `fceux/profiles/inference.yaml` (`headless: false`) или `--show-window` |
+| Окно FCEUX | по умолчанию **нет** (`inference.yaml` → `headless: true`); смотреть: `--show-window` |
 
-`YYYYMMDD_attempts.jsonl` — агрегат эпизода; FM2 — отдельный артефакт для просмотра, не для BC / seg.
+`logs/YYYYMMDD/attempts.jsonl` — агрегат эпизода; FM2 — отдельный артефакт для просмотра, не для BC / seg.
 
 ### Achievements и плейлист (inference)
 
@@ -670,22 +670,22 @@ heuristics:
 | Правила | `config/achievements.yaml` |
 | Evaluator | `src/achievements/evaluator.py` |
 | Batch eval | `scripts/eval_achievements.py` → `tags[]` в attempts |
-| Плейлист | `scripts/build_playlist.py` → FM2 + `YYYYMMDD_playlist.json` |
+| Плейлист | `scripts/build_playlist.py` → FM2 + `YYYYMMDD/playlist.json` |
 | Overlay | `tmp/bridge/inference/overlay.json` → `bridge.lua` (3–5 с) |
 
-#### Именование (плоский `logs/`, префикс UTC-даты)
+#### Именование (`logs/YYYYMMDD/`)
 
 ```
-logs/20260705_playlist.json              # manifest эфира (плоский список клипов)
-logs/20260705_playlist.play.cmd          # один лаунчер на весь эфир
-logs/20260705_01_mission_clear_001.fm2
-logs/20260705_01_mission_clear_001.overlay.json
-logs/20260705_01_mission_clear_002.fm2
-logs/20260705_02_episode_reward_001.fm2
-logs/20260705_03_fastest_death_001.fm2
+logs/20260705/playlist.json              # manifest эфира (плоский список клипов)
+logs/20260705/playlist.play.cmd          # один лаунчер на весь эфир
+logs/20260705/01_mission_clear_001.fm2
+logs/20260705/01_mission_clear_001.overlay.json
+logs/20260705/01_mission_clear_002.fm2
+logs/20260705/02_episode_reward_001.fm2
+logs/20260705/03_fastest_death_001.fm2
 ```
 
-Шаблон FM2: `{YYYYMMDD}_{idx:02d}_{slug}_{seq:03d}.fm2`. Индекс `idx` — **фиксированный** порядок блоков на стриме; `slug` — имя номинации; `seq` — порядок внутри блока.
+Шаблон FM2: `{idx:02d}_{slug}_{seq:03d}.fm2` внутри `logs/YYYYMMDD/`. Индекс `idx` — **фиксированный** порядок блоков на стриме; `slug` — имя номинации; `seq` — порядок внутри блока.
 
 Одна попытка может иметь **несколько** тегов → несколько FM2-копий в разных номинациях.
 
@@ -740,9 +740,9 @@ logs/20260705_03_fastest_death_001.fm2
 
 #### Pipeline
 
-1. `run_inference.py` → `inference_inputs` + расширенный `YYYYMMDD_attempts.jsonl` (`tags[]`)
+1. `run_inference.py` → `inference_inputs` + расширенный `YYYYMMDD/attempts.jsonl` (`tags[]`)
 2. `eval_achievements.py` — правила из `achievements.yaml` → теги
-3. `export_fm2.py` + `build_playlist.py` → FM2 и `YYYYMMDD_playlist.json` по `{idx}_{slug}`
+3. `export_fm2.py` + `build_playlist.py` → FM2 и `YYYYMMDD/playlist.json` по `{idx}_{slug}`
 4. `play_inference_fm2.py` + `achievement_playlist.lua` — replay плейлиста на эфире
 
 См. также [SCRIPTS.md](SCRIPTS.md) (inference, FM2, achievements) и [STREAMING_CONCEPT.md §9](STREAMING_CONCEPT.md#9-метрики-и-лог-эфира) (overlay на эфире).
@@ -910,7 +910,7 @@ Python-пакеты — в `.venv/` по `requirements.txt` (см. [§10](#в-п
 | `games/…/states/`        | `cp0..cpN.fc0` (train), `inference_cp0.fc0` (эфир) | Lua / train / inference |
 | `games/…/demos/`         | `seg_*.npz`                     | нарезка эталона                                            |
 | `games/…/checkpoints/`   | `m1_vN.zip`                     | train / дообучение                         |
-| `games/…/logs/`          | `YYYYMMDD_attempts.jsonl`, `YYYYMMDD_inference_inputs.jsonl`, FM2-плейлист | inference (retention 4 ч) |
+| `games/…/logs/`          | `YYYYMMDD/attempts.jsonl`, `inference_inputs.jsonl`, FM2-плейлист | inference (retention 4 ч) |
 | `games/…/tasks/`         | `train_task.json`               | `build_train_task.py`                                      |
 | `.venv/`                 | Python-пакеты (PyTorch, SB3, …) | `python -m venv .venv` + `pip install -r requirements.txt` |
 | `tmp/`                   | IPC-каналы FCEUX ↔ Python       | runtime                                                    |
@@ -967,7 +967,7 @@ wait/
 │               ├── states/             # cp0..cpN (train), inference_cp0 (gameplay / эфир)
 │               ├── demos/              # seg_*.npz для BC
 │               ├── checkpoints/        # m1_vN.zip
-│               ├── logs/               # YYYYMMDD_*.jsonl, FM2-плейлист (flat, retention 4 ч)
+│               ├── logs/               # YYYYMMDD/{attempts,inputs,FM2-плейлист} (retention 4 ч)
 │               └── tasks/              # train_task.json
 │   # └── tmnt3/                      # сезон 2+: та же схема
 │   #     ├── game.yaml
@@ -1030,7 +1030,7 @@ wait/
 | ------------------------------ | ------------------------- | --------- | ------------------- | ------- | ------------ |
 | Запись эталона      | `profiles/record.yaml`    | 1         | `record_logger.lua` | выкл    | да (человек) |
 | Обучение                       | `profiles/train.yaml`     | 4–8       | `bridge.lua`        | **вкл** | headless     |
-| Inference (эфир) | `profiles/inference.yaml` | 1         | `bridge.lua`        | выкл    | да (OBS)     |
+| Inference (сбор) | `profiles/inference.yaml` | 1         | `bridge.lua`        | **вкл** | headless (`--show-window` → окно) |
 
 
 Launcher (Phase 1): `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Переопределение каталога: `FCEUX_HOME`.

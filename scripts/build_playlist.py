@@ -43,7 +43,7 @@ def main() -> None:
     parser.add_argument(
         "--inputs",
         default=None,
-        help="inference_inputs.jsonl (fallback export, если нет YYYYMMDD_epNNNN.fm2)",
+        help="inference_inputs.jsonl (fallback export, если нет epNNNN.fm2)",
     )
     parser.add_argument("--no-dedupe", action="store_true", help="не пропускать дубликаты эпизодов в плейлисте")
 

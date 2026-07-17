@@ -24,7 +24,7 @@ def main() -> None:
     parser.add_argument(
         "--keep-logs",
         action="store_true",
-        help="не удалять logs/YYYYMMDD_* перед inference",
+        help="не удалять logs/YYYYMMDD/ перед inference",
     )
     args = parser.parse_args()
 

@@ -13,6 +13,7 @@ from achievements.playlist import (  # noqa: E402
     build_playlist,
     write_overlay_clip,
 )
+from jsonl_logs import utc_date_prefix  # noqa: E402
 from project_paths import repo_root  # noqa: E402
 
 
@@ -54,8 +55,9 @@ def test_build_playlist_fm2_manifest() -> None:
     logs = repo_root() / "tmp" / "smoke" / "playlist_fm2" / "logs"
     if logs.exists():
         shutil.rmtree(logs)
-    logs.mkdir(parents=True)
-    inputs = logs / "20260716_inference_inputs.jsonl"
+    day = logs / utc_date_prefix()
+    day.mkdir(parents=True)
+    inputs = day / "inference_inputs.jsonl"
     inputs.write_text(
         "\n".join(
             json.dumps({"episode": 1, "step": i, "frame": i, "action": "right"})
@@ -64,7 +66,7 @@ def test_build_playlist_fm2_manifest() -> None:
         + "\n",
         encoding="utf-8",
     )
-    attempts = logs / "20260716_attempts.jsonl"
+    attempts = day / "attempts.jsonl"
     attempts.write_text(
         json.dumps(
             {
@@ -91,15 +93,18 @@ def test_build_playlist_fm2_manifest() -> None:
     )
     assert clip_count == 1
     assert manifest_path and manifest_path.is_file()
+    assert manifest_path.name == "playlist.json"
+    assert manifest_path.parent == day
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     clip = manifest["clips"][0]
     assert clip["episode"] == 1
     assert clip["fm2"].endswith(".fm2")
+    assert not clip["fm2"].startswith(utc_date_prefix())
     assert "inference_inputs" not in clip
-    fm2 = logs / clip["fm2"]
+    fm2 = day / clip["fm2"]
     assert fm2.is_file()
     assert "savestate " in fm2.read_text(encoding="utf-8", errors="replace")
-    overlay = logs / clip["overlay"]
+    overlay = day / clip["overlay"]
     assert overlay.is_file()
     assert "save_state" not in json.loads(overlay.read_text(encoding="utf-8"))
     launcher = manifest_path.with_suffix(".play.cmd")
@@ -113,7 +118,8 @@ def test_build_playlist_clones_conventional_ep_fm2() -> None:
     logs = repo_root() / "tmp" / "smoke" / "playlist_clone_ep" / "logs"
     if logs.exists():
         shutil.rmtree(logs)
-    logs.mkdir(parents=True)
+    day = logs / utc_date_prefix()
+    day.mkdir(parents=True)
     src_ep = (
         repo_root()
         / "games"
@@ -124,11 +130,18 @@ def test_build_playlist_clones_conventional_ep_fm2() -> None:
         / "20260716_ep0001.fm2"
     )
     if not src_ep.is_file():
-        return
-    date_prefix = datetime.now(timezone.utc).strftime("%Y%m%d")
-    ep_copy = logs / f"{date_prefix}_ep0001.fm2"
+        # fallback: any self-contained deep_run clip in flat or dated layout
+        flat = list((repo_root() / "games" / "rushn_attack" / "missions" / "m1" / "logs").glob("*_ep0001.fm2"))
+        dated = list(
+            (repo_root() / "games" / "rushn_attack" / "missions" / "m1" / "logs").glob("*/ep0001.fm2")
+        )
+        candidates = flat + dated
+        if not candidates:
+            return
+        src_ep = candidates[0]
+    ep_copy = day / "ep0001.fm2"
     shutil.copy2(src_ep, ep_copy)
-    attempts = logs / f"{date_prefix}_attempts.jsonl"
+    attempts = day / "attempts.jsonl"
     attempts.write_text(
         json.dumps(
             {
@@ -154,22 +167,24 @@ def test_build_playlist_clones_conventional_ep_fm2() -> None:
     assert clip_count == 1
     assert manifest_path
     clip = json.loads(manifest_path.read_text(encoding="utf-8"))["clips"][0]
-    assert (logs / clip["fm2"]).is_file()
+    assert (day / clip["fm2"]).is_file()
     assert clip["fm2"] != ep_copy.name
+    assert not ep_copy.exists()  # raw ep cleaned after playlist build
 
 
 def test_build_playlist_dedupes_identical_fm2() -> None:
     logs = repo_root() / "tmp" / "smoke" / "playlist_dedupe_fm2" / "logs"
     if logs.exists():
         shutil.rmtree(logs)
-    logs.mkdir(parents=True)
-    inputs = logs / "inputs.jsonl"
+    day = logs / utc_date_prefix()
+    day.mkdir(parents=True)
+    inputs = day / "inputs.jsonl"
     rows = []
     for ep in (1, 2, 3):
         for i in range(4):
             rows.append(json.dumps({"episode": ep, "step": i, "action": "right"}))
     inputs.write_text("\n".join(rows) + "\n", encoding="utf-8")
-    attempts = logs / "attempts.jsonl"
+    attempts = day / "attempts.jsonl"
     attempt_rows = [
         {
             "episode": i,

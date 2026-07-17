@@ -1,4 +1,4 @@
-"""Локальный inference: model.predict() + logs/YYYYMMDD_*.jsonl + playlist."""
+"""Локальный inference: model.predict() + logs/YYYYMMDD/*.jsonl + playlist."""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +24,7 @@ from fceux_launch import load_fceux_profile  # noqa: E402
 from fm2_export import export_episode_fm2_from_steps, write_fm2_sidecar  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
 from inference_input_logger import InferenceInputLogger  # noqa: E402
-from jsonl_logs import load_jsonl_window, utc_date_prefix  # noqa: E402
+from jsonl_logs import dated_day_dir, load_jsonl_window  # noqa: E402
 from project_paths import mission_dir, repo_root  # noqa: E402
 
 
@@ -38,8 +38,8 @@ def _write_overlay(session_id: str, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
-def _write_episode_overlay(logs_dir: Path, date_prefix: str, episode: int, payload: dict) -> Path:
-    path = logs_dir / f"{date_prefix}_ep{episode:04d}.overlay.json"
+def _write_episode_overlay(day_dir: Path, episode: int, payload: dict) -> Path:
+    path = day_dir / f"ep{episode:04d}.overlay.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -98,7 +98,7 @@ def run_inference(args: argparse.Namespace) -> None:
     )
     model = PPO.load(str(checkpoint.with_suffix("")), device="cpu")
 
-    date_prefix = utc_date_prefix()
+    day_dir = dated_day_dir(logs_dir)
 
     try:
         for ep in range(1, args.episodes + 1):
@@ -122,9 +122,11 @@ def run_inference(args: argparse.Namespace) -> None:
                 step_log.append({"action": action_str, "frame": frame})
 
             fm2_path: Path | None = None
-            if args.save_episode_fm2:
+            # С плейлистом канон имён — NN_slug_MMM; epNNNN не пишем в logs/YYYYMMDD/.
+            write_raw_ep_fm2 = bool(args.save_episode_fm2) and not bool(args.build_playlist)
+            if write_raw_ep_fm2:
                 save_state_path = mission / save_state
-                fm2_path = logs_dir / f"{date_prefix}_ep{ep:04d}.fm2"
+                fm2_path = day_dir / f"ep{ep:04d}.fm2"
                 export_episode_fm2_from_steps(
                     step_log,
                     fm2_path,
@@ -157,19 +159,20 @@ def run_inference(args: argparse.Namespace) -> None:
 
             overlay = overlay_payload(record, config=achievements_cfg)
             _write_overlay(args.session, overlay)
-            ep_overlay = _write_episode_overlay(logs_dir, date_prefix, ep, overlay)
-            if fm2_path:
-                write_fm2_sidecar(fm2_path, overlay=overlay)
+            if write_raw_ep_fm2:
+                ep_overlay = _write_episode_overlay(day_dir, ep, overlay)
+                if fm2_path:
+                    write_fm2_sidecar(fm2_path, overlay=overlay)
+                print(f"  overlay: {ep_overlay}")
+                if fm2_path:
+                    print(f"  fm2: {fm2_path}")
+                    print(f"  visual: ./.venv/Scripts/python.exe scripts/play_fm2_gui.py {fm2_path.as_posix()}")
 
             print(
                 f"episode {ep}: steps={steps} max_cp={last_info.get('max_checkpoint')} "
                 f"reward={last_info.get('episode_reward', 0):.2f} died={last_info.get('died')} "
                 f"tags={record.get('tags', [])}"
             )
-            print(f"  overlay: {ep_overlay}")
-            if fm2_path:
-                print(f"  fm2: {fm2_path}")
-                print(f"  visual: ./.venv/Scripts/python.exe scripts/play_fm2_gui.py {fm2_path.as_posix()}")
 
         if args.build_playlist:
             created, manifest_path, clip_count = build_playlist(
@@ -208,8 +211,8 @@ def main() -> None:
     parser.add_argument("--session", default="inference")
     parser.add_argument("--stochastic", action="store_true")
     parser.add_argument("--fceux-profile", default="inference", help="fceux/profiles/{name}.yaml")
-    parser.add_argument("--show-window", action="store_true", help="видимое окно FCEUX")
-    parser.add_argument("--turbo", action="store_true", default=None, help="override turbo из профиля")
+    parser.add_argument("--show-window", action="store_true", help="видимое окно FCEUX (default: headless)")
+    parser.add_argument("--turbo", action="store_true", default=None, help="force turbo on (в inference.yaml уже true)")
     parser.add_argument("--build-playlist", action="store_true", help="собрать плейлист после прогона")
     parser.add_argument(
         "--playlist-no-dedupe",
@@ -219,7 +222,7 @@ def main() -> None:
     parser.add_argument(
         "--save-episode-fm2",
         action="store_true",
-        help="писать logs/YYYYMMDD_epNNNN.fm2 с embed inference_cp0 (фаза C1)",
+        help="писать logs/YYYYMMDD/epNNNN.fm2 (только без --build-playlist; с плейлистом — NN_slug_MMM)",
     )
     parser.add_argument(
         "--skip-preflight",
