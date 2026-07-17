@@ -23,6 +23,7 @@ from train.checkpointing import (  # noqa: E402
     atomic_save_model,
     checkpoint_zip_path,
     read_sidecar,
+    resolve_target_timesteps,
     validate_sidecar_n_envs,
     write_sidecar,
 )
@@ -30,6 +31,7 @@ from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_cl
 from train.learn_watchdog import DEFAULT_LEARN_STALL_TIMEOUT_S, LearnStallError, learn_with_stall_watchdog  # noqa: E402
 from train.progress_callback import TrainProgressPctCallback  # noqa: E402
 from train.ram_mitigations import RolloutGcCallback, warn_if_n_envs_high_for_ram  # noqa: E402
+from train.rollout_metrics import RolloutMetricsCallback  # noqa: E402
 from train.thread_limits import configure_train_threads  # noqa: E402
 
 POLICY_KWARGS = {"normalize_images": False}  # obs уже float [0,1], channel-first (4,84,84)
@@ -179,7 +181,12 @@ def train(args: argparse.Namespace) -> Path:
             sidecar = read_sidecar(checkpoint_out)
             if sidecar:
                 validate_sidecar_n_envs(sidecar, args.n_envs)
-                target_timesteps = int(sidecar.get("target_timesteps", target_timesteps))
+                prev_target = int(sidecar.get("target_timesteps", target_timesteps))
+                target_timesteps = resolve_target_timesteps(target_timesteps, sidecar)
+                if target_timesteps > prev_target:
+                    print(
+                        f"resume: raising target_timesteps {prev_target} -> {target_timesteps} (CLI)"
+                    )
             print(f"resume checkpoint {checkpoint_out}  target={target_timesteps}")
             model = PPO.load(str(checkpoint_out.with_suffix("")), env=vec_env, device="cpu")
             model.learning_rate = args.learning_rate
@@ -257,6 +264,19 @@ def train(args: argparse.Namespace) -> Path:
             callbacks.append(RolloutGcCallback())
         if not args.no_progress_pct:
             callbacks.append(TrainProgressPctCallback(target_timesteps))
+        metrics_path: Path | None = None
+        if args.rollout_metrics:
+            if args.rollout_metrics_path:
+                metrics_path = Path(args.rollout_metrics_path)
+                if not metrics_path.is_absolute():
+                    metrics_path = repo_root() / metrics_path
+            else:
+                session = (args.rollout_metrics_session or "train_fps").strip() or "train_fps"
+                metrics_path = (
+                    artifact_quarantine_dir("bench", session).resolve() / "rollouts.jsonl"
+                )
+            callbacks.append(RolloutMetricsCallback(metrics_path, verbose=1))
+            print(f"rollout metrics → {metrics_path}")
 
         print(
             f"train: game={args.game} mission={args.mission} "
@@ -377,6 +397,22 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="gc.collect() после каждого rollout — снижает RAM pressure (H2, default: on)",
+    )
+    p.add_argument(
+        "--rollout-metrics",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="JSONL wall/rollout + RAM snapshot (H2 dual train+measure)",
+    )
+    p.add_argument(
+        "--rollout-metrics-session",
+        default="train_fps",
+        help="подкаталог tmp/bench/<session>/rollouts.jsonl (если нет --rollout-metrics-path)",
+    )
+    p.add_argument(
+        "--rollout-metrics-path",
+        default=None,
+        help="явный путь к rollouts.jsonl (иначе tmp/bench/<session>/)",
     )
     p.add_argument(
         "--skip-preflight",

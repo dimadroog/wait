@@ -184,6 +184,20 @@
 
 Лог: `tmp/bench/t5_3_train.log`.
 
+### R6 dual train+measure (заполнить после прогона)
+
+План и команды: [ISSUE_TRAIN_FPS_DEGRADATION.md § R6](ISSUE_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
+
+| Метрика | R6.1 n=4 | R6.1 n=6 | R6.1 n=8 | R6.2 long n=6 |
+| ------- | -------- | -------- | -------- | ------------- |
+| env-steps/s (steady) | | | | |
+| wall_late/early | | | | |
+| avail_phys_mb min | | | | |
+| SB3 fps (late) | | | | |
+| checkpoint | smoke tmp | smoke tmp | smoke tmp | `m1_v0_n6.zip` |
+
+**Вердикт R6:** _TBD_
+
 ---
 
 ## Добавить результаты 5.0

@@ -329,6 +329,8 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 | [`src/train/bc_pretrain.py`](../src/train/bc_pretrain.py) | `demos/seg_*.npz` (реальные obs) | warm-start policy (вызывается из train_ppo) |
 | [`scripts/train_local.sh`](../scripts/train_local.sh) | task JSON или CLI | preflight cleanup → `train_ppo` (**default `--n-envs 6`**, H2 RAM) |
 | [`scripts/train_preflight.py`](../scripts/train_preflight.py) | — | обязательная очистка перед train (вызывается из `train_local.sh`) |
+| [`scripts/train_fps_round_prep.py`](../scripts/train_fps_round_prep.py) | checkpoints миссии | archive frozen + promote `m1_v0_n6`; runbook R6 ([ISSUE_TRAIN_FPS_DEGRADATION](ISSUE_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17)) |
+| [`scripts/parse_train_rollouts.py`](../scripts/parse_train_rollouts.py) | `tmp/bench/*/rollouts.jsonl` | сводка wall_rollout / degradation |
 | [`src/stream/run_inference.py`](../src/stream/run_inference.py) | checkpoint `.zip` | `logs/YYYYMMDD/attempts.jsonl`, `logs/YYYYMMDD/inference_inputs.jsonl`, опц. FM2 / плейлист |
 | [`scripts/export_fm2.py`](../scripts/export_fm2.py) | `inference_inputs.jsonl` | `.fm2` (без `reference/`) |
 | [`scripts/eval_achievements.py`](../scripts/eval_achievements.py) | `attempts.jsonl` + `config/achievements.yaml` | `tags[]` в attempts |
@@ -358,6 +360,9 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 | `--timesteps` | total PPO steps (default 500000) |
 | `--n-envs` | parallel FCEUX (default **8** прямой вызов; **`train_local.sh` → 6**) |
 | `--rollout-gc` / `--no-rollout-gc` | `gc.collect()` после rollout (default: on, H2) |
+| `--rollout-metrics` / `--no-rollout-metrics` | JSONL wall/rollout + RAM (`tmp/bench/<session>/rollouts.jsonl`) |
+| `--rollout-metrics-session` | имя сессии в `tmp/bench/` (default `train_fps`) |
+| `--rollout-metrics-path` | явный путь к `rollouts.jsonl` |
 | `--save-every` | checkpoint каждые N steps (default 50000) |
 | `--checkpoint-in` / `--checkpoint-out` | load/save `.zip` |
 | `--resume` / `--no-resume` | продолжить с `checkpoint_out` + sidecar `.train.json` (default: resume on) |
@@ -376,6 +381,10 @@ Random agent: `make_env(game_id)` → `games/<game>/env/` + `CheckpointRewardWra
 По умолчанию в таблице SB3 (`verbose=1`, секция `time/`) — **`progress_pct`** и **`target_timesteps`** от полного `target_timesteps` (в т.ч. при resume). SB3 `verbose=1` и `--save-every` не меняются.
 
 **Прерывание и resume:** Ctrl+C или SIGTERM сохраняют `checkpoint_out` атомарно (`*.tmp.zip` → rename) и обновляют sidecar `*.train.json` (`target_timesteps`, `game`, `mission`, `n_envs`, `save_state`). Повторный запуск с тем же `--checkpoint-out` продолжает до `target_timesteps` (`PPO.load`, `reset_num_timesteps=False`). BC при resume не повторяется. Несовпадение `--n-envs` с sidecar → отказ. Явный finetune: `--checkpoint-in other.zip --checkpoint-out new.zip --no-resume`.
+
+**Raise target при resume:** если CLI `--timesteps` **больше** `sidecar.target_timesteps`, цель поднимается (нужно для продолжения обучения после T5 / R6). Если CLI меньше — остаётся цель из sidecar.
+
+**Раунд R6 (fps + обучение):** сначала `scripts/train_fps_round_prep.py` (архив `m1_v0` / `m1_v0_fps_t5`, promote `m1_v0_n6`), короткие A/B только с `--smoke`, длинный прогон только в `m1_v0_n6.zip` с `--rollout-metrics`. Детали — [ISSUE_TRAIN_FPS_DEGRADATION § R6](ISSUE_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
 
 При `Bridge ready timeout` или `FCEUX exited before ready` — зависшие процессы от прошлого train. `train_ppo.py` при старте завершает headless FCEUX с `bridge.lua`; вручную: `taskkill /F /IM fceux64.exe`.
 

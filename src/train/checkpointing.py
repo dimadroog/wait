@@ -66,6 +66,21 @@ def validate_sidecar_n_envs(sidecar: dict[str, Any], n_envs: int) -> None:
         )
 
 
+def resolve_target_timesteps(cli_timesteps: int, sidecar: dict[str, Any] | None) -> int:
+    """CLI может поднять target при resume; понижение sidecar не делается молча.
+
+    Если CLI < sidecar target — оставляем sidecar (безопасный resume до прежней цели).
+    Если CLI > sidecar — поднимаем цель (продолжить обучение / dual train+measure).
+    """
+    if not sidecar:
+        return int(cli_timesteps)
+    saved = int(sidecar.get("target_timesteps", cli_timesteps))
+    cli = int(cli_timesteps)
+    if cli > saved:
+        return cli
+    return saved
+
+
 def atomic_save_model(model: PPO, checkpoint: Path) -> Path:
     """SB3 save через *.tmp.zip → rename."""
     out = checkpoint_zip_path(checkpoint)

@@ -4,6 +4,8 @@
 
 **Базовая линия (до проработки):** [MEASUREMENTS.md](MEASUREMENTS.md) § «Деградация fps — базовая линия».
 
+**Текущий раунд:** [§ Раунд R6 — dual train+measure](#раунд-r6--dual-trainmeasure-2026-07-17) (T0–T5 закрыты; следующий шаг — A/B + продолжение `m1_v0_n6`).
+
 **Связанные отчёты:** [ISSUE_FALL.md](ISSUE_FALL.md) §D (накопительный эффект), [§ Стрессовый smoke](ISSUE_FALL.md#стрессовый-smoke--диагностика) (короткий gate-shaped stress).
 
 ---
@@ -172,6 +174,7 @@
 | T3 | **частично** | 2026-07-14 | T3.1 базовая линия; T3.✓ вывод по `wall_rollout`; T3.2 отложен |
 | T4 | **выполнено** | 2026-07-14 | H5: latest **~18%** wall (405 vs 333 s) |
 | T5 | **выполнено** | 2026-07-14 | T5.3 train `n_envs=6` 27 rollout, **6658 s** |
+| **R6** | **R6.0 done** | 2026-07-17 | archive + `m1_v0_n6`; A/B + long — чеклист § R6 |
 
 ---
 
@@ -241,3 +244,121 @@
 - [ ] **H4** периодический restart FCEUX; очистка `tmp/bridge/train_*`
 - [ ] **H5** throttling `latest.zip` или async save
 - [ ] **H6** документировать лимит сессии; паузы (ops)
+
+---
+
+## Раунд R6 — dual train+measure (2026-07-17)
+
+**Статус:** запланирован; среда подготовлена (код + prep-скрипт).
+
+**Цель раунда:** закрыть пробелы T0–T5 (оптимальность `n_envs`, телеметрия H2) **без порчи** накопленных весов, и по возможности **дополнить обучение** на длинном прогоне.
+
+**Модерация T0–T5 (кратко):** `n_envs=6` — pragmatic mitigation, не доказанный оптимум; bridge не деградирует; H2 принята по wall-cliff без RAM-логов; цель fps≥4 не достигнута; рычаги H3–H5 открыты.
+
+### Инвентарь чекпоинтов (не трогать / как продолжать)
+
+| Файл | n_envs | steps | Роль в R6 |
+| ---- | ------ | ----- | --------- |
+| `checkpoints/m1_v0.zip` | 4 | 4096 | **FROZEN** — короткий smoke-наследник имени; не resume, не overwrite |
+| `checkpoints/m1_v0_fps_t5.zip` | 6 | 20736 | **FROZEN** артефакт T5.3; источник promote |
+| `checkpoints/m1_v0_n6.zip` | 6 | ← копия t5 | **PRIMARY** боевая линия: resume + raise target |
+| `checkpoints/archive/YYYYMMDD_*.zip` | — | — | страховочная копия frozen до старта |
+
+Prep (один раз перед раундом):
+
+```bash
+./.venv/Scripts/python.exe scripts/train_fps_round_prep.py
+# при необходимости: --target-timesteps 100000 --force-promote
+```
+
+### Правила безопасности
+
+1. Короткие A/B — **только** `--smoke` → `tmp/smoke/` (не `games/.../checkpoints/`).
+2. Длинный dual — **только** `--checkpoint-out checkpoints/m1_v0_n6.zip` + `--n-envs 6` (sidecar mismatch иначе abort).
+3. Не запускать long с `--checkpoint-out checkpoints/m1_v0.zip` / `m1_v0_fps_t5.zip`.
+4. Resume: `--timesteps N` при `N > sidecar.target` **поднимает** цель (см. `resolve_target_timesteps`); иначе «target already reached».
+5. Между сериями — `train_preflight.py`; перед long предпочтителен reboot (H1).
+6. Метрики — `tmp/bench/<session>/rollouts.jsonl` (`--rollout-metrics`); не смешивать с mission logs inference.
+
+### План прогонов (~7–10 ч wall)
+
+| ID | Тип | Команда / суть | Wall | Учит модель? |
+| -- | --- | -------------- | ---- | ------------ |
+| **R6.0** | prep | `train_fps_round_prep.py` | <1 мин | нет |
+| **R6.1** | short A/B | smoke `n_envs∈{4,6,8}` × 4096; preflight между | ~1–1.5 ч | нет (tmp) |
+| **R6.2** | long dual | resume `m1_v0_n6` → target **100k**, metrics on | ~2–4 ч | **да** |
+| **R6.3** | optional | smoke `n=8`+gc ≥20 rollout **или** long `n=8` в **отдельный** `m1_v0_n8_exp.zip` | ~2–3.5 ч | только если отдельная линия |
+| **R6.4** | parse | `parse_train_rollouts.py --jsonl …/rollouts.jsonl` | <1 мин | нет |
+
+Рекомендуемый боевой long (после prep):
+
+```bash
+./.venv/Scripts/python.exe scripts/train_preflight.py
+./scripts/train_local.sh --n-envs 6 --timesteps 100000 --save-every 10000 \
+  --checkpoint-out checkpoints/m1_v0_n6.zip \
+  --rollout-metrics --rollout-metrics-session fps_r6_YYYYMMDD
+```
+
+Короткий A/B (пример `n=6`; повторить для 4 и 8):
+
+```bash
+./.venv/Scripts/python.exe scripts/train_preflight.py
+./.venv/Scripts/python.exe src/train/train_ppo.py --smoke \
+  --smoke-session fps_r6_ab_n6 --n-envs 6 --timesteps 4096 --no-bc \
+  --rollout-metrics --rollout-metrics-session fps_r6_ab_n6
+```
+
+Сводка:
+
+```bash
+./.venv/Scripts/python.exe scripts/parse_train_rollouts.py \
+  --jsonl tmp/bench/fps_r6_YYYYMMDD/rollouts.jsonl
+```
+
+### Критерии выводов R6
+
+| Вопрос | Метрика | Вердикт |
+| ------ | ------- | ------- |
+| `n=6` всё ещё стабилен на long? | `wall_late/early < 2`, нет crash | держим primary |
+| `n=8`+gc лучше/хуже на short? | steady env-steps/s, avail_phys_mb | решать про R6.3 |
+| H2 = RAM? | падение `avail_phys_mb` коррелирует с ростом wall | да / нет / смешанно |
+| Цель fps≥4? | rate last5 / SB3 fps rollout 20+ | достигнута / нет |
+
+Заполнить в [MEASUREMENTS.md](MEASUREMENTS.md) секцию **«R6 dual train+measure»**.
+
+### Пути роста производительности (после R6, железо i7-3770 / 16 GB)
+
+Порядок — по ожидаемому ROI при текущем hardware; **не** начинать с нового IPC-транспорта (bridge уже ~25 env-steps/s и не деградирует).
+
+| Приоритет | Путь | Условие / триггер | Ожидаемый эффект |
+| --------- | ---- | ----------------- | ---------------- |
+| **P0** | Зафиксировать default `n_envs` по данным R6 (6 / 7 / 8+gc) | R6.1–R6.3 | стабильный long без ×4 wall |
+| **P1** | **H3** — длиннее эпизоды (reward / curriculum, ML_CONCEPT) | всегда полезно для ML | рост steady fps + качество данных |
+| **P2** | **H5** — реже / async `latest.zip` | вклад ≥10% на long | −10–20% wall |
+| **P3** | **H4** — periodic FCEUX recycle / mid-session restart из `latest` | wall растёт при стабильной RAM | снять накопление без снижения env |
+| **P4** | **H1** ops — reboot/preflight между сериями gate | gate 2/2 <80% | воспроизводимость бенчей |
+| **P5** | IPC v2 / shared mem | только если после P0–P3 e2e/bridge всё ещё ≪0.3 **и** ms/step доминирует | низкий ROI (1.8 уже FAIL) |
+| **P6** | Больше RAM / другое железо | Commit≈16 GB + page faults на `n≥8` | поднять parallel env |
+
+**Не делать в R6:** менять `bridge.lua` ради throughput; `--force-promote` после того, как `m1_v0_n6` уже ушёл дальше t5; смешивать A/B `n_envs` в одном resume.
+
+### Чеклист R6
+
+- [x] **R6.0** `train_fps_round_prep.py` — archive + `m1_v0_n6` + manifest (2026-07-17)
+- [ ] **R6.1a** smoke n=4 × 4096 + metrics
+- [ ] **R6.1b** smoke n=6 × 4096 + metrics (preflight перед)
+- [ ] **R6.1c** smoke n=8 × 4096 + metrics (preflight перед)
+- [ ] **R6.2** long resume `m1_v0_n6` → ≥100k, ≥20 rollout после start, metrics on
+- [ ] **R6.3** (опц.) отдельная линия n=8 **или** отложить
+- [ ] **R6.4** `parse_train_rollouts` + запись в MEASUREMENTS
+- [ ] **R6.✓** выбрать default `n_envs` + приоритет P0–P3 на следующий код-цикл
+
+### Код среды (готово к запуску)
+
+| Компонент | Назначение |
+| --------- | ---------- |
+| `src/train/rollout_metrics.py` | `RolloutMetricsCallback` + RAM snapshot (Windows) |
+| `train_ppo --rollout-metrics` | JSONL в `tmp/bench/<session>/rollouts.jsonl` |
+| `resolve_target_timesteps` | resume может поднять `target` через CLI |
+| `scripts/train_fps_round_prep.py` | archive frozen, promote `m1_v0_n6`, печать команд |
+| `scripts/parse_train_rollouts.py` | сводка wall / degradation flag |
