@@ -28,10 +28,16 @@ def retention_cutoff(*, hours: float = RETENTION_HOURS, when: datetime | None = 
     return max(now - timedelta(hours=hours), start_of_utc_day(now))
 
 
+def dated_day_dir(logs_dir: Path, when: datetime | None = None) -> Path:
+    """logs/YYYYMMDD/ — каталог артефактов за UTC-день."""
+    day = logs_dir / utc_date_prefix(when)
+    day.mkdir(parents=True, exist_ok=True)
+    return day
+
+
 def dated_log_path(logs_dir: Path, stem: str, when: datetime | None = None) -> Path:
-    """logs/YYYYMMDD_{stem}.jsonl"""
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    return logs_dir / f"{utc_date_prefix(when)}_{stem}.jsonl"
+    """logs/YYYYMMDD/{stem}.jsonl"""
+    return dated_day_dir(logs_dir, when) / f"{stem}.jsonl"
 
 
 def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:

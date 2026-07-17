@@ -1,9 +1,10 @@
 profile: inference
 lua_script: fceux/lua/bridge.lua
-turbo: false
-headless: false
+turbo: true
+headless: true
 sound: false
 movie_record: false
 ipc: true
 frame_skip: 4
-obs_format: gd
+no_focus: true
+obs_format: raw

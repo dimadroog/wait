@@ -22,15 +22,20 @@ def cleanup_inference_logs(
     *,
     date_prefix: str | None = None,
 ) -> list[Path]:
-    """Удалить inference-артефакты за UTC-день (attempts, FM2, playlist)."""
+    """Удалить inference-артефакты за UTC-день (logs/YYYYMMDD/ + legacy YYYYMMDD_*)."""
     if not logs_dir.is_dir():
         return []
     prefix = date_prefix or utc_date_prefix()
     removed: list[Path] = []
+    day_dir = logs_dir / prefix
+    if day_dir.is_dir():
+        shutil.rmtree(day_dir, ignore_errors=True)
+        removed.append(day_dir)
+    # Legacy flat layout: logs/YYYYMMDD_*.jsonl / .fm2 / playlist
     for path in sorted(logs_dir.iterdir()):
-        if not path.name.startswith(prefix):
-            continue
         if path.name == ".gitkeep":
+            continue
+        if path.name == prefix or not path.name.startswith(f"{prefix}_"):
             continue
         if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)

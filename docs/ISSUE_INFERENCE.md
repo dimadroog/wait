@@ -1353,8 +1353,9 @@ Harness: расширить `movie_record_replay_probe.lua` (variant `F0`) + `pr
 
 | Файл | Роль |
 | ---- | ---- |
-| `scripts/play_inference_fm2.py` | FM2 `-playmovie` + playlist |
-| `fceux/lua/achievement_overlay_movie.lua` | overlay HUD при `-playmovie` |
+| `scripts/play_inference_fm2.py` | FM2 `-playmovie` + playlist (**один** FCEUX, `movie.play` queue) |
+| `fceux/lua/achievement_overlay_movie.lua` | overlay HUD при одном `.fm2` |
+| `fceux/lua/achievement_overlay_playlist.lua` | overlay + очередь клипов в одном процессе |
 | `src/fm2_export.py` | embed, GUID; `export_fm2` / `--save-episode-fm2` |
 | `src/achievements/playlist.py` | FM2-клипы плейлиста |
 | `src/stream/run_inference.py` | запись; опц. `--save-episode-fm2` |

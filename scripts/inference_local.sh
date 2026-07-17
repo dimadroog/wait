@@ -47,9 +47,10 @@ done
 if [[ ${#ARGS[@]} -eq 0 ]]; then
   ARGS=(
     --checkpoint m1_v0.zip
-    --episodes 6
+    --episodes 5
     --max-steps 1200
     --stochastic
+    --save-episode-fm2
     --build-playlist
   )
 else
@@ -74,7 +75,7 @@ fi
 
 if [[ "$PLAY" == true ]]; then
   DATE_PREFIX="$(date -u +%Y%m%d)"
-  MANIFEST="games/${GAME}/missions/${MISSION}/logs/${DATE_PREFIX}_playlist.json"
+  MANIFEST="games/${GAME}/missions/${MISSION}/logs/${DATE_PREFIX}/playlist.json"
   if [[ ! -f "$MANIFEST" ]]; then
     echo "inference: playlist not found: $MANIFEST" >&2
     exit 1

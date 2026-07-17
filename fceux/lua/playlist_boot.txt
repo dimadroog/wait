@@ -1,0 +1,2 @@
+lua_loaded
+cfg_env=config.json

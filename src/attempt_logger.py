@@ -1,4 +1,4 @@
-"""Лог inference-попыток → logs/YYYYMMDD_attempts.jsonl (ML_CONCEPT §8)."""
+"""Лог inference-попыток → logs/YYYYMMDD/attempts.jsonl (ML_CONCEPT §8)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone

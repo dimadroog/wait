@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Проигрывание inference FM2 (-playmovie) и playlist.json (эфир)."""
+"""Проигрывание inference FM2 (-playmovie) и playlist.json (один FCEUX на весь плейлист)."""
 from __future__ import annotations
 
 import argparse
@@ -77,29 +77,40 @@ def _stage_rom(rom: Path, staging: Path, rom_base: str) -> Path:
     return staged_rom
 
 
-def _stage_fm2_clip(
+def _prepare_staged_fm2(
     fm2: Path,
-    rom: Path,
-    overlay_path: Path | None,
-    staging: Path,
+    dest: Path,
     *,
     guid_salt: str,
     game: str,
     mission: str,
-) -> tuple[Path, Path, Path | None]:
-    staging.mkdir(parents=True, exist_ok=True)
-    staged_fm2 = staging / "playback.fm2"
-    shutil.copy2(fm2, staged_fm2)
+) -> Path:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(fm2, dest)
     clip_guid = episode_fm2_guid(salt=guid_salt)
-    remap_fm2_guid(staged_fm2, clip_guid)
-    refresh_fm2_embedded_savestate(staged_fm2, _inference_reset_fc0(game, mission), guid=clip_guid)
-    rom_base = parse_fm2_rom_basename(fm2)
-    staged_rom = _stage_rom(rom, staging, rom_base)
-    staged_overlay: Path | None = None
-    if overlay_path and overlay_path.is_file():
-        staged_overlay = staging / overlay_path.name
-        shutil.copy2(overlay_path, staged_overlay)
-    return staged_fm2, staged_rom, staged_overlay
+    remap_fm2_guid(dest, clip_guid)
+    refresh_fm2_embedded_savestate(dest, _inference_reset_fc0(game, mission), guid=clip_guid)
+    return dest
+
+
+def _wait_fceux(proc: subprocess.Popen, *, done_flag: Path | None, timeout: float) -> None:
+    deadline = time.time() + timeout
+    while proc.poll() is None:
+        if done_flag is not None and done_flag.is_file():
+            time.sleep(0.3)
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            return
+        if time.time() > deadline:
+            proc.terminate()
+            raise SystemExit(f"FCEUX timeout ({timeout:.0f}s)")
+        time.sleep(0.2)
+    if proc.returncode not in (0, None):
+        raise SystemExit(f"FCEUX exited with code {proc.returncode}")
 
 
 def _run_fceux_movie_clip(
@@ -117,7 +128,7 @@ def _run_fceux_movie_clip(
     cmd = [str(fceux)]
     if noicon:
         cmd.extend(["-noicon", "1"])
-    cmd.extend(["-lua", str(lua.resolve())])
+    cmd.extend(["-lua", Path(lua).name])
     if turbo:
         cmd.extend(["-nothrottle", "1"])
     cmd.extend(fceux_playmovie_argv(staged_fm2=staged_fm2, staged_rom=staged_rom))
@@ -128,14 +139,7 @@ def _run_fceux_movie_clip(
 
     with fceux_sound_off(fceux.parent):
         proc = subprocess.Popen(cmd, cwd=str(staging), env=env, creationflags=popen_flags)
-        deadline = time.time() + timeout
-        while proc.poll() is None:
-            if time.time() > deadline:
-                proc.terminate()
-                raise SystemExit(f"FCEUX timeout ({timeout:.0f}s)")
-            time.sleep(0.2)
-        if proc.returncode not in (0, None):
-            raise SystemExit(f"FCEUX exited with code {proc.returncode}")
+        _wait_fceux(proc, done_flag=None, timeout=timeout)
 
 
 def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
@@ -151,21 +155,29 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
     staging = repo_root() / "tmp" / "play_fm2" / "staging"
     if staging.exists():
         shutil.rmtree(staging)
-    staged_fm2, staged_rom, staged_overlay = _stage_fm2_clip(
+    staging.mkdir(parents=True)
+    rom_base = parse_fm2_rom_basename(fm2)
+    staged_rom = _stage_rom(rom, staging, rom_base)
+    staged_fm2 = _prepare_staged_fm2(
         fm2,
-        rom,
-        overlay_path if overlay_path.is_file() else None,
-        staging,
+        staging / "playback.fm2",
         guid_salt=fm2.stem,
         game=args.game,
         mission=args.mission,
     )
+    if overlay_path.is_file():
+        shutil.copy2(overlay_path, staging / overlay_path.name)
+        staged_overlay = staging / overlay_path.name
+    else:
+        staged_overlay = None
 
     fceux = resolve_fceux_binary()
-    lua = repo_root() / "fceux" / "lua" / "achievement_overlay_movie.lua"
+    lua_src = repo_root() / "fceux" / "lua" / "achievement_overlay_movie.lua"
+    lua_staged = staging / "overlay_movie.lua"
+    shutil.copy2(lua_src, lua_staged)
     env = os.environ.copy()
-    if staged_overlay and staged_overlay.is_file():
-        env["WAIT_ACHIEVEMENT_OVERLAY"] = str(staged_overlay.resolve())
+    if staged_overlay is not None:
+        env["WAIT_ACHIEVEMENT_OVERLAY"] = staged_overlay.name
     elif overlay_path.is_file():
         env["WAIT_ACHIEVEMENT_OVERLAY"] = str(overlay_path.resolve())
     else:
@@ -186,7 +198,7 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
 
     _run_fceux_movie_clip(
         fceux=fceux,
-        lua=lua,
+        lua=lua_staged,
         staging=staging,
         staged_fm2=staged_fm2,
         staged_rom=staged_rom,
@@ -197,38 +209,147 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
     )
 
 
+def _resolve_playlist_clip_fm2(logs_dir: Path, fm2_name: str) -> Path:
+    fm2 = Path(fm2_name)
+    if not fm2.is_file():
+        fm2 = logs_dir / Path(fm2_name).name
+    if not fm2.is_file():
+        raise SystemExit(f"FM2 not found for playlist clip: {fm2_name}")
+    return fm2.resolve()
+
+
 def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
+    """Один FCEUX: Lua movie.play по очереди (achievement_overlay_playlist.lua)."""
     logs_dir = playlist_path.parent
     playlist = json.loads(playlist_path.read_text(encoding="utf-8"))
     clips = playlist.get("clips") or []
     if not clips:
         raise SystemExit(f"Playlist has no clips: {playlist_path}")
 
-    print(f"Playlist {playlist_path.name}: {len(clips)} clip(s)", flush=True)
+    rom = resolve_rom(args.game)
+    staging = repo_root() / "tmp" / "play_fm2" / "playlist_staging"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+
+    queue_path = staging / "queue.jsonl"
+    done_flag = staging / "done.flag"
+    config_path = staging / "config.json"
+    if done_flag.exists():
+        done_flag.unlink()
+
+    total_frames = 0
+    total_hold = 0
+    queue_lines: list[str] = []
+    rom_base: str | None = None
+
+    print(f"Playlist {playlist_path.name}: {len(clips)} clip(s) -> one FCEUX", flush=True)
     for clip_idx, clip in enumerate(clips, start=1):
         fm2_name = clip.get("fm2") or clip.get("fm2_path")
         if not fm2_name:
             raise SystemExit(f"Clip missing fm2: {clip}")
-        fm2 = Path(fm2_name)
-        if not fm2.is_file():
-            fm2 = logs_dir / Path(fm2_name).name
-        if not fm2.is_file():
-            raise SystemExit(f"FM2 not found for playlist clip: {fm2_name}")
+        fm2 = _resolve_playlist_clip_fm2(logs_dir, str(fm2_name))
+        if not fm2_has_embedded_savestate(fm2):
+            raise SystemExit(f"FM2 missing embedded savestate: {fm2}")
+        if rom_base is None:
+            rom_base = parse_fm2_rom_basename(fm2)
+
+        stem = f"clip_{clip_idx:03d}"
+        staged_fm2 = _prepare_staged_fm2(
+            fm2,
+            staging / f"{stem}.fm2",
+            guid_salt=f"{playlist_path.stem}_{stem}",
+            game=args.game,
+            mission=args.mission,
+        )
         overlay_name = clip.get("overlay")
-        if overlay_name:
-            args.overlay = str(logs_dir / overlay_name)
-        if clip.get("block_label"):
-            os.environ["WAIT_BLOCK_LABEL"] = str(clip["block_label"])
+        overlay_src = logs_dir / overlay_name if overlay_name else fm2.with_suffix(".overlay.json")
+        staged_overlay_name = ""
+        hold = 180
+        if overlay_src.is_file():
+            staged_overlay = staging / f"{stem}.overlay.json"
+            shutil.copy2(overlay_src, staged_overlay)
+            staged_overlay_name = staged_overlay.name
+            hold = _overlay_hold_frames(staged_overlay)
+
+        block_label = str(clip.get("block_label") or "")
+        queue_lines.append(
+            json.dumps(
+                {
+                    "fm2": staged_fm2.name,
+                    "overlay": staged_overlay_name,
+                    "block_label": block_label,
+                    "hold": hold,
+                },
+                ensure_ascii=False,
+            )
+        )
+        frames = count_fm2_frames(fm2)
+        total_frames += frames
+        total_hold += hold
         print(
-            f"  clip {clip_idx}/{len(clips)}: {fm2.name} ({clip.get('block_label', '')})",
+            f"  clip {clip_idx}/{len(clips)}: {fm2.name} ({frames} frames, {block_label})",
             flush=True,
         )
-        _play_single_fm2(args, fm2.resolve())
+
+    assert rom_base is not None
+    staged_rom = _stage_rom(rom, staging, rom_base)
+    queue_path.write_text("\n".join(queue_lines) + "\n", encoding="utf-8")
+
+    ram_cfg: dict[str, int] = {}
+    mdir = mission_dir(args.game, args.mission)
+    try:
+        addrs = load_ram_addresses(mdir)
+        ram_cfg["room"] = int(addrs["room"])
+        if "lives" in addrs:
+            ram_cfg["lives"] = int(addrs["lives"])
+    except (FileNotFoundError, KeyError, TypeError, ValueError):
+        pass
+
+    config = {
+        "done_flag": done_flag.name,
+        "queue_path": queue_path.name,
+        "block_label_frames": 120,
+        **ram_cfg,
+    }
+    config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    fceux = resolve_fceux_binary()
+    lua_src = repo_root() / "fceux" / "lua" / "achievement_overlay_playlist.lua"
+    lua_staged = staging / "playlist.lua"
+    shutil.copy2(lua_src, lua_staged)
+    env = os.environ.copy()
+    # Относительный путь: cwd = staging (abs -lua вне staging на win64 не грузится)
+    env["WAIT_FCEUX_LUA_CONFIG"] = config_path.name
+    _playback_ram_env(args.game, args.mission, env)
+
+    # realtime ~60 fps + hold между клипами + запас
+    timeout = max(args.timeout, (total_frames + total_hold) / 60.0 + 30.0 * len(clips))
+
+    cmd = [str(fceux)]
+    if args.noicon:
+        cmd.extend(["-noicon", "1"])
+    cmd.extend(["-lua", lua_staged.name])
+    if args.turbo:
+        cmd.extend(["-nothrottle", "1"])
+    cmd.append(staged_rom.name)
+
+    popen_flags = 0
+    if sys.platform == "win32" and args.noicon:
+        popen_flags = subprocess.CREATE_NO_WINDOW
+
+    print(f"Launching one FCEUX for {len(clips)} clip(s), timeout={timeout:.0f}s", flush=True)
+    with fceux_sound_off(fceux.parent):
+        proc = subprocess.Popen(cmd, cwd=str(staging), env=env, creationflags=popen_flags)
+        _wait_fceux(proc, done_flag=done_flag, timeout=timeout)
+
+    if not done_flag.is_file():
+        raise SystemExit("Playlist finished without done.flag — check FCEUX/Lua errors")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Play inference FM2 (-playmovie) or playlist")
-    parser.add_argument("input", help=".fm2 | YYYYMMDD_playlist.json")
+    parser.add_argument("input", help=".fm2 | logs/YYYYMMDD/playlist.json")
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
     parser.add_argument("--overlay", type=Path, default=None)
@@ -255,11 +376,13 @@ def main() -> None:
         _play_single_fm2(args, input_path)
         return
 
-    if input_path.suffix.lower() == ".json" and input_path.name.endswith("_playlist.json"):
+    if input_path.suffix.lower() == ".json" and (
+        input_path.name == "playlist.json" or input_path.name.endswith("_playlist.json")
+    ):
         _play_playlist(args, input_path)
         return
 
-    raise SystemExit("Expected .fm2 or YYYYMMDD_playlist.json")
+    raise SystemExit("Expected .fm2 or playlist.json")
 
 
 if __name__ == "__main__":

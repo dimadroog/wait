@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Правила achievements.yaml → tags[] в logs/YYYYMMDD_attempts.jsonl."""
+"""Правила achievements.yaml → tags[] в logs/YYYYMMDD/attempts.jsonl."""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +25,7 @@ def main() -> None:
     parser.add_argument(
         "--attempts",
         default=None,
-        help="путь к attempts.jsonl (default: logs/YYYYMMDD_attempts.jsonl)",
+        help="путь к attempts.jsonl (default: logs/YYYYMMDD/attempts.jsonl)",
     )
     parser.add_argument("--config", default=None, help="config/achievements.yaml")
     args = parser.parse_args()

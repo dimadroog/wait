@@ -1,4 +1,4 @@
-"""Оценка achievements по logs/YYYYMMDD_attempts.jsonl."""
+"""Оценка achievements по logs/YYYYMMDD/attempts.jsonl."""
 from __future__ import annotations
 
 from collections import Counter, defaultdict

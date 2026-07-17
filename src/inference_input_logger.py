@@ -1,4 +1,4 @@
-"""Покадровый лог inference → logs/YYYYMMDD_inference_inputs.jsonl."""
+"""Покадровый лог inference → logs/YYYYMMDD/inference_inputs.jsonl."""
 from __future__ import annotations
 
 from datetime import datetime, timezone

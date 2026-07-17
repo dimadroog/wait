@@ -17,7 +17,7 @@ from fm2_export import (
     remap_fm2_guid,
 )
 from inference_states import resolve_inference_reset_state
-from jsonl_logs import utc_date_prefix
+from jsonl_logs import dated_day_dir, utc_date_prefix
 from project_paths import mission_dir, repo_root
 
 
@@ -47,27 +47,45 @@ def _fm2_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _playlist_clip_name(date_prefix: str, name: str) -> bool:
-    """Имена клипов плейлиста: YYYYMMDD_NN_slug_NNN.fm2 / .overlay.json (не ep0001)."""
-    return bool(re.match(rf"^{re.escape(date_prefix)}_\d{{2}}_.+", name))
+def _playlist_clip_name(name: str) -> bool:
+    """Имена клипов плейлиста: NN_slug_NNN.fm2 / .overlay.json (не ep0001)."""
+    return bool(re.match(r"^\d{2}_.+", name))
 
 
 def cleanup_playlist_clips(logs_dir: Path, *, date_prefix: str | None = None) -> int:
     """Удалить FM2/overlay клипов плейлиста за день (перед пересборкой)."""
     prefix = date_prefix or utc_date_prefix()
+    day_dir = logs_dir / prefix
     removed = 0
-    if not logs_dir.is_dir():
+    if not day_dir.is_dir():
         return 0
-    for path in list(logs_dir.iterdir()):
-        if not _playlist_clip_name(prefix, path.name):
+    for path in list(day_dir.iterdir()):
+        if not _playlist_clip_name(path.name):
             continue
         if path.name.endswith(".fm2") or path.name.endswith(".overlay.json"):
             path.unlink(missing_ok=True)
             removed += 1
-    for name in (f"{prefix}_playlist.json", f"{prefix}_playlist.play.cmd"):
-        p = logs_dir / name
+    for name in ("playlist.json", "playlist.play.cmd"):
+        p = day_dir / name
         if p.is_file():
             p.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
+def cleanup_episode_raw_fm2(logs_dir: Path, *, date_prefix: str | None = None) -> int:
+    """Удалить промежуточные epNNNN.fm2 / .overlay.json (канон — номинации плейлиста)."""
+    prefix = date_prefix or utc_date_prefix()
+    day_dir = logs_dir / prefix
+    removed = 0
+    if not day_dir.is_dir():
+        return 0
+    for path in list(day_dir.iterdir()):
+        name = path.name
+        if not name.startswith("ep"):
+            continue
+        if name.endswith(".fm2") or name.endswith(".overlay.json"):
+            path.unlink(missing_ok=True)
             removed += 1
     return removed
 
@@ -123,12 +141,12 @@ def _copy_overlay_sidecar(
 
 def write_playlist_manifest(
     clips: list[dict[str, Any]],
-    logs_dir: Path,
+    day_dir: Path,
     *,
     date_prefix: str,
 ) -> Path:
     manifest = {"date": date_prefix, "clips": clips}
-    path = logs_dir / f"{date_prefix}_playlist.json"
+    path = day_dir / "playlist.json"
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -152,14 +170,14 @@ def write_playlist_launcher(
     return launcher
 
 
-def _resolve_source_fm2(record: dict[str, Any], logs_dir: Path, date_prefix: str) -> Path | None:
+def _resolve_source_fm2(record: dict[str, Any], day_dir: Path) -> Path | None:
     src = record.get("fm2_path")
     if src and Path(src).is_file():
         return Path(src)
     episode = int(record.get("episode", -1))
     if episode < 0:
         return None
-    conventional = logs_dir / f"{date_prefix}_ep{episode:04d}.fm2"
+    conventional = day_dir / f"ep{episode:04d}.fm2"
     if conventional.is_file():
         return conventional
     return None
@@ -175,10 +193,11 @@ def build_playlist(
     mission: str = "m1",
     dedupe: bool = True,
 ) -> tuple[dict[str, list[Path]], Path | None, int]:
-    """Создать FM2-копии, overlay sidecar и YYYYMMDD_playlist.json."""
+    """Создать FM2-копии, overlay sidecar и logs/YYYYMMDD/playlist.json."""
     achievements_config = config or load_achievements_config()
     records = evaluate_attempts_file(attempts_path, config=achievements_config)
     date_prefix = utc_date_prefix()
+    day_dir = dated_day_dir(logs_dir)
     cleanup_playlist_clips(logs_dir, date_prefix=date_prefix)
 
     noms = _nomination_index(achievements_config)
@@ -199,7 +218,6 @@ def build_playlist(
     manifest_clips: list[dict[str, Any]] = []
     clip_seq = 0
     seen_digests: set[str] = set()
-    logs_dir.mkdir(parents=True, exist_ok=True)
 
     for slug in broadcast:
         items = by_slug.get(slug) or []
@@ -212,8 +230,8 @@ def build_playlist(
         clip_num = 0
 
         for record in items:
-            dest = logs_dir / f"{date_prefix}_{nom_idx:02d}_{slug}_{clip_num + 1:03d}.fm2"
-            src = _resolve_source_fm2(record, logs_dir, date_prefix)
+            dest = day_dir / f"{nom_idx:02d}_{slug}_{clip_num + 1:03d}.fm2"
+            src = _resolve_source_fm2(record, day_dir)
             clip_guid = episode_fm2_guid(salt=dest.stem)
 
             if src is not None:
@@ -270,7 +288,10 @@ def build_playlist(
 
     manifest_path: Path | None = None
     if manifest_clips:
-        manifest_path = write_playlist_manifest(manifest_clips, logs_dir, date_prefix=date_prefix)
+        manifest_path = write_playlist_manifest(manifest_clips, day_dir, date_prefix=date_prefix)
         write_playlist_launcher(manifest_path, game=game, mission=mission)
+
+    # Канон в logs/YYYYMMDD/: NN_slug_MMM.fm2 — сырые epNNNN убрать после сборки.
+    cleanup_episode_raw_fm2(logs_dir, date_prefix=date_prefix)
 
     return created, manifest_path, len(manifest_clips)
