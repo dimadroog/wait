@@ -1,6 +1,7 @@
 # TASK_TRAIN_FPS_DEGRADATION — деградация fps при длительном train
 
 **Статус:** open  
+**Ветка:** `task/train-fps-degradation` — проработку этой задачи выполнять **только в этой ветке** (не в `main` и не в чужих task-ветках).  
 **Было:** `ISSUE_TRAIN_FPS_DEGRADATION` (вернуто из archive)  
 Каркас: [TASK_BLANK.md](TASK_BLANK.md)
 
@@ -188,6 +189,7 @@
 | -------- | ---------- |
 | [MEASUREMENTS.md](../MEASUREMENTS.md) | Сводные метрики; § деградация fps |
 | [SCRIPTS.md](../SCRIPTS.md) | Команды benchmark / train / stress |
+| [GLOSSARY.md](../GLOSSARY.md) § [Train log](../GLOSSARY.md#train-log-rollout-table) | Разбор вывода train в консоль — **устарел**, см. [§ Docs](#docs--glossary-train-log) |
 | [ISSUE_FALL.md](archive/ISSUE_FALL.md) | Инцидент gate, stress-диагностика, план R0–R5 |
 
 ---
@@ -355,7 +357,28 @@ Prep (один раз перед раундом):
 - [ ] **R6.2** long resume `m1_v0_n6` → ≥100k, ≥20 rollout после start, metrics on
 - [ ] **R6.3** (опц.) отдельная линия n=8 **или** отложить
 - [ ] **R6.4** `parse_train_rollouts` + запись в MEASUREMENTS
+- [ ] **R6.docs** актуализировать [GLOSSARY § Train log](../GLOSSARY.md#train-log-rollout-table) — см. [§ Docs](#docs--glossary-train-log)
 - [ ] **R6.✓** выбрать default `n_envs` + приоритет P0–P3 на следующий код-цикл
+
+### Docs — GLOSSARY Train log
+
+**Статус:** open (блокер закрытия R6 по документации, не по прогонам).
+
+[GLOSSARY.md](../GLOSSARY.md) § **Train log (rollout table)** (якорь `#train-log-rollout-table`, ~стр. 143–176) описывает только устаревший «Периодический вывод» SB3 (`verbose=1` + `progress_pct` / `target_timesteps`). После R6 в консоли при `--rollout-metrics` есть **два** потока; глоссарий должен разбирать оба.
+
+| Поток | Откуда | Когда | Что документировать |
+| ----- | ------ | ----- | ------------------- |
+| Таблица SB3 | `model.learn(verbose=1)` + `TrainProgressPctCallback` | каждый rollout (как раньше) | `ep_len_mean`, `ep_rew_mean`, кумулятивный `fps`, `iterations`, `time_elapsed`, `total_timesteps`, `progress_pct`, `target_timesteps`; явно: SB3 `fps` ≠ per-rollout rate |
+| Строка `rollout_metrics:` | `RolloutMetricsCallback` (`src/train/rollout_metrics.py`) | каждый rollout при `--rollout-metrics` | пример: `rollout_metrics: #N wall=…s steps=… rate=… avail_ram_mb=…`; поля = `wall_rollout_s`, `delta_timesteps`, `env_steps_per_s`, `avail_phys_mb` |
+| JSONL | `tmp/bench/<session>/rollouts.jsonl` | тот же callback | схема строки + сводка `parse_train_rollouts.py` (`wall_late/early`, `degraded`) |
+
+**DoD R6.docs:**
+
+- [ ] Пример консоли обновлён (SB3-таблица **и** строка `rollout_metrics:`)
+- [ ] Таблица полей: старые SB3 + новые (`wall`, `rate` / `env_steps_per_s`, `avail_ram_mb` / `avail_phys_mb`)
+- [ ] Явно: кумулятивный SB3 `fps` vs per-rollout `rate` (для H2/деградации смотреть `rate` / `wall_rollout`, не только `fps`)
+- [ ] Ссылка на `--rollout-metrics` / `--no-progress-pct` и на [MEASUREMENTS.md](../MEASUREMENTS.md) § R6
+- [ ] Якорь `#train-log-rollout-table` и ссылки на `time_elapsed` / wall-clock в глоссарии не сломаны
 
 ### Код среды (готово к запуску)
 
