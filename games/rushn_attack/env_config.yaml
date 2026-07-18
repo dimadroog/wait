@@ -15,3 +15,7 @@ actions:
 lives:
   min: 0
   max: 9
+
+# H3: эпизод до game over (все жизни), не до первой смерти — меньше reset storm.
+# A/B со старым поведением: --death-mode life_lost
+death_mode: game_over

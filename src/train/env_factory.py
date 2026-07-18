@@ -234,18 +234,20 @@ def _make_monitored_env(
     reward_profile: str,
     reward_overrides: dict[str, Any] | None,
     turbo: bool,
+    death_mode: str | None = None,
 ) -> Monitor:
     from env.loader import make_env
 
-    env = make_env(
-        game_id,
-        mission_id,
-        session_id=f"train_{rank}",
-        save_state=save_state,
-        turbo=turbo,
-        reward_profile=reward_profile,
-        reward_overrides=reward_overrides,
-    )
+    kwargs: dict[str, Any] = {
+        "session_id": f"train_{rank}",
+        "save_state": save_state,
+        "turbo": turbo,
+        "reward_profile": reward_profile,
+        "reward_overrides": reward_overrides,
+    }
+    if death_mode:
+        kwargs["death_mode"] = death_mode
+    env = make_env(game_id, mission_id, **kwargs)
     return Monitor(env)
 
 
@@ -258,6 +260,7 @@ def make_train_env_fn(
     reward_profile: str = "default",
     reward_overrides: dict[str, Any] | None = None,
     turbo: bool = True,
+    death_mode: str | None = None,
 ):
     """Callable для SubprocVecEnv / DummyVecEnv."""
 
@@ -270,6 +273,7 @@ def make_train_env_fn(
             reward_profile=reward_profile,
             reward_overrides=reward_overrides,
             turbo=turbo,
+            death_mode=death_mode,
         )
 
     return _init
@@ -285,6 +289,7 @@ def build_vec_env(
     reward_overrides: dict[str, Any] | None = None,
     turbo: bool = True,
     subproc: bool = True,
+    death_mode: str | None = None,
 ) -> VecEnv:
     """SubprocVecEnv при n_envs>1; DummyVecEnv для отладки."""
     fns = [
@@ -296,6 +301,7 @@ def build_vec_env(
             reward_profile=reward_profile,
             reward_overrides=reward_overrides,
             turbo=turbo,
+            death_mode=death_mode,
         )
         for i in range(n_envs)
     ]

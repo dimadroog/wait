@@ -518,6 +518,6 @@ flowchart LR
 | -------- | ---------- |
 | [SCRIPTS.md](../../SCRIPTS.md) | Аргументы CLI, команды stress/gate |
 | [MEASUREMENTS.md](../../MEASUREMENTS.md) | Эталонные fps, критерий 5.0 |
-| [TASK_TRAIN_FPS_DEGRADATION.md](../TASK_TRAIN_FPS_DEGRADATION.md) | Деградация fps при длинном train |
+| [TASK_TRAIN_FPS_DEGRADATION.md](TASK_TRAIN_FPS_DEGRADATION.md) | Деградация fps при длинном train (done) |
 | [DESIGN.md](../../DESIGN.md) | Гигиена артефактов, границы слоёв |
 | [TASK_FIRST_CAMPAIGN.md](TASK_FIRST_CAMPAIGN.md) | Этап [5.0] и зависимости |

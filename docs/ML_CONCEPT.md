@@ -497,7 +497,7 @@ env = make_env("<game_id>", "<mission_id>")
 ### Добавление новой игры
 
 1. `games/<game_id>/game.yaml` + `rom/`.
-2. `games/<game_id>/env_config.yaml` — `actions`, `lives`.
+2. `games/<game_id>/env_config.yaml` — `actions`, `lives`, опц. `death_mode` (`life_lost` \| `game_over`).
 3. `games/<game_id>/env/__init__.py` с `make_env()`.
 4. `missions/<mission_id>/` + `config/routes.yaml`.
 5. Эталон → `reference/`, `states/`, `demos/`.

@@ -20,6 +20,12 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--save-state", default=None, help="states/cpN.fc0 относительно миссии")
     parser.add_argument("--session", default="smoke_env", help="FCEUX bridge session id")
+    parser.add_argument(
+        "--death-mode",
+        default=None,
+        choices=["life_lost", "game_over"],
+        help="override env_config death_mode (H3)",
+    )
     parser.add_argument("--log", action="store_true", help="append logs/attempts.jsonl")
     args = parser.parse_args()
 
@@ -30,7 +36,9 @@ def main() -> None:
     if not state.is_file():
         raise SystemExit(f"Missing {state}. Run build_playthrough.py first.")
 
-    kwargs = {"session_id": args.session, "save_state": args.save_state or "states/cp1.fc0"}
+    kwargs: dict = {"session_id": args.session, "save_state": args.save_state or "states/cp1.fc0"}
+    if args.death_mode:
+        kwargs["death_mode"] = args.death_mode
 
     env = make_env(
         args.game,
@@ -47,11 +55,18 @@ def main() -> None:
 
         total_reward = 0.0
         last_info = info
+        deaths = 0
         for step in range(1, args.steps + 1):
             action = env.action_space.sample()
             obs, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
             last_info = info
+            if info.get("died"):
+                deaths += 1
+                print(
+                    f"death #{deaths} at step {step}: lives={info['ram'].get('lives')} "
+                    f"terminated={terminated} death_mode={info.get('death_mode')}"
+                )
             if step <= 3 or step == args.steps:
                 print(
                     f"step {step}: a={action} r={reward:.3f} "
@@ -59,10 +74,16 @@ def main() -> None:
                     f"room={info['ram'].get('room')} x={info['ram'].get('x')}"
                 )
             if terminated or truncated:
-                print(f"done at step {step}: terminated={terminated} truncated={truncated}")
+                print(
+                    f"done at step {step}: terminated={terminated} truncated={truncated} "
+                    f"deaths={deaths} ep_len={step}"
+                )
                 break
 
-        print(f"OK steps={step} total_reward={total_reward:.3f} max_cp={last_info.get('max_checkpoint')}")
+        print(
+            f"OK steps={step} total_reward={total_reward:.3f} "
+            f"max_cp={last_info.get('max_checkpoint')} deaths={deaths}"
+        )
         if logger:
             logger.log_episode(mission=args.mission.replace("m", ""), episode=1, info=last_info)
             print(f"logged {mission / 'logs'}")

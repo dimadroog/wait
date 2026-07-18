@@ -20,7 +20,7 @@ def warn_if_n_envs_high_for_ram(
         print(
             f"WARNING [H2]: n_envs={n_envs} на ~{ram_gb} GB RAM — "
             f"для длинного train рекомендуется --n-envs {recommended} "
-            "(docs/tasks/TASK_TRAIN_FPS_DEGRADATION.md)"
+            "(docs/tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md)"
         )
 
 

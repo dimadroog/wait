@@ -96,17 +96,37 @@ def atomic_save_model(model: PPO, checkpoint: Path) -> Path:
 
 
 class LatestCheckpointCallback(BaseCallback):
-    """on_rollout_end → checkpoints/latest.zip (не чаще одного rollout)."""
+    """on_rollout_end → checkpoints/latest.zip с throttling (H5).
 
-    def __init__(self, latest_path: Path, verbose: int = 0):
+    `every_rollouts=1` — каждый rollout (старое поведение).
+    `every_rollouts=N` — каждый N-й (default train: 5 ≈ −15% wall vs каждый).
+    """
+
+    def __init__(
+        self,
+        latest_path: Path,
+        *,
+        every_rollouts: int = 1,
+        verbose: int = 0,
+    ):
         super().__init__(verbose)
         self._latest_path = checkpoint_zip_path(latest_path)
+        self._every = max(int(every_rollouts), 1)
+        self._rollout_idx = 0
 
     def _on_step(self) -> bool:
         return True
 
     def _on_rollout_end(self) -> bool:
+        self._rollout_idx += 1
+        if self._rollout_idx % self._every != 0:
+            return True
         atomic_save_model(self.model, self._latest_path)
+        if self.verbose:
+            print(
+                f"latest checkpoint -> {self._latest_path} "
+                f"(rollout #{self._rollout_idx}, every={self._every})"
+            )
         return True
 
 

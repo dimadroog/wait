@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import deque
+from pathlib import Path
 from typing import Any, Sequence
 
 import gymnasium as gym
@@ -13,6 +14,14 @@ from project_paths import mission_dir
 
 OBS_SHAPE = (4, 84, 84)
 DEFAULT_MAX_EPISODE_STEPS = 8_000
+
+# life_lost: terminated на первую потерю жизни (короткие эпизоды, reset storm).
+# game_over: died на каждую потерю жизни; terminated после N потерь (N = lives на старте).
+# Важно: в Rush'n Attack RAM lives на смерти часто →0 (анимация), затем respawn lives-1 —
+# поэтому game_over НЕ равен «lives==0», а считает события потери жизни.
+DEATH_MODE_LIFE_LOST = "life_lost"
+DEATH_MODE_GAME_OVER = "game_over"
+DEATH_MODES = frozenset({DEATH_MODE_LIFE_LOST, DEATH_MODE_GAME_OVER})
 
 
 class BaseNesEnv(gym.Env):
@@ -35,6 +44,7 @@ class BaseNesEnv(gym.Env):
         session_id: str = "default",
         show_window: bool = False,
         fm2_template: str | Path | None = None,
+        death_mode: str = DEATH_MODE_LIFE_LOST,
     ) -> None:
         super().__init__()
         self.game_id = game_id
@@ -43,6 +53,10 @@ class BaseNesEnv(gym.Env):
         self.action_strings = tuple(action_strings)
         self.lives_min = lives_min
         self.lives_max = lives_max
+        mode = str(death_mode or DEATH_MODE_LIFE_LOST).strip().lower()
+        if mode not in DEATH_MODES:
+            raise ValueError(f"death_mode must be one of {sorted(DEATH_MODES)}, got {death_mode!r}")
+        self.death_mode = mode
         self.save_state = save_state or self._default_save_state()
         self.frame_skip = frame_skip
         self.max_episode_steps = max_episode_steps
@@ -59,6 +73,7 @@ class BaseNesEnv(gym.Env):
         self._step_count = 0
         self._episode_start_lives: int | None = None
         self._prev_lives: int | None = None
+        self._death_count = 0
 
     def _default_save_state(self) -> str:
         manifest = self.mission / "config" / "playthrough_manifest.yaml"
@@ -98,6 +113,7 @@ class BaseNesEnv(gym.Env):
         self._frames.append(gray.astype(np.uint8))
 
     def _death_occurred(self, ram: dict[str, Any]) -> bool:
+        """True, если за этот step потеряна жизнь (lives уменьшились)."""
         lives = int(ram.get("lives", 0))
         if not self._valid_lives(lives):
             return False
@@ -108,6 +124,17 @@ class BaseNesEnv(gym.Env):
         if self._prev_lives is not None and lives < self._prev_lives:
             return True
         return False
+
+    def _terminate_on_death(self, died: bool, ram: dict[str, Any]) -> bool:
+        """Решает, заканчивать ли эпизод при потере жизни."""
+        if not died:
+            return False
+        if self.death_mode == DEATH_MODE_LIFE_LOST:
+            return True
+        self._death_count += 1
+        # Бюджет = lives после первого валидного чтения (не полагаться на lives==0 в RAM).
+        budget = max(int(self._episode_start_lives or 1), 1)
+        return self._death_count >= budget
 
     def reset(
         self,
@@ -129,6 +156,7 @@ class BaseNesEnv(gym.Env):
         self._step_count = 0
         self._episode_start_lives = None
         self._prev_lives = None
+        self._death_count = 0
 
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
@@ -141,13 +169,15 @@ class BaseNesEnv(gym.Env):
         if not ram:
             ram = bridge.get_ram()
         lives = int(ram.get("lives", 0))
-        if self._valid_lives(lives):
+        if self._valid_lives(lives) and lives > self.lives_min:
+            # lives==0 на reset — часто «ещё не gameplay»; ждём первое lives≥1 в step.
             self._episode_start_lives = lives
             self._prev_lives = lives
 
         info = {
             "ram": ram,
             "died": False,
+            "death_mode": self.death_mode,
             "mission_complete": False,
             "max_checkpoint": -1,
             "episode_frames": 0,
@@ -175,6 +205,7 @@ class BaseNesEnv(gym.Env):
         self._step_count = 0
         self._episode_start_lives = None
         self._prev_lives = None
+        self._death_count = 0
 
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
@@ -187,13 +218,14 @@ class BaseNesEnv(gym.Env):
         if not ram:
             ram = bridge.get_ram()
         lives = int(ram.get("lives", 0))
-        if self._valid_lives(lives):
+        if self._valid_lives(lives) and lives > self.lives_min:
             self._episode_start_lives = lives
             self._prev_lives = lives
 
         info: dict[str, Any] = {
             "ram": ram,
             "died": False,
+            "death_mode": self.death_mode,
             "mission_complete": False,
             "max_checkpoint": -1,
             "episode_frames": 0,
@@ -230,13 +262,17 @@ class BaseNesEnv(gym.Env):
 
         died = self._death_occurred(ram)
         self._step_count += 1
-        terminated = bool(died)
+        terminated = self._terminate_on_death(died, ram)
         truncated = self._step_count >= self.max_episode_steps
-        self._prev_lives = int(ram.get("lives", 0))
+        lives_now = int(ram.get("lives", 0))
+        if self._valid_lives(lives_now):
+            self._prev_lives = lives_now
 
         info: dict[str, Any] = {
             "ram": ram,
             "died": died,
+            "death_mode": self.death_mode,
+            "death_count": self._death_count,
             "mission_complete": False,
             "max_checkpoint": -1,
             "episode_frames": self._step_count,

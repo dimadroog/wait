@@ -142,39 +142,55 @@
 
 ### Train log (rollout table)
 
-Периодический вывод в консоль при `model.learn()` с `verbose=1` ([`train_ppo.py`](../src/train/train_ppo.py)). Печатается **после каждого [rollout'а](#rollout)** — одного цикла «сбор траекторий в [env](#env) → обновление весов [PPO](#ppo)». Дополнительные поля `progress_pct` и `target_timesteps` добавляет `TrainProgressPctCallback` (`src/train/progress_callback.py`); отключить: `--no-progress-pct`.
+Вывод в консоль после каждого [rollout'а](#rollout) при `model.learn()` ([`train_ppo.py`](../src/train/train_ppo.py)). Два потока:
 
-**Пример** (2-й rollout из трёх, `n_envs=6`, `n_steps=128`, цель `timesteps=2048`):
+| Поток | Откуда | Когда |
+| ----- | ------ | ----- |
+| Таблица [SB3](#sb3) | `verbose=1` + `TrainProgressPctCallback` (`src/train/progress_callback.py`) | всегда при learn (progress: `--no-progress-pct` выключает только `progress_pct` / `target_timesteps`) |
+| Строка `rollout_metrics:` | `RolloutMetricsCallback` (`src/train/rollout_metrics.py`) | при `--rollout-metrics` (JSONL → `tmp/bench/<session>/rollouts.jsonl`) |
+
+Сводка JSONL: [`parse_train_rollouts.py`](SCRIPTS.md#parse_train_rolloutspy). Прогоны dual train+measure: [MEASUREMENTS.md § R6](MEASUREMENTS.md#r6-dual-trainmeasure).
+
+**Важно:** кумулятивный SB3 `fps` ≠ per-rollout `rate`. Для H2 / деградации fps смотреть **`rate` / `wall_rollout_s`** (и `wall_late/early` в parse), не только `fps` в таблице SB3.
+
+**Пример** (`n_envs=6`, `n_steps=128`, `--rollout-metrics`; один завершённый rollout):
 
 ```
+rollout_metrics: #2 wall=95.1s steps=768 rate=8.079 avail_ram_mb=9262.2
 ---------------------------------
 | rollout/           |          |
 |    ep_len_mean     | 2        |
-|    ep_rew_mean     | -38.5    |
+|    ep_rew_mean     | -40      |
 | time/              |          |
-|    fps             | 5        |
+|    fps             | 4        |
 |    iterations      | 2        |
-|    time_elapsed    | 281      |
+|    time_elapsed    | 412      |
 |    total_timesteps | 1536     |
-|    progress_pct    | 75.0     |
-|    target_timesteps| 2048     |
+|    progress_pct    | 1.5      |
+|    target_timesteps| 100000   |
 ---------------------------------
 ```
 
-| Поле | Секция | Значение |
-| ---- | ------ | -------- |
-| **rollout/** | метрики эпизодов за последний сбор данных | |
-| `ep_len_mean` | rollout | средняя длина эпизода в [env-steps](#env-step). На пилоте [M1](#m1) типично **≈2** — короткие эпизоды, частые `reset()` ([reset storm](MEASUREMENTS.md)). |
-| `ep_rew_mean` | rollout | средняя суммарная награда за эпизод за последний [rollout](#rollout) (профиль наград миссии). |
-| **time/** | время и прогресс обучения | |
-| `fps` | time | **не** [FPS](#fps) видео. Пропускная способность train: [env-steps](#env-step) / [wall-секунду](#wall-clock) **с начала сессии** (кумулятивный показатель [SB3](#sb3)). Сравнение с эталоном — [MEASUREMENTS.md](MEASUREMENTS.md). |
-| `iterations` | time | число завершённых [rollout'ов](#rollout) (= число вызовов `learn` update). |
-| `time_elapsed` | time | [wall-clock](#wall-clock) (с) с момента старта `learn()`. Разница между соседними строками ≈ длительность одного rollout'а. |
-| `total_timesteps` | time | всего [env-steps](#env-step), собранных моделью (`num_timesteps`). За один [rollout](#rollout): `n_envs × n_steps` (напр. 6×128 = **768**). |
-| `progress_pct` | time | доля цели в %: `100 × total_timesteps / target_timesteps` (проектный callback). |
-| `target_timesteps` | time | целевое число [env-steps](#env-step) из CLI `--timesteps` или sidecar `.train.json` при `--resume`. |
+| Поле | Источник | Значение |
+| ---- | -------- | -------- |
+| **rollout/** | SB3 | метрики эпизодов за последний сбор |
+| `ep_len_mean` | SB3 | средняя длина эпизода в [env-steps](#env-step). При `death_mode=life_lost` часто **≈2** (reset storm); default Rush'n Attack — `game_over` ([MEASUREMENTS.md](MEASUREMENTS.md) § H3). |
+| `ep_rew_mean` | SB3 | средняя суммарная награда за эпизод за последний [rollout](#rollout). |
+| **time/** | SB3 | время и прогресс с начала `learn()` |
+| `fps` | SB3 | **не** [FPS](#fps) видео. Кумулятив: все [env-steps](#env-step) / [wall-clock](#wall-clock) **с начала сессии**. Сглаживает просадки отдельного rollout'а. |
+| `iterations` | SB3 | число завершённых [rollout'ов](#rollout). |
+| `time_elapsed` | SB3 | [wall-clock](#wall-clock) (с) с момента старта `learn()`. Δ между соседними строками ≈ длительность rollout'а (+ PPO update в том же интервале SB3). |
+| `total_timesteps` | SB3 | всего [env-steps](#env-step) (`num_timesteps`). За один [rollout](#rollout): `n_envs × n_steps` (напр. 6×128 = **768**). |
+| `progress_pct` | callback | `100 × total_timesteps / target_timesteps`; выкл. `--no-progress-pct`. |
+| `target_timesteps` | callback | цель из CLI `--timesteps` или sidecar `.train.json` при `--resume`. |
+| **`rollout_metrics:`** | callback | одна строка на rollout при `--rollout-metrics` |
+| `wall` (`wall_rollout_s`) | metrics | [wall-clock](#wall-clock) (с) **только этого** rollout'а (сбор + до `on_rollout_end`). |
+| `steps` (`delta_timesteps`) | metrics | [env-steps](#env-step) за этот rollout (обычно `n_envs × n_steps`). |
+| `rate` (`env_steps_per_s`) | metrics | `delta_timesteps / wall_rollout_s` — **per-rollout** throughput (для деградации / [MEASUREMENTS § R6](MEASUREMENTS.md#r6-dual-trainmeasure)). |
+| `avail_ram_mb` (`avail_phys_mb`) | metrics | свободная физ. RAM (MB, Windows); в JSONL также `total_phys_mb`, `memory_load_pct`. |
 
-Связанные команды: [`train_local.sh`](../scripts/train_local.sh), [train_ppo.py](SCRIPTS.md#train_ppopy). Деградация `fps` на длинном train — [TASK_TRAIN_FPS_DEGRADATION.md](tasks/TASK_TRAIN_FPS_DEGRADATION.md).
+**JSONL** (`tmp/bench/<session>/rollouts.jsonl`): те же поля плюс `ts`, `rollout`, `num_timesteps`, `elapsed_s`. Сводка `parse_train_rollouts.py`: `rate_last5_mean`, `wall_late/early` (late/early mean wall при ≥10 rollout; `degraded` если ≥2.0).
+
 
 ### TAS
 
@@ -182,7 +198,7 @@
 
 ### wall-clock
 
-**Wall-clock** (wall time, «настенные часы») — реальное прошедшее время на машине, в отличие от симулированного времени игры или суммарного CPU по потокам. В проекте: `time_elapsed` в [train log](#train-log-rollout-table) (с); **wall env-steps/s** = `total_env_steps / wall_seconds` ([MEASUREMENTS.md](MEASUREMENTS.md)). **Steady** — тот же расчёт без первого [rollout'а](#rollout) (cold start FCEUX). Синоним в текстах: **wall-секунда**.
+**Wall-clock** (wall time, «настенные часы») — реальное прошедшее время на машине, в отличие от симулированного времени игры или суммарного CPU по потокам. В проекте: `time_elapsed` (кумулятив) и `wall` / `wall_rollout_s` (за один [rollout](#rollout)) в [train log](#train-log-rollout-table) (с); **wall env-steps/s** = `total_env_steps / wall_seconds` ([MEASUREMENTS.md](MEASUREMENTS.md)). **Steady** — тот же расчёт без первого [rollout'а](#rollout) (cold start FCEUX). Синоним в текстах: **wall-секунда**.
 
 ### WR
 

@@ -29,6 +29,8 @@ def make_env(
     env_config = _load_env_config()
     actions = tuple(env_config.get("actions") or [])
     lives = env_config.get("lives") or {}
+    if "death_mode" not in kwargs and env_config.get("death_mode"):
+        kwargs["death_mode"] = str(env_config["death_mode"])
     env = BaseNesEnv(
         game_id=game_id,
         mission_id=mission_id,

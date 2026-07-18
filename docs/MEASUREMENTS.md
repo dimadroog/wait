@@ -15,7 +15,7 @@
 | `frame_skip` | 4 |
 | Train no-focus | `WAIT_FCEUX_NO_FOCUS=1` (с 1.2) |
 | Целевые `n_envs` | 8 (с 1.3) |
-| Типичный `ep_len_mean` | ≈2 (короткие эпизоды → reset storm) |
+| Типичный `ep_len_mean` | ≈2 при `death_mode=life_lost`; при default **`game_over`** (H3) — длиннее (бюджет жизней) |
 | JSON-отчёты | `tmp/bench/` (gitignored, локально) |
 
 Команды воспроизведения — [benchmark_bridge.py](SCRIPTS.md#benchmark_bridgepy), [benchmark_train.py](SCRIPTS.md#benchmark_trainpy).
@@ -94,7 +94,7 @@
 
 ## Деградация fps — базовая линия (до нагрузочного тестирования)
 
-**Статус:** зафиксировано **до** фаз T0–T5 из [TASK_TRAIN_FPS_DEGRADATION.md](tasks/TASK_TRAIN_FPS_DEGRADATION.md). После проработки — заполнить колонку **«после проработки»** и обновить статус плана.
+**Статус:** базовая линия **до** T0–T5; колонка «после проработки» и R6/H3–H6 — ниже. Задача: [TASK_TRAIN_FPS…](tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md) (**done**).
 
 **Среда:** i7-3770, Win10 19045, `n_envs=8`, `frame_skip=4`, `ep_len_mean≈2`, train no-focus.
 
@@ -130,7 +130,7 @@
 | gate 2/2 wall env-steps/s | 1.95 | **1.52** (T5.2, 2026-07-14) | **40%** от 1/2 — H1 не закрыта на gate |
 | train rollout 10 wall | ~650 с | **273 с** (T5.3, n=6) | **−58%** |
 | train rollout 20 wall | *нет данных* | **99 с** (T5.3) | стабильно vs базовая конец |
-| SB3 fps (rollout 20+, кумулятивный) | ~1–2 | **2–3** (T5.3) | цель ≥4 **не достигнута** |
+| SB3 fps (rollout 20+, кумулятивный) | ~1–2 | **2–3** (T5.3); **4** (R6.2 late) | цель ≥4 **достигнута** на R6.2 |
 | Bridge parallel (контроль) | ~23 | **26.00** (T5.1) | без регрессии |
 
 ### H2 remediation: smoke `n_envs` 4 vs 6 (2026-07-14)
@@ -184,19 +184,86 @@
 
 Лог: `tmp/bench/t5_3_train.log`.
 
-### R6 dual train+measure (заполнить после прогона)
+### R6 dual train+measure (2026-07-17/18)
 
-План и команды: [TASK_TRAIN_FPS_DEGRADATION.md § R6](tasks/TASK_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
+<a id="r6-dual-trainmeasure"></a>
+
+План и команды: [TASK_TRAIN_FPS_DEGRADATION.md § R6](tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
+
+**Условия:** i7-3770 / 16 GB; R6.1 — `train_ppo --smoke` ×4096, preflight между; R6.2 — resume `m1_v0_n6` → 100116 steps, `--rollout-metrics`.  
+JSONL: `tmp/bench/fps_r6_ab_n{4,6,8}/rollouts.jsonl`, `tmp/bench/fps_r6_20260717/rollouts.jsonl`.
 
 | Метрика | R6.1 n=4 | R6.1 n=6 | R6.1 n=8 | R6.2 long n=6 |
 | ------- | -------- | -------- | -------- | ------------- |
-| env-steps/s (steady) | | | | |
-| wall_late/early | | | | |
-| avail_phys_mb min | | | | |
-| SB3 fps (late) | | | | |
-| checkpoint | smoke tmp | smoke tmp | smoke tmp | `m1_v0_n6.zip` |
+| env-steps/s (steady) | **11.6** (last5) | **8.1** (last5) | **6.4** (mean=last5) | **8.3** (last5) |
+| wall_late/early | **~1.01** (8 roll; оценка, <10) | **~0.61** (6 roll) | **~0.93** (4 roll) | **0.28** (не degraded) |
+| avail_phys_mb min | **6586** | **6530** | **6241** | **9121** |
+| SB3 fps (late) | **11** | **7** | **6** | **4** |
+| checkpoint | smoke `fps_r6_ab_n4` | smoke `fps_r6_ab_n6` | smoke `fps_r6_ab_n8` | `m1_v0_n6.zip` (100116) |
 
-**Вердикт R6:** _TBD_
+**R6.2 доп.:** 103 rollout; wall mean **175 s** (min 80 / max 425); early wall высокий (rollout 1–20: ~310–380 s, rate ~2.0–2.5), затем стабилизация ~90–100 s / rate ~8; RAM **9.1–9.7 GB** свободно, без корреляции «меньше RAM → выше wall».
+
+**Вердикт R6:**
+
+| Вопрос | Вердикт |
+| ------ | ------- |
+| `n=6` стабилен на long? | **да** — `wall_late/early=0.28`, crash нет; last5 rate ~8.3 |
+| `n=8` vs `n=6` на short? | **хуже** — steady **6.4** vs **8.1**; avail min ниже (~6.2 GB) |
+| `n=4` на short? | **лучший throughput** (~11.6), но не long-primary (меньше parallel) |
+| H2 = RAM на R6.2? | **нет** на этом прогоне — RAM стабильна, early wall скорее cold/IPC |
+| Цель fps≥4? | **достигнута** на R6.2 (SB3 late **4**; last5 rate **8.3**) |
+| Default `n_envs` | **оставить 6** для long (`train_local.sh`); R6.3 (n=8 long) **не обязателен** |
+
+### H3 — longer episodes без дообучения (2026-07-18)
+
+**Рычаг:** `death_mode: game_over` в `games/rushn_attack/env_config.yaml` (`BaseNesEnv`; CLI `--death-mode`). Mission checkpoints **не** трогались.
+
+| Режим | Smoke `ep_len` (random, cp0, max 300 steps) | deaths |
+| ----- | ------------------------------------------- | ------ |
+| `life_lost` | **2** | 1 (terminate) |
+| `game_over` | **300** (hit step cap; continue after 1st death) | 1 |
+
+Ожидание для train: меньше reset storm → выше steady env-steps/s; полный e2e A/B — отдельный прогон (не блокер H3 code).
+
+### H5 — throttle `latest.zip` (2026-07-18)
+
+**База T4:** latest каждый rollout ≈ **18%** wall (405 vs 333 s без latest).  
+**Remediation:** `LatestCheckpointCallback(every_rollouts=N)`; CLI `--latest-every` (default **5**). `--latest-every 1` = прежнее поведение; `--no-latest-checkpoint` = выкл.
+
+Ожидание: I/O latest ≈÷5 → вклад wall ~3–4% вместо ~18% (без отдельного long re-bench).
+
+### H4 — FCEUX recycle (2026-07-18)
+
+**Код:** `--recycle-every-timesteps N` — segmented learn: `close` vec → `cleanup_bridge_sessions('train_')` → `build_vec_env` → `model.set_env` → следующий chunk. Default **`0` (off)**.  
+**Ops (без флага):** между длинными сессиями — `train_preflight` + resume `checkpoint_out` / `latest.zip`.  
+**R6.2:** при `n_envs=6` деградации mid-session не было (`wall_late/early=0.28`) — recycle нужен, если wall растёт при стабильной RAM.
+
+### H6 — лимит сессии (2026-07-18)
+
+**Код:** `--session-wall-timeout SEC` (default `0`=off) → abort + save; продолжить resume.  
+**Рекомендации i7-3770 / 16 GB:**
+
+| Ситуация | Практика |
+| -------- | -------- |
+| Длинный train (>2–3 ч) | `train_preflight` перед стартом; при подозрении на H1 — reboot |
+| Gate / benchmark серии | preflight **между** прогонами; 2-й gate подряд без cleanup не эталон |
+| Опц. авто-пауза | `--session-wall-timeout 14400` (4 ч) → resume |
+| Mid-session FCEUX stale | `--recycle-every-timesteps 50000` или ручной resume |
+
+### Закрытие задачи — smoke H3+H4 (2026-07-18)
+
+```bash
+./.venv/Scripts/python.exe src/train/train_ppo.py --smoke \
+  --smoke-session fps_close_h34 --n-envs 2 --timesteps 2048 --no-bc \
+  --death-mode game_over --recycle-every-timesteps 1024 \
+  --learn-stall-timeout 1200 --rollout-metrics --rollout-metrics-session fps_close_h34
+```
+
+| Метрика | Значение |
+| ------- | -------- |
+| chunks | **2** (recycle между ними OK) |
+| rate last5 | **~26.5** env-steps/s (`n_envs=2`) |
+| exit | **0** complete |
 
 ---
 
@@ -229,5 +296,5 @@
 | -------- | ---------- |
 | [SCRIPTS.md](SCRIPTS.md) | CLI benchmark (`benchmark_bridge`, `benchmark_train`) |
 | [TASK_FIRST_CAMPAIGN](tasks/archive/TASK_FIRST_CAMPAIGN.md) | Архив этапов 1.5–1.9, вердикты, критерий 5.0 |
-| [TASK_TRAIN_FPS…](tasks/TASK_TRAIN_FPS_DEGRADATION.md) | Open: деградация fps, гипотезы H1–H6, R6 |
+| [TASK_TRAIN_FPS…](tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md) | Done (2026-07-18): H1–H6 remediation, R6 |
 | [DESIGN.md](DESIGN.md) | `tmp/bench/`, карантин артефактов |

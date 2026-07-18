@@ -232,6 +232,7 @@ Random agent / короткий env smoke. `--log` пишет в `games/.../logs
 | `--steps` | число шагов (default 100) |
 | `--save-state` | относительно миссии (default `states/cp1.fc0`) |
 | `--session` | id bridge (default `smoke_env`) |
+| `--death-mode` | `life_lost` \| `game_over` (override `env_config.yaml`; H3) |
 | `--log` | append в `logs/YYYYMMDD/attempts.jsonl` |
 | `--game` / `--mission` | игра / миссия |
 
@@ -390,6 +391,9 @@ PPO на CPU / FCEUX env. Checkpoints: `games/.../checkpoints/` (или `tmp/smo
 | `--checkpoint-in` / `--checkpoint-out` | load/save `.zip` |
 | `--resume` / `--no-resume` | sidecar `.train.json` (default on) |
 | `--latest-checkpoint` / `--no-latest-checkpoint` | `checkpoints/latest.zip` (default on) |
+| `--latest-every` | latest.zip каждые N rollout (default **5**, H5; `1` = каждый) |
+| `--recycle-every-timesteps` | H4: пересоздать FCEUX/vec каждые N steps (`0`=off) |
+| `--session-wall-timeout` | H6: abort по wall-clock сессии, с (`0`=off); resume из checkpoint |
 | `--save-every` | каждые N steps (default 50000) |
 | `--bc-epochs` / `--bc-demo` / `--no-bc` | BC warm-start |
 | `--rollout-gc` / `--no-rollout-gc` | `gc.collect` после rollout (default on) |
@@ -404,6 +408,7 @@ PPO на CPU / FCEUX env. Checkpoints: `games/.../checkpoints/` (или `tmp/smo
 | `--skip-preflight` | не вызывать preflight (только прямой вызов) |
 | `--n-steps`, `--batch-size`, `--n-epochs`, `--gamma`, `--learning-rate`, `--threads` | PPO гиперпараметры |
 | `--save-state`, `--reward-profile`, `--game`, `--mission` | |
+| `--death-mode` | `life_lost` \| `game_over` (default из `env_config.yaml`; H3) |
 
 Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--checkpoint-out` продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается.
 
@@ -411,7 +416,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 
 ### `train_fps_round_prep.py`
 
-Архив frozen checkpoints + promote primary для fps/dual-train раунда. Runbook — [TASK_TRAIN_FPS_DEGRADATION](tasks/TASK_TRAIN_FPS_DEGRADATION.md).
+Архив frozen checkpoints + promote primary для fps/dual-train раунда. Runbook — [TASK_TRAIN_FPS_DEGRADATION](tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md).
 
 ```bash
 ./.venv/Scripts/python.exe scripts/train_fps_round_prep.py

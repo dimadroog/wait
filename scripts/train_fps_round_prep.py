@@ -202,7 +202,7 @@ def main() -> int:
     print("# 3) wall_rollout summary")
     print(cmd_parse)
     print()
-    print("Done. See docs/tasks/TASK_TRAIN_FPS_DEGRADATION.md section R6.")
+    print("Done. See docs/tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md section R6.")
     return 0
 
 

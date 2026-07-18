@@ -65,6 +65,17 @@ noop | left | right | down | up | right+up | left+up | A | B
 
 Список в `games/rushn_attack/env_config.yaml`.
 
+### Конец эпизода (`death_mode`)
+
+| Режим | Поведение | Когда |
+| ----- | --------- | ----- |
+| `life_lost` | `terminated` на **первую** потерю жизни | A/B / старый reset-storm baseline |
+| `game_over` (**default**) | `died` на каждую потерю жизни (−`death_penalty`); `terminated` после **N** смертей, N = lives на старте эпизода | train / inference env |
+
+В RAM `lives` на смерти часто кратковременно **0** (анимация), затем respawn с lives−1 — поэтому `game_over` считает **события** потери жизни, а не `lives==0`. CLI: `--death-mode` у `train_ppo` / `smoke_env`.
+
+Smoke (random, `states/cp0.fc0`, 2026-07-18): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
+
 ---
 
 ## 2. Награды и чекпоинты M1

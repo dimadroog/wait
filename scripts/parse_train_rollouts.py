@@ -83,7 +83,7 @@ def main() -> int:
     print(f"env_steps/s: mean={summary['rate_mean']} last5={summary['rate_last5_mean']}")
     if summary.get("wall_late_over_early") is not None:
         flag = "DEGRADED" if summary.get("degraded") else "stable"
-        print(f"late/early wall: {summary['wall_late_over_early']}× ({flag})")
+        print(f"late/early wall: {summary['wall_late_over_early']}x ({flag})")
     if summary.get("avail_phys_mb_min") is not None:
         print(
             f"avail_phys_mb: min={summary['avail_phys_mb_min']} max={summary['avail_phys_mb_max']}"

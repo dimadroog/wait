@@ -28,9 +28,15 @@ from train.checkpointing import (  # noqa: E402
     write_sidecar,
 )
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_clean_preflight  # noqa: E402
-from train.learn_watchdog import DEFAULT_LEARN_STALL_TIMEOUT_S, LearnStallError, learn_with_stall_watchdog  # noqa: E402
+from train.learn_watchdog import (  # noqa: E402
+    DEFAULT_LEARN_STALL_TIMEOUT_S,
+    LearnStallError,
+    SessionWallTimeoutError,
+    learn_with_stall_watchdog,
+)
 from train.progress_callback import TrainProgressPctCallback  # noqa: E402
 from train.ram_mitigations import RolloutGcCallback, warn_if_n_envs_high_for_ram  # noqa: E402
+from train.recycle import iter_learn_chunks  # noqa: E402
 from train.rollout_metrics import RolloutMetricsCallback  # noqa: E402
 from train.thread_limits import configure_train_threads  # noqa: E402
 
@@ -171,6 +177,7 @@ def train(args: argparse.Namespace) -> Path:
             reward_overrides=reward_overrides,
             turbo=not args.no_turbo,
             subproc=not args.dummy_vec,
+            death_mode=args.death_mode,
         )
 
         checkpoint_in = _resolve_checkpoint(args.checkpoint_in, mission)
@@ -259,7 +266,12 @@ def train(args: argparse.Namespace) -> Path:
             )
         if args.latest_checkpoint:
             latest = mission / "checkpoints" / "latest.zip"
-            callbacks.append(LatestCheckpointCallback(latest))
+            latest_every = max(int(args.latest_every), 1)
+            callbacks.append(
+                LatestCheckpointCallback(latest, every_rollouts=latest_every, verbose=1)
+            )
+            if latest_every > 1:
+                print(f"latest checkpoint every {latest_every} rollouts -> {latest}")
         if args.rollout_gc:
             callbacks.append(RolloutGcCallback())
         if not args.no_progress_pct:
@@ -276,29 +288,70 @@ def train(args: argparse.Namespace) -> Path:
                     artifact_quarantine_dir("bench", session).resolve() / "rollouts.jsonl"
                 )
             callbacks.append(RolloutMetricsCallback(metrics_path, verbose=1))
-            print(f"rollout metrics → {metrics_path}")
+            print(f"rollout metrics -> {metrics_path}")
 
+        recycle_every = max(int(args.recycle_every_timesteps), 0)
+        chunks = iter_learn_chunks(remaining, recycle_every)
         print(
             f"train: game={args.game} mission={args.mission} "
             f"n_envs={args.n_envs} remaining={remaining}/{target_timesteps} "
             f"save_state={save_state} resume={resuming}"
         )
+        if recycle_every > 0:
+            print(
+                f"H4 recycle: every {recycle_every} timesteps "
+                f"({len(chunks)} chunk(s); close FCEUX + cleanup train_* between)"
+            )
+        if float(args.session_wall_timeout) > 0:
+            print(f"H6 session wall timeout: {args.session_wall_timeout:.0f}s")
+
+        callback_list = CallbackList(callbacks) if callbacks else None
 
         with InterruptHandler() as interrupt:
             learn_failed = False
+            abort_reason = "complete"
             try:
-                learn_with_stall_watchdog(
-                    model,
-                    vec_env,
-                    stall_timeout_s=args.learn_stall_timeout,
-                    total_timesteps=remaining,
-                    callback=CallbackList(callbacks) if callbacks else None,
-                    progress_bar=args.progress,
-                    reset_num_timesteps=not resuming,
-                )
+                for chunk_i, chunk in enumerate(chunks):
+                    if interrupt.interrupted:
+                        break
+                    if chunk_i > 0:
+                        print(f"recycle FCEUX before chunk {chunk_i + 1}/{len(chunks)} (+{chunk} steps)")
+                        try:
+                            vec_env.close()
+                        except (EOFError, BrokenPipeError):
+                            pass
+                        cleanup_bridge_sessions("train_")
+                        vec_env = build_vec_env(
+                            game_id=args.game,
+                            mission_id=args.mission,
+                            n_envs=args.n_envs,
+                            save_state=save_state,
+                            reward_profile=args.reward_profile,
+                            reward_overrides=reward_overrides,
+                            turbo=not args.no_turbo,
+                            subproc=not args.dummy_vec,
+                            death_mode=args.death_mode,
+                        )
+                        model.set_env(vec_env)
+                    reset_ts = (not resuming) and chunk_i == 0
+                    learn_with_stall_watchdog(
+                        model,
+                        vec_env,
+                        stall_timeout_s=args.learn_stall_timeout,
+                        wall_timeout_s=float(args.session_wall_timeout),
+                        total_timesteps=chunk,
+                        callback=callback_list,
+                        progress_bar=args.progress,
+                        reset_num_timesteps=reset_ts,
+                    )
             except LearnStallError as exc:
                 learn_failed = True
+                abort_reason = "stall"
                 print(f"train aborted: {exc}")
+            except SessionWallTimeoutError as exc:
+                learn_failed = True
+                abort_reason = "session_wall"
+                print(f"train paused (H6 session wall): {exc}")
             finally:
                 try:
                     vec_env.close()
@@ -306,6 +359,10 @@ def train(args: argparse.Namespace) -> Path:
                     pass
                 cleanup_bridge_sessions("train_")
                 if int(model.num_timesteps) > 0:
+                    if interrupt.interrupted:
+                        abort_reason = "interrupt"
+                    elif not learn_failed:
+                        abort_reason = "complete"
                     _persist_train_state(
                         model,
                         checkpoint_out,
@@ -314,13 +371,7 @@ def train(args: argparse.Namespace) -> Path:
                         mission_id=args.mission,
                         n_envs=args.n_envs,
                         save_state=save_state,
-                        reason=(
-                            "stall"
-                            if learn_failed
-                            else "interrupt"
-                            if interrupt.interrupted
-                            else "complete"
-                        ),
+                        reason=abort_reason,
                     )
 
         return checkpoint_zip_path(checkpoint_out)
@@ -345,6 +396,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--save-every", type=int, default=50_000, help="checkpoint каждые N env steps (total)")
     p.add_argument("--threads", type=int, default=2, help="torch/BLAS threads (cap 2 при n_envs≥6)")
     p.add_argument("--save-state", default=None, help="states/cp0.fc0 относительно миссии")
+    p.add_argument(
+        "--death-mode",
+        default=None,
+        choices=["life_lost", "game_over"],
+        help="terminated: life_lost|game_over (default: games/.../env_config.yaml)",
+    )
     p.add_argument("--reward-profile", default="default")
     p.add_argument("--checkpoint-in", default=None)
     p.add_argument("--checkpoint-out", default=None)
@@ -358,7 +415,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--latest-checkpoint",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="писать checkpoints/latest.zip на каждый rollout (default: on)",
+        help="писать checkpoints/latest.zip (default: on; частота — --latest-every)",
+    )
+    p.add_argument(
+        "--latest-every",
+        type=int,
+        default=5,
+        help="latest.zip каждые N rollout (H5 throttle; default 5; 1=каждый)",
     )
     p.add_argument("--bc-demo", default=None, help="demos/seg_XXX.npz для BC")
     p.add_argument("--bc-epochs", type=int, default=0, help="BC epochs (0 = skip)")
@@ -391,6 +454,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_LEARN_STALL_TIMEOUT_S,
         help="abort learn без прогресса timesteps, с (default 300; 0=off)",
+    )
+    p.add_argument(
+        "--session-wall-timeout",
+        type=float,
+        default=0.0,
+        help="H6: abort learn по wall-clock сессии, с (default 0=off; resume из checkpoint)",
+    )
+    p.add_argument(
+        "--recycle-every-timesteps",
+        type=int,
+        default=0,
+        help="H4: close FCEUX + cleanup train_* каждые N env-steps (0=off)",
     )
     p.add_argument(
         "--rollout-gc",

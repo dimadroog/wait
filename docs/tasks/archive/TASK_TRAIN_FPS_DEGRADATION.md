@@ -1,17 +1,18 @@
 # TASK_TRAIN_FPS_DEGRADATION — деградация fps при длительном train
 
-**Статус:** open  
-**Ветка:** `task/train-fps-degradation` — проработку этой задачи выполнять **только в этой ветке** (не в `main` и не в чужих task-ветках).  
-**Было:** `ISSUE_TRAIN_FPS_DEGRADATION` (вернуто из archive)  
-Каркас: [TASK_BLANK.md](TASK_BLANK.md)
+**Статус:** done (2026-07-18)  
+**Итог:** локализованы H1–H6; default `n_envs=6`; `death_mode=game_over`; `--latest-every 5`; опц. `--recycle-every-timesteps` / `--session-wall-timeout`; R6 dual train+measure. Gate H1 2/2 — ops (preflight/reboot), не блокер.  
+**Ветка:** `task/train-fps-degradation`  
+**Было:** `ISSUE_TRAIN_FPS_DEGRADATION`  
+Каркас: [TASK_BLANK.md](../TASK_BLANK.md)
 
-**Контекст:** длительный `train_ppo` (8 `SubprocVecEnv`) показывает падение SB3 `fps` с **~6** до **~1** при неизменном `ep_len_mean≈2`. Bridge STEP-only при этом остаётся **~22–23 env-steps/s** ([MEASUREMENTS.md](../MEASUREMENTS.md) §5.0).
+**Контекст:** длительный `train_ppo` (8 `SubprocVecEnv`) показывает падение SB3 `fps` с **~6** до **~1** при неизменном `ep_len_mean≈2`. Bridge STEP-only при этом остаётся **~22–23 env-steps/s** ([MEASUREMENTS.md](../../MEASUREMENTS.md) §5.0).
 
-**Базовая линия (до проработки):** [MEASUREMENTS.md](../MEASUREMENTS.md) § «Деградация fps — базовая линия».
+**Базовая линия (до проработки):** [MEASUREMENTS.md](../../MEASUREMENTS.md) § «Деградация fps — базовая линия».
 
-**Текущий раунд:** [§ Раунд R6 — dual train+measure](#раунд-r6--dual-trainmeasure-2026-07-17) (T0–T5 закрыты; следующий шаг — A/B + продолжение `m1_v0_n6`).
+**Текущий раунд:** **закрыт** (T0–T5, R6, P0–P3/H3–H6).
 
-**Связанные отчёты:** [ISSUE_FALL.md](archive/ISSUE_FALL.md) §D (накопительный эффект), [§ Стрессовый smoke](archive/ISSUE_FALL.md#стрессовый-smoke--диагностика) (короткий gate-shaped stress).
+**Связанные отчёты:** [ISSUE_FALL.md](ISSUE_FALL.md) §D (накопительный эффект), [§ Стрессовый smoke](ISSUE_FALL.md#стрессовый-smoke--диагностика) (короткий gate-shaped stress).
 
 ---
 
@@ -30,11 +31,11 @@
 
 ## План нагрузочного тестирования
 
-Цель: **локализовать** вклад H1–H6 и зафиксировать метрики в [MEASUREMENTS.md](../MEASUREMENTS.md) (колонка «после проработки»).
+Цель: **локализовать** вклад H1–H6 и зафиксировать метрики в [MEASUREMENTS.md](../../MEASUREMENTS.md) (колонка «после проработки»).
 
 ### Предусловия (все прогоны)
 
-1. Перезагрузка ОС или ручная очистка: `taskkill /F /IM fceux64.exe`, нет orphan `python` train/benchmark (см. [train_preflight.py](../SCRIPTS.md#train_preflightpy)).
+1. Перезагрузка ОС или ручная очистка: `taskkill /F /IM fceux64.exe`, нет orphan `python` train/benchmark (см. [train_preflight.py](../../SCRIPTS.md#train_preflightpy)).
 2. Закрыть лишние приложения; **16 GB RAM** — эталонная среда.
 3. Фиксировать в заметках: дата, свободная RAM до/после, JSON-отчёты в `tmp/bench/` / `tmp/smoke/`.
 4. Между **сериями** прогонов — полный cleanup (`cleanup_bridge_sessions('train_')` + `bench_`).
@@ -86,7 +87,7 @@
 | Шаг | Команда | Метрики | Связь |
 | --- | ------- | ------- | ----- |
 | T2.1 | `stress_e2e_gate.py --phase ppo_spike` | wall, OOM в stderr | изолированный spike |
-| T2.2 | `stress_e2e_gate.py --phase ppo_spike_with_vec` | wall, ошибка | compound B4 ([ISSUE_FALL](archive/ISSUE_FALL.md)) |
+| T2.2 | `stress_e2e_gate.py --phase ppo_spike_with_vec` | wall, ошибка | compound B4 ([ISSUE_FALL](ISSUE_FALL.md)) |
 | T2.3 | `benchmark_train.py --mode fps` | steady env-steps/s | эталон steady **~7** (1-й прогон) |
 | T2.4 | `train_ppo.py --n-envs 4 --timesteps 4096` | SB3 fps, RAM | сравнение с `n_envs=8` |
 
@@ -140,7 +141,7 @@
 2. T1.1 + T1.2 (накопление)
 3. T3.1 (длительный train, ≥10 rollout)
 
-Заполнить колонку **«после проработки»** в [MEASUREMENTS.md](../MEASUREMENTS.md).
+Заполнить колонку **«после проработки»** в [MEASUREMENTS.md](../../MEASUREMENTS.md).
 
 ---
 
@@ -164,7 +165,7 @@
 | H2 | `n_envs` 4–6 на 16 GB; gc между rollout; restart из `latest.zip` | R3.2, R3.3 |
 | H3 | reward/curriculum → длиннее эпизоды | ML_CONCEPT |
 | H4 | периодический restart FCEUX; очистка `tmp/bridge/train_*` | follow-up |
-| H5 | реже `latest` или async save | follow-up |
+| H5 | `--latest-every` (default 5) | **done** P2 |
 | H6 | документировать лимит сессии; паузы | ops |
 
 ---
@@ -176,10 +177,11 @@
 | T0 | **выполнено** | 2026-07-14 | parallel **25.34** (128 steps); ep_len2 reset/step **1.03** |
 | T1 | **выполнено** | 2026-07-14 | H1 подтверждена (5.0); T1.4 после stress: wall **6.26** (не ухудшился) |
 | T2 | **выполнено** | 2026-07-14 | ppo_spike OK; n_envs=4 fps **6–9** vs n_envs=8 steady **5.62** |
-| T3 | **частично** | 2026-07-14 | T3.1 базовая линия; T3.✓ вывод по `wall_rollout`; T3.2 отложен |
+| T3 | **закрыт** | 2026-07-18 | T3.1+✓; T3.2 won't fix |
 | T4 | **выполнено** | 2026-07-14 | H5: latest **~18%** wall (405 vs 333 s) |
 | T5 | **выполнено** | 2026-07-14 | T5.3 train `n_envs=6` 27 rollout, **6658 s** |
-| **R6** | **R6.0 done** | 2026-07-17 | archive + `m1_v0_n6`; A/B + long — чеклист § R6 |
+| **R6** | **закрыт** | 2026-07-18 | A/B + long + MEASUREMENTS + GLOSSARY; default n_envs=6 |
+| **P1–P3** | **закрыт** | 2026-07-18 | H3 game_over; H5 latest-every=5; H4 recycle CLI; H6 session wall |
 
 ---
 
@@ -187,10 +189,10 @@
 
 | Документ | Содержание |
 | -------- | ---------- |
-| [MEASUREMENTS.md](../MEASUREMENTS.md) | Сводные метрики; § деградация fps |
-| [SCRIPTS.md](../SCRIPTS.md) | Команды benchmark / train / stress |
-| [GLOSSARY.md](../GLOSSARY.md) § [Train log](../GLOSSARY.md#train-log-rollout-table) | Разбор вывода train в консоль — **устарел**, см. [§ Docs](#docs--glossary-train-log) |
-| [ISSUE_FALL.md](archive/ISSUE_FALL.md) | Инцидент gate, stress-диагностика, план R0–R5 |
+| [MEASUREMENTS.md](../../MEASUREMENTS.md) | Сводные метрики; § деградация fps |
+| [SCRIPTS.md](../../SCRIPTS.md) | Команды benchmark / train / stress |
+| [GLOSSARY.md](../../GLOSSARY.md) § [Train log](../../GLOSSARY.md#train-log-rollout-table) | SB3 + `rollout_metrics:` (R6.docs) |
+| [ISSUE_FALL.md](ISSUE_FALL.md) | Инцидент gate, stress-диагностика, план R0–R5 |
 
 ---
 
@@ -198,7 +200,7 @@
 
 Отмечать по мере выполнения. Критерий фазы — все шаги фазы `[x]`.
 
-**Критерий закрытия плана:** T5 пройден; колонка **«после проработки»** в [MEASUREMENTS.md](../MEASUREMENTS.md) заполнена; gate 2/2 wall ≥80% от gate 1/2; SB3 fps (rollout 20+) ≥4.
+**Критерий закрытия плана:** T5 + R6 + H3–H6 **выполнены** (2026-07-18). Gate 2/2 ≥80% — **не** достигнуто → accepted как ops (P4 preflight/reboot). SB3 fps≥4 — **да** (R6.2).
 
 ### T0 — контроль bridge (регрессия IPC)
 
@@ -221,8 +223,8 @@
 
 ### T3 — длительный train, drift по rollout (H2, H4, H6)
 
-- [x] **T3.1** `train_local.sh --timesteps 50000 ...` — базовая линия зафиксирована (2026-07-13/14, ~10.5 ч); `wall_rollout` в [MEASUREMENTS.md](../MEASUREMENTS.md)
-- [ ] **T3.2** (негативный контроль) `test_parallel_env --n-envs 12` без cleanup → длинный train — *отложено: требует 7–14 ч train*
+- [x] **T3.1** `train_local.sh --timesteps 50000 ...` — базовая линия зафиксирована (2026-07-13/14, ~10.5 ч); `wall_rollout` в [MEASUREMENTS.md](../../MEASUREMENTS.md)
+- [x] **T3.2** (негативный контроль) — **won't fix** (7–14 ч; H2 закрыта через n_envs=6 + R6.2)
 - [x] **T3.✓** Вывод: рост `wall_rollout` **~150 → ~650 с** (rollout 10+, **4×**); скачок rollout 11–12 (~30 мин) → **H2** (RAM/swap); bridge стабилен
 
 ### T4 — I/O checkpoint (H5)
@@ -236,26 +238,26 @@
 - [x] **T5.1** повтор T0.1 (bridge) — **26.00** env-steps/s (2026-07-14)
 - [x] **T5.2** повтор T1.1 + T1.2 (накопление, `n_envs=8` gate): **3.81** → **1.52** wall (**40%**); H1 на gate **не закрыта**
 - [x] **T5.3** `train_local.sh --timesteps 20000 --n-envs 6` — **27 rollout**, wall **6658 s**, fps **2→3**; rollout 10 wall **273 s**, rollout 20 **99 s** (vs базовая **~650 s**)
-- [x] **T5.4** колонка **«после проработки»** в [MEASUREMENTS.md](../MEASUREMENTS.md) заполнена (T5.3)
+- [x] **T5.4** колонка **«после проработки»** в [MEASUREMENTS.md](../../MEASUREMENTS.md) заполнена (T5.3)
 - [x] **T5.✓** План T5 закрыт (H1 на gate 8×2 — открытый follow-up; длинный train H2 — улучшение)
 
 ### Remediation (после подтверждения гипотез)
 
-Связь с [ISSUE_FALL.md](archive/ISSUE_FALL.md) § R0–R3.
+Связь с [ISSUE_FALL.md](ISSUE_FALL.md) § R0–R3.
 
 - [x] **H1** preflight + kill orphan (`R0.1`, `R0.2`) — закрыто в [5.0]
 - [x] **H2** (частично) `OPENBLAS`/`torch` thread limits (`R3.1`); фаза `ppo_spike_with_vec` (`R3.2`)
 - [x] **H2** (при необходимости) `gc.collect()` между rollout (`R3.3`); `n_envs` 4–6 на 16 GB — `RolloutGcCallback`, `train_local.sh --n-envs 6`, warn при `n_envs>6`
-- [ ] **H3** reward/curriculum → длиннее эпизоды (ML_CONCEPT)
-- [ ] **H4** периодический restart FCEUX; очистка `tmp/bridge/train_*`
-- [ ] **H5** throttling `latest.zip` или async save
-- [ ] **H6** документировать лимит сессии; паузы (ops)
+- [x] **H3** `death_mode=game_over` (счётчик жизней; не resume/`m1_v0_n6`) — smoke ep_len **2→300**; см. [MEASUREMENTS § H3](../../MEASUREMENTS.md) (2026-07-18)
+- [x] **H4** `--recycle-every-timesteps` (segmented learn + cleanup `train_*`); ops resume + preflight (2026-07-18)
+- [x] **H5** throttling `latest.zip` — `--latest-every` default **5** (async не нужен; T4 ~18% wall) (2026-07-18)
+- [x] **H6** `--session-wall-timeout` + ops-таблица в [MEASUREMENTS](../../MEASUREMENTS.md) (2026-07-18)
 
 ---
 
 ## Раунд R6 — dual train+measure (2026-07-17)
 
-**Статус:** запланирован; среда подготовлена (код + prep-скрипт).
+**Статус:** **закрыт** (2026-07-18): R6.0–R6.4, R6.docs, R6.✓; R6.3 отложен.
 
 **Цель раунда:** закрыть пробелы T0–T5 (оптимальность `n_envs`, телеметрия H2) **без порчи** накопленных весов, и по возможности **дополнить обучение** на длинном прогоне.
 
@@ -330,7 +332,7 @@ Prep (один раз перед раундом):
 | H2 = RAM? | падение `avail_phys_mb` коррелирует с ростом wall | да / нет / смешанно |
 | Цель fps≥4? | rate last5 / SB3 fps rollout 20+ | достигнута / нет |
 
-Заполнить в [MEASUREMENTS.md](../MEASUREMENTS.md) секцию **«R6 dual train+measure»**.
+Заполнить в [MEASUREMENTS.md](../../MEASUREMENTS.md) секцию **«R6 dual train+measure»**.
 
 ### Пути роста производительности (после R6, железо i7-3770 / 16 GB)
 
@@ -339,10 +341,10 @@ Prep (один раз перед раундом):
 | Приоритет | Путь | Условие / триггер | Ожидаемый эффект |
 | --------- | ---- | ----------------- | ---------------- |
 | **P0** | Зафиксировать default `n_envs` по данным R6 (6 / 7 / 8+gc) | R6.1–R6.3 | стабильный long без ×4 wall |
-| **P1** | **H3** — длиннее эпизоды (reward / curriculum, ML_CONCEPT) | всегда полезно для ML | рост steady fps + качество данных |
-| **P2** | **H5** — реже / async `latest.zip` | вклад ≥10% на long | −10–20% wall |
-| **P3** | **H4** — periodic FCEUX recycle / mid-session restart из `latest` | wall растёт при стабильной RAM | снять накопление без снижения env |
-| **P4** | **H1** ops — reboot/preflight между сериями gate | gate 2/2 <80% | воспроизводимость бенчей |
+| **P1** | **H3** — длиннее эпизоды (`death_mode=game_over`; reward/curriculum — follow-up) | **done** (env, без дообучения) | меньше reset storm; quality данных при следующем train |
+| **P2** | **H5** — реже `latest.zip` (`--latest-every`, default 5) | **done** (T4 ≥10% wall) | ~×5 реже I/O latest; async отложен |
+| **P3** | **H4** — `--recycle-every-timesteps` + ops resume/`latest` | **done** | recycle между chunk; default off |
+| **P4** | **H1** ops — reboot/preflight между сериями gate | **accepted** (не код) | gate 2/2 не эталон без cleanup |
 | **P5** | IPC v2 / shared mem | только если после P0–P3 e2e/bridge всё ещё ≪0.3 **и** ms/step доминирует | низкий ROI (1.8 уже FAIL) |
 | **P6** | Больше RAM / другое железо | Commit≈16 GB + page faults на `n≥8` | поднять parallel env |
 
@@ -351,20 +353,20 @@ Prep (один раз перед раундом):
 ### Чеклист R6
 
 - [x] **R6.0** `train_fps_round_prep.py` — archive + `m1_v0_n6` + manifest (2026-07-17)
-- [ ] **R6.1a** smoke n=4 × 4096 + metrics
-- [ ] **R6.1b** smoke n=6 × 4096 + metrics (preflight перед)
-- [ ] **R6.1c** smoke n=8 × 4096 + metrics (preflight перед)
-- [ ] **R6.2** long resume `m1_v0_n6` → ≥100k, ≥20 rollout после start, metrics on
-- [ ] **R6.3** (опц.) отдельная линия n=8 **или** отложить
-- [ ] **R6.4** `parse_train_rollouts` + запись в MEASUREMENTS
-- [ ] **R6.docs** актуализировать [GLOSSARY § Train log](../GLOSSARY.md#train-log-rollout-table) — см. [§ Docs](#docs--glossary-train-log)
-- [ ] **R6.✓** выбрать default `n_envs` + приоритет P0–P3 на следующий код-цикл
+- [x] **R6.1a** smoke n=4 × 4096 + metrics — steady **11.6**, SB3 late **11** (`tmp/bench/fps_r6_ab_n4/`)
+- [x] **R6.1b** smoke n=6 × 4096 + metrics — steady **8.1**, SB3 late **7** (`tmp/bench/fps_r6_ab_n6/`)
+- [x] **R6.1c** smoke n=8 × 4096 + metrics — steady **6.4**, SB3 late **6** (`tmp/bench/fps_r6_ab_n8/`)
+- [x] **R6.2** long resume `m1_v0_n6` → **100116**, 103 rollout, wall_late/early **0.28**, SB3 late **4** (`tmp/bench/fps_r6_20260717/`)
+- [x] **R6.3** (опц.) **отложено** — short n=8 хуже n=6; long n=8 не окупается
+- [x] **R6.4** `parse_train_rollouts` + запись в [MEASUREMENTS.md](../../MEASUREMENTS.md) § R6 (2026-07-18)
+- [x] **R6.docs** [GLOSSARY § Train log](../../GLOSSARY.md#train-log-rollout-table) — SB3 + `rollout_metrics:` + JSONL (2026-07-18)
+- [x] **R6.✓** default **`n_envs=6`**; следующий код-цикл: **P1 H3** (длиннее эпизоды), затем P2/P3 по ROI
 
 ### Docs — GLOSSARY Train log
 
-**Статус:** open (блокер закрытия R6 по документации, не по прогонам).
+**Статус:** **done** (2026-07-18).
 
-[GLOSSARY.md](../GLOSSARY.md) § **Train log (rollout table)** (якорь `#train-log-rollout-table`, ~стр. 143–176) описывает только устаревший «Периодический вывод» SB3 (`verbose=1` + `progress_pct` / `target_timesteps`). После R6 в консоли при `--rollout-metrics` есть **два** потока; глоссарий должен разбирать оба.
+[GLOSSARY.md](../../GLOSSARY.md) § **Train log (rollout table)** (якорь `#train-log-rollout-table`, ~стр. 143–176) описывает только устаревший «Периодический вывод» SB3 (`verbose=1` + `progress_pct` / `target_timesteps`). После R6 в консоли при `--rollout-metrics` есть **два** потока; глоссарий должен разбирать оба.
 
 | Поток | Откуда | Когда | Что документировать |
 | ----- | ------ | ----- | ------------------- |
@@ -374,11 +376,11 @@ Prep (один раз перед раундом):
 
 **DoD R6.docs:**
 
-- [ ] Пример консоли обновлён (SB3-таблица **и** строка `rollout_metrics:`)
-- [ ] Таблица полей: старые SB3 + новые (`wall`, `rate` / `env_steps_per_s`, `avail_ram_mb` / `avail_phys_mb`)
-- [ ] Явно: кумулятивный SB3 `fps` vs per-rollout `rate` (для H2/деградации смотреть `rate` / `wall_rollout`, не только `fps`)
-- [ ] Ссылка на `--rollout-metrics` / `--no-progress-pct` и на [MEASUREMENTS.md](../MEASUREMENTS.md) § R6
-- [ ] Якорь `#train-log-rollout-table` и ссылки на `time_elapsed` / wall-clock в глоссарии не сломаны
+- [x] Пример консоли обновлён (SB3-таблица **и** строка `rollout_metrics:`)
+- [x] Таблица полей: старые SB3 + новые (`wall`, `rate` / `env_steps_per_s`, `avail_ram_mb` / `avail_phys_mb`)
+- [x] Явно: кумулятивный SB3 `fps` vs per-rollout `rate` (для H2/деградации смотреть `rate` / `wall_rollout`, не только `fps`)
+- [x] Ссылка на `--rollout-metrics` / `--no-progress-pct` и на [MEASUREMENTS.md](../../MEASUREMENTS.md) § R6
+- [x] Якорь `#train-log-rollout-table` и ссылки на `time_elapsed` / wall-clock в глоссарии не сломаны
 
 ### Код среды (готово к запуску)
 
