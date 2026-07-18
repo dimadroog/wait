@@ -1,5 +1,7 @@
 # Номинации пилота Rush'n Attack — docs/GAME_RUSHN_ATTACK.md §5; идея pipeline — ML_CONCEPT §8
-retention_hours: 4
+# Retention window = календарный день с полуночи UTC+3 (не airtime / не sliding hours).
+# Зеркало дефолта: src/jsonl_logs.py → RETENTION_TZ_OFFSET_HOURS
+retention_tz_offset_hours: 3
 
 # Порядок блоков на эфире (драматургия)
 broadcast_order:

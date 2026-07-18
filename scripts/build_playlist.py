@@ -20,33 +20,28 @@ sys.path.insert(0, str(_REPO / "src"))
 
 
 
+from achievements.airtime import measure_playlist_airtime, parse_airtime_hours  # noqa: E402
 from achievements.playlist import build_playlist  # noqa: E402
-
 from jsonl_logs import dated_log_path  # noqa: E402
-
 from project_paths import mission_dir  # noqa: E402
 
 
-
-
-
 def main() -> None:
-
     parser = argparse.ArgumentParser(description="Build inference playlist by achievement nominations")
-
     parser.add_argument("--game", default="rushn_attack")
-
     parser.add_argument("--mission", default="m1")
-
     parser.add_argument("--attempts", default=None)
-
     parser.add_argument(
         "--inputs",
         default=None,
         help="inference_inputs.jsonl (fallback export, если нет epNNNN.fm2)",
     )
     parser.add_argument("--no-dedupe", action="store_true", help="не пропускать дубликаты эпизодов в плейлисте")
-
+    parser.add_argument(
+        "--pad-to-airtime",
+        default=None,
+        help="добить pad-клипами до N часов airtime (1h, 3m, …)",
+    )
     args = parser.parse_args()
 
     mission = mission_dir(args.game, args.mission)
@@ -58,6 +53,10 @@ def main() -> None:
     if not attempts.is_file():
         raise SystemExit(f"Attempts log not found: {attempts}")
 
+    pad_to_seconds = None
+    if args.pad_to_airtime is not None:
+        pad_to_seconds = parse_airtime_hours(args.pad_to_airtime) * 3600.0
+
     created, manifest_path, clip_count = build_playlist(
         attempts,
         logs,
@@ -65,10 +64,13 @@ def main() -> None:
         game=args.game,
         mission=args.mission,
         dedupe=not args.no_dedupe,
+        pad_to_seconds=pad_to_seconds,
     )
     if manifest_path:
         print(f"Manifest: {manifest_path} ({clip_count} clips)")
         print(f"Launcher: {manifest_path.with_suffix('.play.cmd')}")
+        air = measure_playlist_airtime(manifest_path)
+        print(f"Airtime: {air.seconds:.1f}s ({air.hours:.4f}h)")
     else:
         print("No clips matched nominations")
     print(f"Blocks: {len(created)} slug(s), {sum(len(v) for v in created.values())} clips under {logs}")

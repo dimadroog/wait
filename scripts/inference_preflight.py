@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Обязательная очистка перед inference (вызывается из inference_local.sh)."""
+"""Preflight перед inference / playback: staging/bridge; logs дня keep-by-default."""
 from __future__ import annotations
 
 import argparse
@@ -13,7 +13,9 @@ from inference_preflight import require_inference_preflight, require_playback_pr
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Preflight cleanup before inference or playback")
+    parser = argparse.ArgumentParser(
+        description="Preflight before inference or playback (day logs kept by default)"
+    )
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
     parser.add_argument(
@@ -22,9 +24,14 @@ def main() -> None:
         help="только staging/bridge (для play_inference_fm2, без wipe logs/)",
     )
     parser.add_argument(
+        "--wipe-day-logs",
+        action="store_true",
+        help="удалить logs/YYYYMMDD/ текущего retention-дня перед сбором",
+    )
+    parser.add_argument(
         "--keep-logs",
         action="store_true",
-        help="не удалять logs/YYYYMMDD/ перед inference",
+        help=argparse.SUPPRESS,  # deprecated no-op: keep — дефолт
     )
     args = parser.parse_args()
 
@@ -34,7 +41,7 @@ def main() -> None:
         require_inference_preflight(
             game=args.game,
             mission=args.mission,
-            clean_logs=not args.keep_logs,
+            clean_logs=bool(args.wipe_day_logs),
         )
 
 

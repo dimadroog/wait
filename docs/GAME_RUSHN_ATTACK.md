@@ -270,14 +270,30 @@ heuristics:
 Идея и pipeline (evaluator, playlist, overlay) — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных).  
 Правила пилота сейчас в `config/achievements.yaml` (общий файл; содержание — про эту игру).
 
+Пул для `top_k` / `deja_vu` / `new_record` — [retention window](GLOSSARY.md#retention-window) (календарный день UTC+3), **не** длина эфира. Длительность replay плейлиста — [airtime](GLOSSARY.md#airtime) (дефолт 1 ч).
+
+**CLI (сборка плейлиста под эфир)** — подробности [SCRIPTS.md § Inference](SCRIPTS.md#inference):
+
+```bash
+# Номинации дня → плейлист ≥ N часов airtime (pad после broadcast_order)
+./scripts/inference_local.sh --stochastic --target-airtime 1h --episodes 5
+
+# Smoke-target 2–3 мин (проверка pipeline без часа эфира)
+./scripts/inference_local.sh --stochastic --target-airtime 2m --episodes 8 --max-steps 80 --play
+
+# Только пересборка / pad из уже накопленного logs/YYYYMMDD/
+./.venv/Scripts/python.exe scripts/build_playlist.py --pad-to-airtime 2m
+./.venv/Scripts/python.exe scripts/eval_achievements.py
+```
+
 | Idx | slug | Overlay (RU) | Тип | Условие |
 | --- | ---- | ------------ | --- | ------- |
 | 01 | `mission_clear` | Клир миссии | 🏆 | `mission_clear == true` |
-| 02 | `episode_reward` | Жадина | 🏆 | top‑K по `episode_reward` за 4 ч |
+| 02 | `episode_reward` | Жадина | 🏆 | top‑K по `episode_reward` за retention window |
 | 03 | `fastest_death` | Мгновенный респawn | 💀 | `died` и `episode_frames ≤ 3` |
 | 04 | `many_achievements` | Тур CP | 🏆 | `len(achieved_checkpoints) ≥ 4` |
 | 05 | `deep_run` | Почти финиш | 🏆 | `max_checkpoint ≥ 4` и не `mission_clear` |
-| 06 | `deja_vu` | Déjà vu | 💀 | `(death_room, death_x_bucket)` ≥ 3 за 4 ч |
+| 06 | `deja_vu` | Déjà vu | 💀 | `(death_room, death_x_bucket)` ≥ 3 за retention window |
 | 07 | `ladder_ouch` | Лестница съела | 💀 | `died` и `death_room == "0x08"` |
 | 08 | `new_record` | Личный рекорд | 🏆 | новый max `max_checkpoint` для `model_version` |
 

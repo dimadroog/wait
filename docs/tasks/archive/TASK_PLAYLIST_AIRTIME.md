@@ -1,6 +1,7 @@
 # TASK_PLAYLIST_AIRTIME — retention day vs target airtime плейлиста
 
-**Статус:** open  
+**Статус:** done  
+**Закрыто:** 2026-07-18 — retention UTC+3, `--target-airtime`+pad, keep/wipe preflight; smoke 2m → airtime≥120s → play OK (`tests/test_playlist_airtime_smoke.py`).  
 **Приоритет:** high  
 **Ветка:** `task/playlist-airtime` — проработку этой задачи выполнять **только в этой ветке** (не в `main` и не в чужих task-ветках).  
 **Зависит от:** —  
@@ -25,22 +26,22 @@
 
 ### Чеклист сессии
 
-- [ ] Доки: два термина *retention window* ≠ *airtime*; вычистить двусмысленность «4 ч» (ML / SCRIPTS / STREAMING / GAME §5 / GLOSSARY)
-- [ ] Retention: день с полуночи **UTC+3**; одно место правды (`achievements.yaml` + `jsonl_logs` / evaluator); убрать зависимость от `RETENTION_HOURS` как sliding 4h
-- [ ] Проверить, что `top_k` / `deja_vu` / `new_record` считают по дневному пулу и не ломаются
-- [ ] Формула + хелпер оценки airtime плейлиста (`playlist.json` / FM2 frames, + hold)
-- [ ] `--target-airtime` (дефолт 1h): цикл inference → build_playlist → пока Σ &lt; N; pad-политика
-- [ ] Preflight: default keep day’s logs; учесть текущий airtime перед стартом; флаг опциональной очистки перед сбором
-- [ ] SCRIPTS / STREAMING / GAME § achievements: CLI-примеры под N часов (и короткий smoke-target)
-- [ ] Smoke: target 2–3 мин → playlist airtime ≥ target → `play_inference_fm2` не падает
+- [x] Доки: два термина *retention window* ≠ *airtime*; вычистить двусмысленность «4 ч» (ML / SCRIPTS / STREAMING / GAME §5 / GLOSSARY)
+- [x] Retention: день с полуночи **UTC+3**; одно место правды (`achievements.yaml` + `jsonl_logs` / evaluator); убрать зависимость от `RETENTION_HOURS` как sliding 4h
+- [x] Проверить, что `top_k` / `deja_vu` / `new_record` считают по дневному пулу и не ломаются
+- [x] Формула + хелпер оценки airtime плейлиста (`playlist.json` / FM2 frames, + hold)
+- [x] `--target-airtime` (дефолт 1h): цикл inference → build_playlist → пока Σ &lt; N; pad-политика
+- [x] Preflight: default keep day’s logs; учесть текущий airtime перед стартом; флаг опциональной очистки перед сбором
+- [x] SCRIPTS / STREAMING / GAME § achievements: CLI-примеры под N часов (и короткий smoke-target)
+- [x] Smoke: target 2–3 мин → playlist airtime ≥ target → `play_inference_fm2` не падает
 
 ### Критерий готовности (DoD)
 
-- [ ] В доках нельзя прочитать retention/«4 ч» как длину эфира; дефолт airtime = 1h задокументирован
-- [ ] Retention = календарный день UTC+3; одно место правды; `top_k` / `deja_vu` ок
-- [ ] Оператор задаёт `--target-airtime` (или дефолт 1h) и получает плейлист с измеримым airtime ≥ N (или явный shortfall / прогресс)
-- [ ] Preflight по умолчанию не сносит накопление дня; опциональный wipe есть
-- [ ] Smoke 2–3 мин зелёный
+- [x] В доках нельзя прочитать retention/«4 ч» как длину эфира; дефолт airtime = 1h задокументирован
+- [x] Retention = календарный день UTC+3; одно место правды; `top_k` / `deja_vu` ок
+- [x] Оператор задаёт `--target-airtime` (или дефолт 1h) и получает плейлист с измеримым airtime ≥ N (или явный shortfall / прогресс)
+- [x] Preflight по умолчанию не сносит накопление дня; опциональный wipe есть
+- [x] Smoke 2–3 мин зелёный
 
 ### Не делать (антискоуп)
 

@@ -29,7 +29,7 @@
 
 **Сезонное шоу на Twitch:** AI учится проходить NES попытка за попыткой; прогресс виден от стрима к стриму.
 
-**Эфир** — replay плейлиста лучших попыток (FCEUX + OBS). Сбор попыток, train и дообучение — [ML_CONCEPT.md](ML_CONCEPT.md).
+**Эфир** — replay плейлиста лучших попыток (FCEUX + OBS). Длительность эфира = [airtime](GLOSSARY.md#airtime) (дефолт **1 час** realtime), не окно отбора attempts. Сбор попыток, train и дообучение — [ML_CONCEPT.md](ML_CONCEPT.md).
 
 Ниша: RL-прогресс на стриме, скачки версий модели между эфирами, retro-NES эстетика. Не speedrun WR — обучение и рост CP.
 
@@ -72,8 +72,19 @@
 play_inference_fm2.py (playlist) + FCEUX + OBS (NVENC 720p30)
 ```
 
-Плейлист заранее: `run_inference` → `build_playlist` — [SCRIPTS.md](SCRIPTS.md#achievements-и-плейлист).  
+Плейлист заранее: `run_inference --target-airtime` (цикл + pad) — [SCRIPTS.md § Inference](SCRIPTS.md#inference).  
+Кандидаты в номинации — из [retention window](GLOSSARY.md#retention-window) (календарный день UTC+3); целевая длина replay — [airtime](GLOSSARY.md#airtime) (дефолт 1 ч).  
 ПО этапа B: OBS Studio на хосте; FCEUX/venv уже из этапа A. Артефакты — [DESIGN.md § Структура](DESIGN.md#структура-репозитория).
+
+**Операторский сбор (CLI):**
+
+```bash
+# Эфир ~1 ч (keep дня; preflight печатает уже накопленный airtime)
+./scripts/inference_local.sh --stochastic --target-airtime --episodes 5
+
+# Smoke-target 2–3 мин + локальный replay (без OBS)
+./scripts/inference_local.sh --stochastic --target-airtime 2m --episodes 8 --max-steps 80 --play
+```
 
 ---
 
@@ -82,12 +93,12 @@ play_inference_fm2.py (playlist) + FCEUX + OBS (NVENC 720p30)
 ```mermaid
 flowchart TB
     subgraph prep [Подготовка плейлиста]
-        Infer[run_inference.py]
-        Build[build_playlist.py]
+        Infer["run_inference --target-airtime"]
+        Build[build_playlist + pad]
         Infer --> Build
-        Build --> Manifest[playlist.json]
+        Build --> Manifest["playlist.json + airtime"]
     end
-    subgraph air [Эфир]
+    subgraph air [Эфир / airtime]
         Play[play_inference_fm2.py]
         FCEUX[FCEUX + playlist Lua]
         OBS[OBS NVENC 720p30]
@@ -99,6 +110,8 @@ flowchart TB
         OBS --> Twitch[Twitch]
     end
 ```
+
+**Retention window ≠ airtime:** окно дня задаёт, *какие* попытки попадают в теги/`top_k`; airtime — *сколько* realtime длится replay плейлиста на эфире.
 
 ### Цикл для зрителя
 
@@ -146,11 +159,11 @@ flowchart TB
 
 ## 9. Метрики и лог эфира
 
-`logs/YYYYMMDD/attempts.jsonl` — одна строка на попытку.
+`logs/YYYYMMDD/attempts.jsonl` — одна строка на попытку ([retention window](GLOSSARY.md#retention-window)).
 
 **Для эфира / overlay:** `model_version`, `max_checkpoint`, `died`, `death_x`, `death_room`, `mission_clear`.
 
-Схема и retention — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных), [SCRIPTS.md](SCRIPTS.md#inference).
+Схема и retention window — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных), [SCRIPTS.md](SCRIPTS.md#inference). Длительность эфира — [airtime](GLOSSARY.md#airtime).
 
 ---
 
@@ -164,7 +177,7 @@ flowchart TB
 | Профиль | 720p30 NVENC, Game Capture → FCEUX |
 | Overlay | `max_checkpoint`, deaths, `model_version` |
 | Twitch | Канал, stream key (не на экране) |
-| Тестовый эфир | `build_playlist` → `play_inference_fm2.py logs/YYYYMMDD/playlist.json` |
+| Тестовый эфир | `--target-airtime 2m` → `play_inference_fm2.py logs/YYYYMMDD/playlist.json` ([SCRIPTS](SCRIPTS.md#inference_localsh)) |
 
 ---
 

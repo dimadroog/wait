@@ -3,9 +3,9 @@
 **Статус:** open (постановка формируется)  
 **Приоритет:** medium  
 **Ветка:** `task/operator-launcher` — проработку этой задачи выполнять **только в этой ветке** (не в `main` и не в чужих task-ветках).  
-**Зависит от:** [TASK_PLAYLIST_AIRTIME](TASK_PLAYLIST_AIRTIME.md) (`task/playlist-airtime`) — **завершить постановку этой задачи после реализации airtime** (Inference / Play опираются на новый контракт сбора и плейлиста).  
+**Зависит от:** [TASK_PLAYLIST_AIRTIME](archive/TASK_PLAYLIST_AIRTIME.md) (done) — контракт `--target-airtime` / keep-preflight / pad уже в коде; уточнить поля форм Inference / Play по актуальному CLI.  
 **Файлы:** уточнить после постановки; ориентиры — `docs/SCRIPTS.md`, `scripts/train_local.sh`, `src/train/train_ppo.py`, `scripts/inference_local.sh`, `src/stream/run_inference.py`, `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`  
-**Контекст в чат:** этот файл + [SCRIPTS.md](../SCRIPTS.md) + актуальный [TASK_PLAYLIST_AIRTIME](TASK_PLAYLIST_AIRTIME.md) (после merge — карточки inference/playlist)
+**Контекст в чат:** этот файл + [SCRIPTS.md](../SCRIPTS.md) + [TASK_PLAYLIST_AIRTIME](archive/TASK_PLAYLIST_AIRTIME.md) (карточки inference/playlist)
 
 Каркас: [TASK_BLANK.md](TASK_BLANK.md)
 
@@ -18,14 +18,14 @@
 | Сценарий | Намерение | Статус уточнения |
 | -------- | --------- | ---------------- |
 | **Train** | Запуск обучения с формой опций перед стартом | опции — **уточнить до реализации** |
-| **Inference** | Сбор материала под эфир / плейлист с учётом контракта из `task/playlist-airtime` | **ждать airtime**; перед реализацией сверить сбор inference (CLI, логи дня, target airtime, preflight) и уточнить поля формы |
+| **Inference** | Сбор материала под эфир / плейлист (`--target-airtime`, keep/wipe preflight, pad) | контракт airtime готов — уточнить поля формы по [SCRIPTS](../SCRIPTS.md#inference) |
 | **Play** | Запуск плейлиста или **цепочки плейлистов** за выбранный день / несколько дней | уточнить UX выбора дней; **открытый вопрос:** цепочка в **одном** экземпляре FCEUX vs последовательный перезапуск |
 
 Smoke / bench / parse rollouts — **вне** этого черновика v1 (можно добавить позже отдельным пунктом постановки).
 
 ### Чеклист сессии (формирование → реализация)
 
-- [ ] Дождаться merge / usable состояния [TASK_PLAYLIST_AIRTIME](TASK_PLAYLIST_AIRTIME.md)
+- [x] Дождаться merge / usable состояния [TASK_PLAYLIST_AIRTIME](archive/TASK_PLAYLIST_AIRTIME.md)
 - [ ] **Inference:** прочитать итоговый CLI и поток артефактов (`inference_local` / `run_inference` / `build_playlist` / preflight); зафиксировать поля формы и пресеты
 - [ ] **Train:** согласовать минимальный набор опций и пресетов (что на форме, что остаётся только в CLI / `train_task.json`)
 - [ ] **Play:** согласовать выбор дня/дней и поведение цепочки плейлистов; решить вопрос одного экземпляра FCEUX

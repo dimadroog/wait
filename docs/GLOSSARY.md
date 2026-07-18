@@ -7,7 +7,11 @@
 
 ### Achievement (inference)
 
-Номинация попытки после [inference](#inference) (🏆 или 💀): правила в `config/achievements.yaml`, теги в `tags[]`, FM2-плейлист `{idx}_{slug}_{seq}.fm2`. Pipeline — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
+Номинация попытки после [inference](#inference) (🏆 или 💀): правила в `config/achievements.yaml`, теги в `tags[]`, FM2-плейлист `{idx}_{slug}_{seq}.fm2`. Pipeline — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота). Пул кандидатов — [retention window](#retention-window); длина replay на стриме — [airtime](#airtime) (это разные понятия).
+
+### Airtime
+
+Длительность эфира = сумма длительностей клипов плейлиста при replay в realtime (~60 NES FPS): `Σ (fm2_frames + hold) / 60` (`hold` ≈ `show_until_frame`, дефолт 180; `fm2_frames ≈ episode_frames × frame_skip`). Хелпер: `achievements.airtime.measure_playlist_airtime` → поле `airtime` в `playlist.json`. Целевой эфир задаётся оператором (`--target-airtime`, дефолт **1 час**), не путать с [retention window](#retention-window). Сбор и pad — [TASK_PLAYLIST_AIRTIME](tasks/archive/TASK_PLAYLIST_AIRTIME.md); архитектура replay — [STREAMING_CONCEPT.md §5](STREAMING_CONCEPT.md#5-архитектура-эфира).
 
 ### AI
 
@@ -61,7 +65,7 @@
 
 ### Inference
 
-Режим `model.predict()`: модель играет **без** обновления весов (`run_inference.py`). Попытки → плейлист; эфир — replay плейлиста ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)).
+Режим `model.predict()`: модель играет **без** обновления весов (`run_inference.py`). Попытки → плейлист; эфир — replay плейлиста ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)). Отбор кандидатов в номинации — по [retention window](#retention-window); целевая длина эфира — [airtime](#airtime).
 
 ### IPC
 
@@ -115,6 +119,10 @@
 ### RAM
 
 **Память NES** — адреса в картридже (`room`, `x`, `y`, `hp`…); читается через Lua в [FCEUX](#fceux). Не путать с ОЗУ ПК, с [PPU](#ppu) (экран) и с [obs](#obs) (пиксели для ML).
+
+### Retention window
+
+Пул inference-attempts для тегов achievements (`top_k`, `deja_vu`, `new_record` и т.п.): **весь календарный день** с полуночи **UTC+3** (Europe/Moscow wall date). Не sliding «N часов» и **не** длина эфира — см. [airtime](#airtime). Логи дня: `logs/YYYYMMDD/` ([ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных), [SCRIPTS.md](SCRIPTS.md#inference)).
 
 ### RL
 

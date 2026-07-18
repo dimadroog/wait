@@ -14,6 +14,11 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
+from achievements.airtime import (  # noqa: E402
+    DEFAULT_HOLD_FRAMES,
+    measure_playlist_airtime,
+    overlay_hold_frames,
+)
 from fceux_launch import fceux_sound_off  # noqa: E402
 from fm2_export import (  # noqa: E402
     episode_fm2_guid,
@@ -33,15 +38,6 @@ from project_paths import (  # noqa: E402
     resolve_rom,
 )
 from ram_map_load import load_ram_addresses  # noqa: E402
-
-
-def _overlay_hold_frames(overlay_path: Path | None, default: int = 180) -> int:
-    if not overlay_path or not overlay_path.is_file():
-        return default
-    try:
-        return int(json.loads(overlay_path.read_text(encoding="utf-8")).get("show_until_frame", default))
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return default
 
 
 def _resolve_input_path(path: Path, game: str, mission: str) -> Path:
@@ -185,7 +181,7 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
     _playback_ram_env(args.game, args.mission, env)
 
     frames = count_fm2_frames(fm2)
-    hold = _overlay_hold_frames(overlay_path if overlay_path.is_file() else None)
+    hold = overlay_hold_frames(overlay_path if overlay_path.is_file() else None)
     timeout = max(args.timeout, (frames + hold) / 60.0 + 20.0)
 
     print(
@@ -238,12 +234,16 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
     if done_flag.exists():
         done_flag.unlink()
 
-    total_frames = 0
-    total_hold = 0
+    airtime = measure_playlist_airtime(playlist_path)
+    hold_by_fm2 = {c.fm2: c.hold_frames for c in airtime.clips}
     queue_lines: list[str] = []
     rom_base: str | None = None
 
-    print(f"Playlist {playlist_path.name}: {len(clips)} clip(s) -> one FCEUX", flush=True)
+    print(
+        f"Playlist {playlist_path.name}: {len(clips)} clip(s) -> one FCEUX "
+        f"(airtime~{airtime.seconds:.1f}s / {airtime.hours:.3f}h)",
+        flush=True,
+    )
     for clip_idx, clip in enumerate(clips, start=1):
         fm2_name = clip.get("fm2") or clip.get("fm2_path")
         if not fm2_name:
@@ -265,12 +265,12 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
         overlay_name = clip.get("overlay")
         overlay_src = logs_dir / overlay_name if overlay_name else fm2.with_suffix(".overlay.json")
         staged_overlay_name = ""
-        hold = 180
+        hold = hold_by_fm2.get(fm2.name, DEFAULT_HOLD_FRAMES)
         if overlay_src.is_file():
             staged_overlay = staging / f"{stem}.overlay.json"
             shutil.copy2(overlay_src, staged_overlay)
             staged_overlay_name = staged_overlay.name
-            hold = _overlay_hold_frames(staged_overlay)
+            hold = overlay_hold_frames(staged_overlay)
 
         block_label = str(clip.get("block_label") or "")
         queue_lines.append(
@@ -285,8 +285,6 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
             )
         )
         frames = count_fm2_frames(fm2)
-        total_frames += frames
-        total_hold += hold
         print(
             f"  clip {clip_idx}/{len(clips)}: {fm2.name} ({frames} frames, {block_label})",
             flush=True,
@@ -323,8 +321,8 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
     env["WAIT_FCEUX_LUA_CONFIG"] = config_path.name
     _playback_ram_env(args.game, args.mission, env)
 
-    # realtime ~60 fps + hold между клипами + запас
-    timeout = max(args.timeout, (total_frames + total_hold) / 60.0 + 30.0 * len(clips))
+    # realtime airtime (fm2 + hold) + запас
+    timeout = max(args.timeout, airtime.seconds + 30.0 * len(clips))
 
     cmd = [str(fceux)]
     if args.noicon:

@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from achievements.airtime import measure_playlist_airtime
 from achievements.evaluator import evaluate_attempts_file, load_achievements_config, overlay_payload
 from fm2_export import (
     episode_fm2_guid,
@@ -19,6 +20,10 @@ from fm2_export import (
 from inference_states import resolve_inference_reset_state
 from jsonl_logs import dated_day_dir, utc_date_prefix
 from project_paths import mission_dir, repo_root
+
+PAD_SLUG = "pad"
+PAD_IDX = 99
+PAD_LABEL = "Pad"
 
 
 def _sort_key_for_slug(slug: str, record: dict[str, Any]) -> tuple:
@@ -144,9 +149,13 @@ def write_playlist_manifest(
     day_dir: Path,
     *,
     date_prefix: str,
+    include_airtime: bool = True,
 ) -> Path:
-    manifest = {"date": date_prefix, "clips": clips}
+    manifest: dict[str, Any] = {"date": date_prefix, "clips": clips}
     path = day_dir / "playlist.json"
+    if include_airtime and clips:
+        airtime = measure_playlist_airtime(manifest, logs_dir=day_dir)
+        manifest["airtime"] = airtime.as_dict()
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -183,6 +192,117 @@ def _resolve_source_fm2(record: dict[str, Any], day_dir: Path) -> Path | None:
     return None
 
 
+def _materialize_clip_fm2(
+    *,
+    record: dict[str, Any],
+    dest: Path,
+    day_dir: Path,
+    embed_save_state_path: Path,
+    inference_inputs_path: Path | None,
+    game: str,
+    mission: str,
+) -> Path | None:
+    """Записать self-contained FM2. Возвращает путь для overlay-sidecar (src|dest) или None."""
+    src = _resolve_source_fm2(record, day_dir)
+    clip_guid = episode_fm2_guid(salt=dest.stem)
+    if src is not None:
+        _write_file_clone(src, dest)
+        remap_fm2_guid(dest, clip_guid)
+        refresh_fm2_embedded_savestate(dest, embed_save_state_path, guid=clip_guid)
+        if not fm2_has_embedded_savestate(dest):
+            raise ValueError(f"Source FM2 is not self-contained: {src}")
+        return src
+    if inference_inputs_path and inference_inputs_path.is_file():
+        export_fm2(
+            inference_inputs_path,
+            dest,
+            episode=int(record.get("episode", 0)),
+            save_state_path=embed_save_state_path,
+            game_id=game,
+            mission_id=mission,
+        )
+        remap_fm2_guid(dest, clip_guid)
+        refresh_fm2_embedded_savestate(dest, embed_save_state_path, guid=clip_guid)
+        return dest
+    return None
+
+
+def _manifest_airtime_seconds(manifest_clips: list[dict[str, Any]], day_dir: Path) -> float:
+    if not manifest_clips:
+        return 0.0
+    return measure_playlist_airtime({"clips": manifest_clips}, logs_dir=day_dir).seconds
+
+
+def _append_pad_clips(
+    *,
+    records: list[dict[str, Any]],
+    manifest_clips: list[dict[str, Any]],
+    created: dict[str, list[Path]],
+    day_dir: Path,
+    achievements_config: dict[str, Any],
+    embed_save_state_path: Path,
+    inference_inputs_path: Path | None,
+    game: str,
+    mission: str,
+    pad_to_seconds: float,
+) -> int:
+    """Добить плейлист клипами вне номинаций (после broadcast_order), пока airtime ≥ target."""
+    used_episodes = {int(c.get("episode", -1)) for c in manifest_clips}
+    pad_num = 0
+    clip_seq = len(manifest_clips)
+    paths = list(created.get(PAD_SLUG) or [])
+
+    candidates = sorted(
+        records,
+        key=lambda r: int(r.get("episode_frames", 0) or 0),
+        reverse=True,
+    )
+    for record in candidates:
+        if _manifest_airtime_seconds(manifest_clips, day_dir) >= pad_to_seconds:
+            break
+        episode = int(record.get("episode", -1))
+        if episode < 0 or episode in used_episodes:
+            continue
+
+        dest = day_dir / f"{PAD_IDX:02d}_{PAD_SLUG}_{pad_num + 1:03d}.fm2"
+        overlay_src = _materialize_clip_fm2(
+            record=record,
+            dest=dest,
+            day_dir=day_dir,
+            embed_save_state_path=embed_save_state_path,
+            inference_inputs_path=inference_inputs_path,
+            game=game,
+            mission=mission,
+        )
+        if overlay_src is None:
+            continue
+
+        overlay_path = _copy_overlay_sidecar(
+            overlay_src,
+            dest,
+            record=record,
+            config=achievements_config,
+        )
+        pad_num += 1
+        clip_seq += 1
+        used_episodes.add(episode)
+        paths.append(dest)
+        manifest_clips.append(
+            {
+                "idx": clip_seq,
+                "slug": PAD_SLUG,
+                "block_label": PAD_LABEL,
+                "episode": episode,
+                "fm2": dest.name,
+                "overlay": overlay_path.name,
+            }
+        )
+
+    if paths:
+        created[PAD_SLUG] = paths
+    return pad_num
+
+
 def build_playlist(
     attempts_path: Path,
     logs_dir: Path,
@@ -192,8 +312,12 @@ def build_playlist(
     game: str = "rushn_attack",
     mission: str = "m1",
     dedupe: bool = True,
+    pad_to_seconds: float | None = None,
 ) -> tuple[dict[str, list[Path]], Path | None, int]:
-    """Создать FM2-копии, overlay sidecar и logs/YYYYMMDD/playlist.json."""
+    """Создать FM2-копии, overlay sidecar и logs/YYYYMMDD/playlist.json.
+
+    pad_to_seconds: после блоков номинаций добить клипами (slug=pad), пока airtime ≥ N.
+    """
     achievements_config = config or load_achievements_config()
     records = evaluate_attempts_file(attempts_path, config=achievements_config)
     date_prefix = utc_date_prefix()
@@ -231,31 +355,20 @@ def build_playlist(
 
         for record in items:
             dest = day_dir / f"{nom_idx:02d}_{slug}_{clip_num + 1:03d}.fm2"
-            src = _resolve_source_fm2(record, day_dir)
-            clip_guid = episode_fm2_guid(salt=dest.stem)
-
-            if src is not None:
-                _write_file_clone(src, dest)
-                remap_fm2_guid(dest, clip_guid)
-                refresh_fm2_embedded_savestate(dest, embed_save_state_path, guid=clip_guid)
-                if not fm2_has_embedded_savestate(dest):
-                    raise ValueError(f"Source FM2 is not self-contained: {src}")
-            elif inference_inputs_path and inference_inputs_path.is_file():
-                export_fm2(
-                    inference_inputs_path,
-                    dest,
-                    episode=int(record.get("episode", 0)),
-                    save_state_path=embed_save_state_path,
-                    game_id=game,
-                    mission_id=mission,
-                )
-                remap_fm2_guid(dest, clip_guid)
-                refresh_fm2_embedded_savestate(dest, embed_save_state_path, guid=clip_guid)
-            else:
+            overlay_src = _materialize_clip_fm2(
+                record=record,
+                dest=dest,
+                day_dir=day_dir,
+                embed_save_state_path=embed_save_state_path,
+                inference_inputs_path=inference_inputs_path,
+                game=game,
+                mission=mission,
+            )
+            if overlay_src is None:
                 continue
 
             overlay_path = _copy_overlay_sidecar(
-                src if src is not None else dest,
+                overlay_src,
                 dest,
                 record=record,
                 config=achievements_config,
@@ -285,6 +398,20 @@ def build_playlist(
 
         if paths:
             created[slug] = paths
+
+    if pad_to_seconds is not None and pad_to_seconds > 0:
+        _append_pad_clips(
+            records=records,
+            manifest_clips=manifest_clips,
+            created=created,
+            day_dir=day_dir,
+            achievements_config=achievements_config,
+            embed_save_state_path=embed_save_state_path,
+            inference_inputs_path=inference_inputs_path,
+            game=game,
+            mission=mission,
+            pad_to_seconds=pad_to_seconds,
+        )
 
     manifest_path: Path | None = None
     if manifest_clips:

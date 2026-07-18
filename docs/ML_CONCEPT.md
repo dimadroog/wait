@@ -37,7 +37,7 @@
 | Компонент               | Описание                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | Алгоритм                | PPO (stable-baselines3)                                      |
-| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи `logs/YYYYMMDD/attempts.jsonl` + `inference_inputs.jsonl`; FM2, achievements (retention 4 ч) |
+| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи `logs/YYYYMMDD/attempts.jsonl` + `inference_inputs.jsonl`; FM2, achievements ([retention window](GLOSSARY.md#retention-window) = день UTC+3; [airtime](GLOSSARY.md#airtime) плейлиста — отдельно, дефолт 1 ч) |
 | Обучение                | **CPU локально**; запуск **вручную** по `train_task.json`                           |
 | Хостинг                 | **Только текущий ПК**                                                       |
 | Эталон       | FM2 + полное прохождение миссии + manifest + ≥3 seg |
@@ -125,14 +125,14 @@ flowchart TB
 ```
 v0: PPO на CPU
         ↓
-Inference + лог `logs/YYYYMMDD/attempts.jsonl` (retention 4 ч)
+Inference + лог `logs/YYYYMMDD/attempts.jsonl` ([retention window](GLOSSARY.md#retention-window))
         ↓
 Триггер → train_task.json + seg
         ↓
 PPO → v1
 ```
 
-Плейлист эфира из attempts — [STREAMING_CONCEPT.md §5](STREAMING_CONCEPT.md#5-архитектура-эфира).
+Плейлист эфира из attempts ([airtime](GLOSSARY.md#airtime)) — [STREAMING_CONCEPT.md §5](STREAMING_CONCEPT.md#5-архитектура-эфира).
 
 ---
 
@@ -251,7 +251,7 @@ reward -= step_penalty
 - **FM2** — запись inputs (frame-perfect); файл в `reference/` каталога миссии
 - Lua-лог кадра → `reference/human_playthrough.jsonl`
 - **Save states** на границах CP (CP0..CPn) → `save_states/cpN.fc`*
-- Сложные места выявляются после inference из `logs/YYYYMMDD/attempts.jsonl` (окно 4 ч текущего дня)
+- Сложные места выявляются после inference из `logs/YYYYMMDD/attempts.jsonl` ([retention window](GLOSSARY.md#retention-window) текущего дня)
 - Видео без actions — слабый сигнал; нужен FM2 или лог кнопок
 
 
@@ -403,11 +403,11 @@ save models/genN+1.zip
 ### `logs/YYYYMMDD/attempts.jsonl`
 
 Одна строка JSON на inference-попытку: прогресс CP, смерть, reward, `tags[]`.  
-Путь, retention 4 ч, схема полей, CLI — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Overlay-поля — [STREAMING_CONCEPT.md §9](STREAMING_CONCEPT.md#9-метрики-и-лог-эфира).
+Путь, [retention window](GLOSSARY.md#retention-window) (календарный день UTC+3), схема полей, CLI — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Overlay-поля — [STREAMING_CONCEPT.md §9](STREAMING_CONCEPT.md#9-метрики-и-лог-эфира).
 
 ### `logs/YYYYMMDD/inference_inputs.jsonl`
 
-Покадровый `(frame, action)` для экспорта FM2. Путь/retention — как у `attempts.jsonl` ([SCRIPTS.md](SCRIPTS.md#inference)).
+Покадровый `(frame, action)` для экспорта FM2. Путь и retention window — как у `attempts.jsonl` ([SCRIPTS.md](SCRIPTS.md#inference)).
 
 ### FM2 из inference
 
@@ -415,7 +415,7 @@ save models/genN+1.zip
 
 ### Achievements и плейлист
 
-Идея: после inference — теги 🏆/💀 по правилам YAML → плейлист FM2 по номинациям → replay на эфире.
+Идея: после inference — теги 🏆/💀 по правилам YAML (пул = [retention window](GLOSSARY.md#retention-window)) → плейлист FM2 по номинациям → replay на эфире длительностью [airtime](GLOSSARY.md#airtime) (дефолт 1 ч realtime; не путать с retention).
 
 Компоненты и CLI — [SCRIPTS.md § Achievements](SCRIPTS.md#achievements-и-плейлист).  
 Номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).

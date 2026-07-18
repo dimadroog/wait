@@ -24,7 +24,7 @@ def main() -> None:
     parser.add_argument(
         "--input",
         default=None,
-        help="logs/YYYYMMDD/inference_inputs.jsonl (default: сегодня UTC)",
+        help="logs/YYYYMMDD/inference_inputs.jsonl (default: сегодня, день retention UTC+3)",
     )
     parser.add_argument("--output", "-o", required=True, help="output .fm2 path")
     parser.add_argument("--episode", type=int, default=None, help="export single episode")

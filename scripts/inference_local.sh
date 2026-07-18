@@ -16,11 +16,13 @@ fi
 
 PLAY=false
 SKIP_PREFLIGHT=false
+WIPE_DAY_LOGS=false
 ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --play) PLAY=true ;;
     --skip-preflight) SKIP_PREFLIGHT=true ;;
+    --wipe-day-logs) WIPE_DAY_LOGS=true ;;
     *) ARGS+=("$arg") ;;
   esac
 done
@@ -56,14 +58,18 @@ fi
 # --model default: gen0.zip (run_inference)
 
 if [[ "$SKIP_PREFLIGHT" == false ]]; then
-  echo "inference: preflight cleanup (logs, play_fm2 staging, bridge IPC) ..."
-  "$PY" scripts/inference_preflight.py --game "$GAME" --mission "$MISSION"
+  echo "inference: preflight (keep day logs by default; staging/bridge) ..."
+  PRE_ARGS=(--game "$GAME" --mission "$MISSION")
+  if [[ "$WIPE_DAY_LOGS" == true ]]; then
+    PRE_ARGS+=(--wipe-day-logs)
+  fi
+  "$PY" scripts/inference_preflight.py "${PRE_ARGS[@]}"
 fi
 
 "$PY" src/stream/run_inference.py --skip-preflight --game "$GAME" --mission "$MISSION" "${ARGS[@]}"
 
 if [[ "$PLAY" == true ]]; then
-  DATE_PREFIX="$(date -u +%Y%m%d)"
+  DATE_PREFIX="$("$PY" -c "import sys; sys.path.insert(0,'src'); from jsonl_logs import retention_date_prefix; print(retention_date_prefix())")"
   MANIFEST="games/${GAME}/missions/${MISSION}/logs/${DATE_PREFIX}/playlist.json"
   if [[ ! -f "$MANIFEST" ]]; then
     echo "inference: playlist not found: $MANIFEST" >&2
