@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Пересборка demos/seg_*.npz с реальными obs через FCEUX env (BC)."""
+"""Пересборка reference/demos_for_bc/seg_*.npz с реальными obs через FCEUX env (BC)."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,7 @@ from project_paths import resolve_mission_fm2  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Record demos/seg_*.npz with real obs from human_playthrough.jsonl via env"
+        description="Record reference/demos_for_bc/seg_*.npz with real obs from human_playthrough.jsonl via env"
     )
     parser.add_argument(
         "fm2",

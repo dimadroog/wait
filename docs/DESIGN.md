@@ -75,9 +75,9 @@
 | ---- | ---------- | -------------- |
 | `fceux/portable/` | FCEUX 2.6.6 win64 | распаковка ([fceux/README.md](../fceux/README.md)) |
 | `games/<game>/rom/*.nes` | ROM | вручную (legal) |
-| `games/…/reference/` | FM2, jsonl, scout | запись эталона |
+| `games/…/reference/` | FM2, jsonl, scout, demos_for_bc | запись эталона |
 | `games/…/config/` runtime | `ram_resolve.json`, `inference.*` | scout / build |
-| `games/…/states/`, `demos/`, `checkpoints/`, `logs/`, `tasks/` | ML-артефакты | train / inference |
+| `games/…/save_states/`, `models/`, `logs/`, `tasks/`; `reference/demos_for_bc/` | ML / эталон | train / inference / BC |
 | `.venv/` | pip-пакеты | `requirements.txt` |
 | `tmp/` | IPC FCEUX ↔ Python | runtime |
 
@@ -89,7 +89,7 @@
 | pip в `.venv/` | A |
 | NVIDIA + NVENC, OBS, Twitch, upload ≥5 Mbps | B (эфир) |
 
-**Правило:** воспроизводимость ML — git (A) + `requirements.txt` / скрипты (B+C). ROM и checkpoints — копированием `games/`, не через git.
+**Правило:** воспроизводимость ML — git (A) + `requirements.txt` / скрипты (B+C). ROM и models — копированием `games/`, не через git.
 
 ### Дерево
 
@@ -105,10 +105,9 @@ wait/
 │   └── missions/<mission_id>/
 │       ├── ram_map.md
 │       ├── config/
-│       ├── reference/
-│       ├── states/
-│       ├── demos/
-│       ├── checkpoints/
+│       ├── reference/           # FM2, jsonl, scout/, demos_for_bc/
+│       ├── save_states/
+│       ├── models/
 │       ├── logs/
 │       └── tasks/
 ├── src/
@@ -237,7 +236,7 @@ FCEUX, FM2, OBS (этап B) — за адаптером с узким API.
 | Бизнес-логика в `scripts/` | Дубли, нет переиспользования | `src/` + тонкий Facade |
 | Копия train под игру | Два контура обучения | Один `train_ppo.py` + `make_env` |
 | Новый конфиг-модуль на 3 константы | Шум, лишние импорты | Константа рядом с владельцем (см. archive [3.3](tasks/archive/TASK_FIRST_CAMPAIGN.md#33-inference-без-legacy-replay--убрать-inference_configpy)) |
-| Smoke через `train_ppo` + `smoke_*` в checkpoints | Засоряет `games/` | `smoke_*.py` / `run_smoke.py`; карантин `tmp/smoke/` |
+| Smoke через `train_ppo` + `smoke_*` в models | Засоряет `games/` | `smoke_*.py` / `run_smoke.py`; карантин `tmp/smoke/` |
 
 ---
 
@@ -333,9 +332,9 @@ Smoke и benchmark **не засоряют** `games/`. Временный выв
 
 | Тип проверки | Вывод | Запрещено |
 | ------------ | ----- | --------- |
-| Smoke | stdout; IPC в `tmp/bridge/` | `games/.../checkpoints/smoke_*`, одноразовые `scripts/` |
+| Smoke | stdout; IPC в `tmp/bridge/` | `games/.../models/smoke_*`, одноразовые `scripts/` |
 | Benchmark | stdout; `tmp/bench/<session>/` | то же |
-| Train | `games/.../checkpoints/` | запуск `train_ppo` «для smoke» с именами `smoke_*` |
+| Train | `games/.../models/` | запуск `train_ppo` «для smoke» с именами `smoke_*` |
 | Inference | `games/.../logs/` | только явный inference |
 
 **Smoke-скрипты:** `run_smoke.py` (фасад) → `smoke_bridge.py`, `smoke_env.py`, `test_parallel_env.py` — не `train_ppo.py`.
@@ -347,13 +346,13 @@ Smoke и benchmark **не засоряют** `games/`. Временный выв
 | `artifact_quarantine_dir(kind, session)` | `tmp/smoke/` или `tmp/bench/` + session |
 | `artifact_session(kind, session)` | контекст с cleanup в `finally` |
 | `cleanup_artifact_quarantine(kind, session)` | удалить tmp-карантин |
-| `cleanup_mission_smoke_checkpoints(mission)` | убрать ошибочные `smoke_*` из checkpoints |
+| `cleanup_mission_smoke_models(mission)` | убрать ошибочные `smoke_*` из models |
 | `find_stray_smoke_artifacts(mission)` | список забытых `smoke_*` в games |
 
 ### Чеклист конца сессии (агент / разработчик)
 
 - [ ] `cleanup_artifact_quarantine("smoke")` / `("bench")` если создавались сессии
-- [ ] `cleanup_mission_smoke_checkpoints(mission_dir(...))` или вручную удалить `smoke_*`
+- [ ] `cleanup_mission_smoke_models(mission_dir(...))` или вручную удалить `smoke_*`
 - [ ] Нет новых одноразовых скриптов в `scripts/`
 - [ ] `find_stray_smoke_artifacts` → пусто
 - [ ] [SCRIPTS.md](SCRIPTS.md) синхронизирован по [алгоритму регистрации](#регистрация-скриптов-в-scriptsmd)

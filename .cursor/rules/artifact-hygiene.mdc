@@ -9,8 +9,8 @@ alwaysApply: true
 
 | Тип | Разрешено | Запрещено |
 | --- | --------- | --------- |
-| Smoke / benchmark | stdout; `tmp/bridge/` (IPC); `tmp/smoke/`, `tmp/bench/` через `project_paths` | `games/.../checkpoints/`, новые `scripts/*_smoke*.py` |
-| Train | `games/.../checkpoints/` (явный train) | короткий `train_ppo` «для проверки» с `smoke_*` именами |
+| Smoke / benchmark | stdout; `tmp/bridge/` (IPC); `tmp/smoke/`, `tmp/bench/` через `project_paths` | `games/.../models/`, новые `scripts/*_smoke*.py` |
+| Train | `games/.../models/` (явный train) | короткий `train_ppo` «для проверки» с `smoke_*` именами |
 | Inference | `games/.../logs/` (явный inference) | — |
 
 API карантина: `artifact_quarantine_dir()`, `artifact_session()`, `cleanup_artifact_quarantine()` в `src/project_paths.py`.
@@ -35,7 +35,7 @@ API карантина: `artifact_quarantine_dir()`, `artifact_session()`, `clea
 ## Конец сессии (обязательно)
 
 1. `cleanup_artifact_quarantine("smoke")` и `cleanup_artifact_quarantine("bench")` при создании tmp-сессий.
-2. `cleanup_mission_smoke_checkpoints(mission_dir(...))` — удалить ошибочные `smoke_*` в checkpoints.
+2. `cleanup_mission_smoke_models(mission_dir(...))` — удалить ошибочные `smoke_*` в models.
 3. Удалить одноразовые скрипты, созданные только для отладки.
 4. `find_stray_smoke_artifacts(mission)` должен быть пуст; иначе удалить найденное.
 5. Если менялся CLI `scripts/` / `train_ppo` / `run_inference` — [алгоритм регистрации](docs/DESIGN.md#регистрация-скриптов-в-scriptsmd) → `docs/SCRIPTS.md`.

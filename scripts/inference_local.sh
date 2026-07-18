@@ -46,25 +46,14 @@ done
 
 if [[ ${#ARGS[@]} -eq 0 ]]; then
   ARGS=(
-    --checkpoint m1_v0.zip
     --episodes 5
     --max-steps 1200
     --stochastic
     --save-episode-fm2
     --build-playlist
   )
-else
-  has_checkpoint=false
-  for arg in "${ARGS[@]}"; do
-    if [[ "$arg" == --checkpoint || "$arg" == --checkpoint=* ]]; then
-      has_checkpoint=true
-      break
-    fi
-  done
-  if [[ "$has_checkpoint" == false ]]; then
-    ARGS=(--checkpoint m1_v0.zip "${ARGS[@]}")
-  fi
 fi
+# --model default: gen0.zip (run_inference)
 
 if [[ "$SKIP_PREFLIGHT" == false ]]; then
   echo "inference: preflight cleanup (logs, play_fm2 staging, bridge IPC) ..."

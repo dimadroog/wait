@@ -108,7 +108,7 @@
 
 ### Длительный `train_ppo` (2026-07-13/14)
 
-Команда: `./scripts/train_local.sh --timesteps 500000 --checkpoint-out checkpoints/m1_v0.zip` (фоновый shell; внешний kill на ~10.5 ч).
+Команда (историческое имя файла; канон теперь `models/gen0.zip`): `./scripts/train_local.sh --timesteps 500000 --checkpoint-out checkpoints/m1_v0.zip` (фоновый shell; внешний kill на ~10.5 ч).
 
 | Метрика | Начало (rollout 1–10) | Перелом (rollout 11–12, ~30 мин) | Конец (rollout 71, ~10.4 ч) |
 | ------- | --------------------- | -------------------------------- | --------------------------- |
@@ -167,7 +167,7 @@
 
 ### T5.3 длинный train после H2 remediation (2026-07-14)
 
-**Команда:** `./scripts/train_local.sh --timesteps 20000 --save-every 5000 --checkpoint-out checkpoints/m1_v0_fps_t5.zip` (`n_envs=6`, `RolloutGcCallback` on).
+**Команда (историческое имя; канон `models/genN.zip`):** `./scripts/train_local.sh --timesteps 20000 --save-every 5000 --checkpoint-out checkpoints/m1_v0_fps_t5.zip` (`n_envs=6`, `RolloutGcCallback` on).
 
 | Метрика | Базовая линия (n=8) | T5.3 (n=6 + H2) |
 | ------- | ------------------- | --------------- |
@@ -190,7 +190,7 @@
 
 План и команды: [TASK_TRAIN_FPS_DEGRADATION.md § R6](tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
 
-**Условия:** i7-3770 / 16 GB; R6.1 — `train_ppo --smoke` ×4096, preflight между; R6.2 — resume `m1_v0_n6` → 100116 steps, `--rollout-metrics`.  
+**Условия:** i7-3770 / 16 GB; R6.1 — `train_ppo --smoke` ×4096, preflight между; R6.2 — resume `m1_v0_n6` → 100116 steps, `--rollout-metrics`. Канон после rename: `models/gen0.zip` (бывший `m1_v0_n6`).  
 JSONL: `tmp/bench/fps_r6_ab_n{4,6,8}/rollouts.jsonl`, `tmp/bench/fps_r6_20260717/rollouts.jsonl`.
 
 | Метрика | R6.1 n=4 | R6.1 n=6 | R6.1 n=8 | R6.2 long n=6 |

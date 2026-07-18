@@ -96,7 +96,7 @@ def atomic_save_model(model: PPO, checkpoint: Path) -> Path:
 
 
 class LatestCheckpointCallback(BaseCallback):
-    """on_rollout_end → checkpoints/latest.zip с throttling (H5).
+    """on_rollout_end → models/latest.zip с throttling (H5).
 
     `every_rollouts=1` — каждый rollout (старое поведение).
     `every_rollouts=N` — каждый N-й (default train: 5 ≈ −15% wall vs каждый).

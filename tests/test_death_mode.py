@@ -20,7 +20,7 @@ def _make_env(*, death_mode: str = DEATH_MODE_LIFE_LOST, start_lives: int = 3) -
             game_id="rushn_attack",
             mission_id="m1",
             action_strings=("noop", "right"),
-            save_state="states/cp0.fc0",
+            save_state="save_states/cp0.fc0",
             session_id="test_death",
             death_mode=death_mode,
         )

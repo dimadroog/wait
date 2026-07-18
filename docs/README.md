@@ -47,7 +47,7 @@
 | ----- | ------- | --- |
 | **Код и конфиги** | `src/`, `scripts/`, `fceux/lua/`, `game.yaml`, `routes.yaml` | `wait/`, **в git** |
 | **Portable в проекте** | FCEUX 2.6.6 (`fceux/portable/`) | `wait/`, **не в git** — распаковка вручную ([fceux/README.md](../fceux/README.md)) |
-| **Данные и артефакты** | ROM, checkpoints, demos, save states, логи | `games/…`, **не в git** |
+| **Данные и артефакты** | ROM, models (`genN`), demos, save states, логи | `games/…`, **не в git** |
 | **Python-стек** | PyTorch, SB3, gymnasium… | `.venv/` в `wait/`, **не в git**; ставится из `requirements.txt` |
 | **Окружение хоста** | Windows 10, Python 3.11, Git, драйвер NVIDIA | системная установка |
 | **Стрим (этап B)** | OBS, Twitch | системная установка; конфиги сцен — позже в `streaming/` |

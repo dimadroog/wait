@@ -17,7 +17,7 @@ def _make_env() -> BaseNesEnv:
             game_id="rushn_attack",
             mission_id="m1",
             action_strings=("noop", "right"),
-            save_state="states/cp0.fc0",
+            save_state="save_states/cp0.fc0",
             session_id="train_0",
         )
     env._bridge = MagicMock()
@@ -46,7 +46,7 @@ def test_step_soft_reset_on_bridge_error() -> None:
     assert info["bridge_recovered"] is True
     assert "IPC timeout" in info["bridge_error"]
     assert obs.shape == (4, 84, 84)
-    bridge.reset_to_state.assert_called_once_with("states/cp0.fc0")
+    bridge.reset_to_state.assert_called_once_with("save_states/cp0.fc0")
 
 
 def test_step_reraises_non_bridge_errors() -> None:

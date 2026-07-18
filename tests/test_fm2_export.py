@@ -28,7 +28,7 @@ from fm2_export import episode_fm2_guid  # noqa: E402
 from fm2_export import remap_fm2_guid  # noqa: E402
 
 _MISSION = Path(__file__).resolve().parents[1] / "games" / "rushn_attack" / "missions" / "m1"
-_INFERENCE_CP0 = _MISSION / "states" / "inference_cp0.fc0"
+_INFERENCE_CP0 = _MISSION / "save_states" / "inference_cp0.fc0"
 _CLEAR_GUID = "A8C431C3-A298-2CE5-5493-21BB5AEAE61F"
 
 

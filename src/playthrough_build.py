@@ -304,8 +304,8 @@ def write_manifest_yaml(
                 "frame_end": seg["frame_end"],
                 "room_ids": [f"0x{r:02X}" for r in sorted(rooms)[:8]],
                 "reference_clear_sec": round((seg["frame_end"] - seg["frame_start"]) / 60.0, 1),
-                "demo_file": f"demos/{seg['id']}.npz",
-                "save_state": f"states/cp{i}.fc0",
+                "demo_file": f"reference/demos_for_bc/{seg['id']}.npz",
+                "save_state": f"save_states/cp{i}.fc0",
             }
         )
     manifest_yaml = {
@@ -324,7 +324,7 @@ def write_manifest_yaml(
     if gameplay_start_frame is not None:
         manifest_yaml["inference"] = {
             "gameplay_start_frame": gameplay_start_frame,
-            "save_state": "states/inference_cp0.fc0",
+            "save_state": "save_states/inference_cp0.fc0",
         }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.dump(manifest_yaml, allow_unicode=True, sort_keys=False), encoding="utf-8")

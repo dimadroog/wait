@@ -1,4 +1,4 @@
-"""Запись demos/seg_*.npz с реальными obs через Gymnasium env + FCEUX."""
+"""Запись reference/demos_for_bc/seg_*.npz с реальными obs через Gymnasium env + FCEUX."""
 from __future__ import annotations
 
 import json
@@ -12,6 +12,7 @@ import yaml
 
 from env.base_nes_env import BaseNesEnv
 from env.loader import make_env
+from project_paths import demos_for_bc_dir
 from train.action_map import action_string_to_index
 from train.env_factory import cleanup_bridge_sessions
 
@@ -48,7 +49,7 @@ def record_segment(
     frame_skip = int(base.frame_skip)
     start = int(seg["frame_start"])
     end = int(seg["frame_end"])
-    save_state = str(seg.get("save_state", "states/cp0.fc0"))
+    save_state = str(seg.get("save_state", "save_states/cp0.fc0"))
     action_strings = base.action_strings
 
     obs, _info = env.reset(options={"save_state": save_state})
@@ -127,7 +128,8 @@ def _record_one_segment(
     """Один сегмент в отдельном процессе: свой FCEUX + bridge session."""
     seg_id = str(seg["id"])
     human_by_frame = _load_human_jsonl(human_path)
-    demos_dir = mission / "demos"
+    demos_dir = demos_for_bc_dir(mission)
+    demos_dir.mkdir(parents=True, exist_ok=True)
 
     env = make_env(
         game_id,
@@ -202,7 +204,7 @@ def record_demos(
     max_steps: int | None = None,
     workers: int | None = None,
 ) -> list[Path]:
-    """Пересобирает demos/seg_*.npz с obs из env (BC / ML_CONCEPT §8)."""
+    """Пересобирает reference/demos_for_bc/seg_*.npz с obs из env (BC / ML_CONCEPT §8)."""
     manifest_path = mission / "config" / "playthrough_manifest.yaml"
     human_path = mission / "reference" / "human_playthrough.jsonl"
     if not manifest_path.is_file():
@@ -221,6 +223,7 @@ def record_demos(
 
     n_workers = workers if workers is not None else default_record_workers(len(segments))
     n_workers = max(1, min(n_workers, len(segments), MAX_RECORD_WORKERS))
+    demos_for_bc_dir(mission).mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
     if n_workers == 1:
@@ -246,7 +249,7 @@ def record_demos(
                 if obs.shape[0] == 0:
                     print(f"  skip {seg_id}: no transitions")
                     continue
-                out = mission / "demos" / f"{seg_id}.npz"
+                out = demos_for_bc_dir(mission) / f"{seg_id}.npz"
                 write_demo_npz(
                     out,
                     obs=obs,

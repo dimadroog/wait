@@ -7,7 +7,7 @@ from project_paths import load_yaml
 
 
 def inference_save_state_for(cp_index: int) -> str:
-    return f"states/inference_cp{cp_index}.fc0"
+    return f"save_states/inference_cp{cp_index}.fc0"
 
 
 def gameplay_start_frame(mission: Path) -> int | None:

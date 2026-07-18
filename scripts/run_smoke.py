@@ -19,7 +19,7 @@ sys.path.insert(0, str(_REPO / "src"))
 
 from project_paths import (  # noqa: E402
     cleanup_artifact_quarantine,
-    cleanup_mission_smoke_checkpoints,
+    cleanup_mission_smoke_models,
     find_stray_smoke_artifacts,
     mission_dir,
 )
@@ -99,9 +99,9 @@ def main() -> None:
         cleanup_bridge_sessions("bench_")
         cleanup_artifact_quarantine("smoke")
         mission = mission_dir("rushn_attack", "m1")
-        removed = cleanup_mission_smoke_checkpoints(mission)
+        removed = cleanup_mission_smoke_models(mission)
         if removed:
-            print(f"removed stray checkpoints: {[str(p) for p in removed]}")
+            print(f"removed stray models: {[str(p) for p in removed]}")
         stray = find_stray_smoke_artifacts(mission)
         if stray:
             print(f"WARN stray smoke artifacts: {[str(p) for p in stray]}")

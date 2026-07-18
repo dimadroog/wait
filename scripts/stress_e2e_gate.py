@@ -120,7 +120,7 @@ def build_stress_report_payload(report: StressReport, *, game: str, mission: str
 def _resolve_save_state(mission: Path, arg: str | None) -> str:
     if arg:
         return arg
-    for rel in ("states/cp0.fc0", "states/cp1.fc0"):
+    for rel in ("save_states/cp0.fc0", "save_states/cp1.fc0"):
         if (mission / rel).is_file():
             return rel
     raise FileNotFoundError(f"No save state in {mission / 'states'}")

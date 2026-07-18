@@ -14,7 +14,7 @@ from project_paths import artifact_quarantine_dir, cleanup_artifact_quarantine, 
 from ram_map_load import load_ram_addresses  # noqa: E402
 
 _MISSION = Path(__file__).resolve().parents[1] / "games" / "rushn_attack" / "missions" / "m1"
-_INFERENCE_CP0 = _MISSION / "states" / "inference_cp0.fc0"
+_INFERENCE_CP0 = _MISSION / "save_states" / "inference_cp0.fc0"
 _CLEAR_FM2 = _MISSION / "reference" / "clear.fm2"
 
 

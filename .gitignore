@@ -5,17 +5,17 @@ games/**/rom/*.fds
 # FCEUX portable (официальный дистрибутив; см. fceux/README.md)
 fceux/portable/
 
-# ML artifacts (вся ветка checkpoints, включая runs/)
-games/**/checkpoints/**
-!games/**/checkpoints/.gitkeep
-games/**/demos/**
-!games/**/demos/.gitkeep
-games/**/states/**
-!games/**/states/.gitkeep
+# ML artifacts (вся ветка models/, включая runs/)
+games/**/models/**
+!games/**/models/.gitkeep
+games/**/save_states/**
+!games/**/save_states/.gitkeep
 games/**/logs/**
 !games/**/logs/.gitkeep
 games/**/reference/scout/**
 !games/**/reference/scout/.gitkeep
+games/**/reference/demos_for_bc/**
+!games/**/reference/demos_for_bc/.gitkeep
 games/**/tasks/**
 !games/**/tasks/.gitkeep
 

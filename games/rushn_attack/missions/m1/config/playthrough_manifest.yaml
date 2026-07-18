@@ -25,8 +25,8 @@ segments:
   - '0x06'
   - '0x07'
   reference_clear_sec: 19.7
-  demo_file: demos/seg_001.npz
-  save_state: states/cp0.fc0
+  demo_file: reference/demos_for_bc/seg_001.npz
+  save_state: save_states/cp0.fc0
 - id: seg_002
   name: seg_002
   checkpoint_from: 1
@@ -43,8 +43,8 @@ segments:
   - '0x06'
   - '0x07'
   reference_clear_sec: 19.7
-  demo_file: demos/seg_002.npz
-  save_state: states/cp1.fc0
+  demo_file: reference/demos_for_bc/seg_002.npz
+  save_state: save_states/cp1.fc0
 - id: seg_003
   name: seg_003
   checkpoint_from: 2
@@ -54,8 +54,8 @@ segments:
   room_ids:
   - '0x00'
   reference_clear_sec: 19.7
-  demo_file: demos/seg_003.npz
-  save_state: states/cp2.fc0
+  demo_file: reference/demos_for_bc/seg_003.npz
+  save_state: save_states/cp2.fc0
 - id: seg_004
   name: seg_004
   checkpoint_from: 3
@@ -65,8 +65,8 @@ segments:
   room_ids:
   - '0x00'
   reference_clear_sec: 19.7
-  demo_file: demos/seg_004.npz
-  save_state: states/cp3.fc0
+  demo_file: reference/demos_for_bc/seg_004.npz
+  save_state: save_states/cp3.fc0
 - id: seg_005
   name: seg_005
   checkpoint_from: 4
@@ -83,8 +83,8 @@ segments:
   - '0x12'
   - '0x13'
   reference_clear_sec: 19.7
-  demo_file: demos/seg_005.npz
-  save_state: states/cp4.fc0
+  demo_file: reference/demos_for_bc/seg_005.npz
+  save_state: save_states/cp4.fc0
 inference:
   gameplay_start_frame: 1250
-  save_state: states/inference_cp0.fc0
+  save_state: save_states/inference_cp0.fc0

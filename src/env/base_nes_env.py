@@ -81,8 +81,8 @@ class BaseNesEnv(gym.Env):
             manifest = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
             segments = manifest.get("segments") or []
             if segments:
-                return str(segments[0].get("save_state", "states/cp0.fc0"))
-        return "states/cp0.fc0"
+                return str(segments[0].get("save_state", "save_states/cp0.fc0"))
+        return "save_states/cp0.fc0"
 
     def _action_string(self, action: int) -> str:
         return self.action_strings[int(action)]

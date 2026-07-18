@@ -15,7 +15,13 @@ from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "src"))
 
-from project_paths import artifact_quarantine_dir, cleanup_artifact_quarantine, mission_dir, repo_root  # noqa: E402
+from project_paths import (  # noqa: E402
+    artifact_quarantine_dir,
+    cleanup_artifact_quarantine,
+    default_model_zip,
+    mission_dir,
+    repo_root,
+)
 from train.bc_pretrain import bc_pretrain, resolve_demo_paths  # noqa: E402
 from train.checkpointing import (  # noqa: E402
     InterruptHandler,
@@ -49,8 +55,8 @@ def _default_save_state(mission: Path) -> str:
         manifest = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
         segments = manifest.get("segments") or []
         if segments:
-            return str(segments[0].get("save_state", "states/cp0.fc0"))
-    return "states/cp0.fc0"
+            return str(segments[0].get("save_state", "save_states/cp0.fc0"))
+    return "save_states/cp0.fc0"
 
 
 def load_train_task(path: Path) -> dict[str, Any]:
@@ -70,10 +76,12 @@ def _reward_overrides_from_task(task: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def apply_task_defaults(args: argparse.Namespace, task: dict[str, Any], mission: Path) -> None:
-    if task.get("checkpoint_in"):
-        args.checkpoint_in = str(mission / task["checkpoint_in"])
-    if task.get("checkpoint_out"):
-        args.checkpoint_out = str(mission / task["checkpoint_out"])
+    model_in = task.get("model_in") or task.get("checkpoint_in")
+    model_out = task.get("model_out") or task.get("checkpoint_out")
+    if model_in:
+        args.model_in = str(mission / model_in)
+    if model_out:
+        args.model_out = str(mission / model_out)
     if task.get("save_state"):
         args.save_state = str(task["save_state"])
     if task.get("reward_profile"):
@@ -88,7 +96,7 @@ def apply_task_defaults(args: argparse.Namespace, task: dict[str, Any], mission:
         args.bc_demo = str(mission / task["demo_segment"])
 
 
-def _resolve_checkpoint(path: str | None, mission: Path) -> Path | None:
+def _resolve_model_path(path: str | None, mission: Path) -> Path | None:
     if not path:
         return None
     p = Path(path)
@@ -98,26 +106,26 @@ def _resolve_checkpoint(path: str | None, mission: Path) -> Path | None:
 
 
 def _configure_smoke(args: argparse.Namespace, mission: Path) -> str | None:
-    """Smoke: checkpoint в tmp/smoke/<session>/; без runs/ и resume."""
+    """Smoke: model zip в tmp/smoke/<session>/; без runs/ и resume."""
     if not args.smoke:
         return None
     session = (args.smoke_session or "train_smoke").strip() or "train_smoke"
     smoke_dir = artifact_quarantine_dir("smoke", session).resolve()
-    if args.checkpoint_out:
-        explicit = _resolve_checkpoint(args.checkpoint_out, mission)
+    if args.model_out:
+        explicit = _resolve_model_path(args.model_out, mission)
         if explicit and mission.resolve() in explicit.resolve().parents:
-            print(f"smoke: ignore --checkpoint-out under mission ({explicit})")
-    args.checkpoint_out = str(smoke_dir / "checkpoint.zip")
+            print(f"smoke: ignore --model-out under mission ({explicit})")
+    args.model_out = str(smoke_dir / "model.zip")
     args.resume = False
-    args.no_intermediate_checkpoints = True
-    args.latest_checkpoint = False
-    print(f"smoke: session={session} checkpoint={args.checkpoint_out}")
+    args.no_intermediate_models = True
+    args.latest_model = False
+    print(f"smoke: session={session} model={args.model_out}")
     return session
 
 
 def _persist_train_state(
     model: PPO,
-    checkpoint_out: Path,
+    model_out: Path,
     *,
     target_timesteps: int,
     game: str,
@@ -126,9 +134,9 @@ def _persist_train_state(
     save_state: str,
     reason: str,
 ) -> None:
-    atomic_save_model(model, checkpoint_out)
+    atomic_save_model(model, model_out)
     sidecar = write_sidecar(
-        checkpoint_out,
+        model_out,
         target_timesteps=target_timesteps,
         game=game,
         mission=mission_id,
@@ -136,7 +144,7 @@ def _persist_train_state(
         save_state=save_state,
         num_timesteps=int(model.num_timesteps),
     )
-    print(f"saved ({reason}) {checkpoint_zip_path(checkpoint_out)}  timesteps={model.num_timesteps}")
+    print(f"saved ({reason}) {checkpoint_zip_path(model_out)}  timesteps={model.num_timesteps}")
     print(f"  sidecar {sidecar.name}")
 
 
@@ -155,10 +163,8 @@ def train(args: argparse.Namespace) -> Path:
         smoke_session = _configure_smoke(args, mission)
 
         save_state = args.save_state or _default_save_state(mission)
-        checkpoint_out = _resolve_checkpoint(
-            args.checkpoint_out, mission
-        ) or (mission / "checkpoints" / "m1_v0.zip")
-        checkpoint_out.parent.mkdir(parents=True, exist_ok=True)
+        model_out = _resolve_model_path(args.model_out, mission) or default_model_zip(mission)
+        model_out.parent.mkdir(parents=True, exist_ok=True)
         target_timesteps = int(args.timesteps)
 
         reward_overrides = _reward_overrides_from_task(task)
@@ -180,12 +186,12 @@ def train(args: argparse.Namespace) -> Path:
             death_mode=args.death_mode,
         )
 
-        checkpoint_in = _resolve_checkpoint(args.checkpoint_in, mission)
+        model_in = _resolve_model_path(args.model_in, mission)
         resuming = False
         skip_bc = False
 
-        if args.resume and checkpoint_out.is_file():
-            sidecar = read_sidecar(checkpoint_out)
+        if args.resume and model_out.is_file():
+            sidecar = read_sidecar(model_out)
             if sidecar:
                 validate_sidecar_n_envs(sidecar, args.n_envs)
                 prev_target = int(sidecar.get("target_timesteps", target_timesteps))
@@ -194,14 +200,14 @@ def train(args: argparse.Namespace) -> Path:
                     print(
                         f"resume: raising target_timesteps {prev_target} -> {target_timesteps} (CLI)"
                     )
-            print(f"resume checkpoint {checkpoint_out}  target={target_timesteps}")
-            model = PPO.load(str(checkpoint_out.with_suffix("")), env=vec_env, device="cpu")
+            print(f"resume model {model_out}  target={target_timesteps}")
+            model = PPO.load(str(model_out.with_suffix("")), env=vec_env, device="cpu")
             model.learning_rate = args.learning_rate
             resuming = True
             skip_bc = True
-        elif checkpoint_in and checkpoint_in.is_file():
-            print(f"load checkpoint {checkpoint_in}")
-            model = PPO.load(str(checkpoint_in.with_suffix("")), env=vec_env, device="cpu")
+        elif model_in and model_in.is_file():
+            print(f"load model {model_in}")
+            model = PPO.load(str(model_in.with_suffix("")), env=vec_env, device="cpu")
             model.learning_rate = args.learning_rate
         else:
             print("new PPO CnnPolicy")
@@ -230,7 +236,7 @@ def train(args: argparse.Namespace) -> Path:
             )
 
         write_sidecar(
-            checkpoint_out,
+            model_out,
             target_timesteps=target_timesteps,
             game=args.game,
             mission=args.mission,
@@ -247,31 +253,31 @@ def train(args: argparse.Namespace) -> Path:
             except (EOFError, BrokenPipeError):
                 pass
             cleanup_bridge_sessions("train_")
-            return checkpoint_zip_path(checkpoint_out)
+            return checkpoint_zip_path(model_out)
 
         callbacks: list[Any] = []
-        if not args.no_intermediate_checkpoints:
-            ckpt_dir = mission / "checkpoints" / "runs"
-            ckpt_dir.mkdir(parents=True, exist_ok=True)
-            prefix = checkpoint_out.stem
+        if not args.no_intermediate_models:
+            runs_dir = mission / "models" / "runs"
+            runs_dir.mkdir(parents=True, exist_ok=True)
+            prefix = model_out.stem
             save_freq = max(args.save_every // args.n_envs, 1)
             callbacks.append(
                 CheckpointCallback(
                     save_freq=save_freq,
-                    save_path=str(ckpt_dir),
+                    save_path=str(runs_dir),
                     name_prefix=prefix,
                     save_replay_buffer=False,
                     save_vecnormalize=False,
                 )
             )
-        if args.latest_checkpoint:
-            latest = mission / "checkpoints" / "latest.zip"
+        if args.latest_model:
+            latest = mission / "models" / "latest.zip"
             latest_every = max(int(args.latest_every), 1)
             callbacks.append(
                 LatestCheckpointCallback(latest, every_rollouts=latest_every, verbose=1)
             )
             if latest_every > 1:
-                print(f"latest checkpoint every {latest_every} rollouts -> {latest}")
+                print(f"latest model every {latest_every} rollouts -> {latest}")
         if args.rollout_gc:
             callbacks.append(RolloutGcCallback())
         if not args.no_progress_pct:
@@ -365,7 +371,7 @@ def train(args: argparse.Namespace) -> Path:
                         abort_reason = "complete"
                     _persist_train_state(
                         model,
-                        checkpoint_out,
+                        model_out,
                         target_timesteps=target_timesteps,
                         game=args.game,
                         mission_id=args.mission,
@@ -374,7 +380,7 @@ def train(args: argparse.Namespace) -> Path:
                         reason=abort_reason,
                     )
 
-        return checkpoint_zip_path(checkpoint_out)
+        return checkpoint_zip_path(model_out)
     finally:
         if smoke_session is not None:
             cleanup_artifact_quarantine("smoke", smoke_session)
@@ -393,9 +399,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--n-epochs", type=int, default=4)
     p.add_argument("--gamma", type=float, default=0.99)
     p.add_argument("--learning-rate", type=float, default=2.5e-4)
-    p.add_argument("--save-every", type=int, default=50_000, help="checkpoint каждые N env steps (total)")
+    p.add_argument("--save-every", type=int, default=50_000, help="промежуточный save каждые N env steps (total)")
     p.add_argument("--threads", type=int, default=2, help="torch/BLAS threads (cap 2 при n_envs≥6)")
-    p.add_argument("--save-state", default=None, help="states/cp0.fc0 относительно миссии")
+    p.add_argument("--save-state", default=None, help="save_states/cp0.fc0 относительно миссии")
     p.add_argument(
         "--death-mode",
         default=None,
@@ -403,19 +409,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="terminated: life_lost|game_over (default: games/.../env_config.yaml)",
     )
     p.add_argument("--reward-profile", default="default")
-    p.add_argument("--checkpoint-in", default=None)
-    p.add_argument("--checkpoint-out", default=None)
+    p.add_argument("--model-in", default=None, help="загрузить .zip (относительно миссии или абсолютный)")
+    p.add_argument("--model-out", default=None, help="сохранить .zip (default: models/gen0.zip)")
     p.add_argument(
         "--resume",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="продолжить checkpoint_out + sidecar (default: on)",
+        help="продолжить model_out + sidecar (default: on)",
     )
     p.add_argument(
-        "--latest-checkpoint",
+        "--latest-model",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="писать checkpoints/latest.zip (default: on; частота — --latest-every)",
+        help="писать models/latest.zip (default: on; частота — --latest-every)",
     )
     p.add_argument(
         "--latest-every",
@@ -423,7 +429,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=5,
         help="latest.zip каждые N rollout (H5 throttle; default 5; 1=каждый)",
     )
-    p.add_argument("--bc-demo", default=None, help="demos/seg_XXX.npz для BC")
+    p.add_argument("--bc-demo", default=None, help="reference/demos_for_bc/seg_XXX.npz для BC")
     p.add_argument("--bc-epochs", type=int, default=0, help="BC epochs (0 = skip)")
     p.add_argument("--no-bc", action="store_true")
     p.add_argument("--no-turbo", action="store_true", help="FCEUX без turbo (отладка)")
@@ -437,7 +443,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--smoke",
         action="store_true",
-        help="короткий train: checkpoint в tmp/smoke/<session>/, autodelete в finally",
+        help="короткий train: model в tmp/smoke/<session>/, autodelete в finally",
     )
     p.add_argument(
         "--smoke-session",
@@ -445,9 +451,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="подкаталог tmp/smoke/ при --smoke (default: train_smoke)",
     )
     p.add_argument(
-        "--no-intermediate-checkpoints",
+        "--no-intermediate-models",
         action="store_true",
-        help="без CheckpointCallback / checkpoints/runs/ (включено при --smoke)",
+        help="без CheckpointCallback / models/runs/ (включено при --smoke)",
     )
     p.add_argument(
         "--learn-stall-timeout",
@@ -459,7 +465,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--session-wall-timeout",
         type=float,
         default=0.0,
-        help="H6: abort learn по wall-clock сессии, с (default 0=off; resume из checkpoint)",
+        help="H6: abort learn по wall-clock сессии, с (default 0=off; resume из model zip)",
     )
     p.add_argument(
         "--recycle-every-timesteps",

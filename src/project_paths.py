@@ -185,15 +185,35 @@ def artifact_session(kind: str, session: str) -> Iterator[Path]:
         cleanup_artifact_quarantine(kind, session)
 
 
-def _mission_checkpoint_dirs(mission: Path) -> list[Path]:
-    dirs = [mission / "checkpoints", mission / "checkpoints" / "runs"]
+def default_model_zip(mission: Path, generation: int = 0) -> Path:
+    """Канонический zip поколения модели: models/gen{N}.zip относительно миссии."""
+    return mission / "models" / f"gen{int(generation)}.zip"
+
+
+def save_states_dir(mission: Path) -> Path:
+    """Каталог FCEUX save states миссии (cpN.fc0, inference_cp0.fc0)."""
+    return mission / "save_states"
+
+
+def demos_for_bc_dir(mission: Path) -> Path:
+    """Каталог BC-демо (эталон → NPZ): reference/demos_for_bc/."""
+    return mission / "reference" / "demos_for_bc"
+
+
+def default_save_state_rel(cp_index: int = 0) -> str:
+    """Путь save state относительно миссии: save_states/cpN.fc0."""
+    return f"save_states/cp{int(cp_index)}.fc0"
+
+
+def _mission_model_dirs(mission: Path) -> list[Path]:
+    dirs = [mission / "models", mission / "models" / "runs"]
     return [d for d in dirs if d.is_dir()]
 
 
-def cleanup_mission_smoke_checkpoints(mission: Path) -> list[Path]:
-    """Удалить smoke_* в checkpoints/ и checkpoints/runs/ (ошибочные прогоны train/smoke)."""
+def cleanup_mission_smoke_models(mission: Path) -> list[Path]:
+    """Удалить smoke_* в models/ и models/runs/ (ошибочные прогоны train/smoke)."""
     removed: list[Path] = []
-    for base in _mission_checkpoint_dirs(mission):
+    for base in _mission_model_dirs(mission):
         for path in base.glob("smoke_*"):
             if path.is_file():
                 path.unlink()
@@ -202,8 +222,8 @@ def cleanup_mission_smoke_checkpoints(mission: Path) -> list[Path]:
 
 
 def find_stray_smoke_artifacts(mission: Path) -> list[Path]:
-    """Пути smoke_* в games/.../checkpoints — не должны оставаться после сессии."""
+    """Пути smoke_* в games/.../models — не должны оставаться после сессии."""
     found: list[Path] = []
-    for base in _mission_checkpoint_dirs(mission):
+    for base in _mission_model_dirs(mission):
         found.extend(p for p in base.glob("smoke_*") if p.is_file())
     return sorted(found)

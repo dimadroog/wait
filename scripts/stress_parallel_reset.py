@@ -17,7 +17,7 @@ def main() -> None:
         game_id="rushn_attack",
         mission_id="m1",
         n_envs=4,
-        save_state="states/cp0.fc0",
+        save_state="save_states/cp0.fc0",
         subproc=True,
     )
     try:

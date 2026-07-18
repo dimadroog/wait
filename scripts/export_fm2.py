@@ -37,7 +37,7 @@ def main() -> None:
     parser.add_argument(
         "--save-state",
         default=None,
-        help="путь к .fc0 для embed (default: states/inference_cp0.fc0)",
+        help="путь к .fc0 для embed (default: save_states/inference_cp0.fc0)",
     )
     args = parser.parse_args()
 

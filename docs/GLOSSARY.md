@@ -13,9 +13,9 @@
 
 **Artificial Intelligence** — в проекте: нейросеть ([PPO](#ppo)), которая играет в [NES](#nes) через [inference](#inference).
 
-### Checkpoint (модель)
+### Поколение модели (`genN`)
 
-Файл весов [PPO](#ppo): `checkpoints/m1_vN.zip`. Не путать с [save state](#save-state) эмулятора.
+Файл весов [PPO](#ppo): `models/genN.zip` в каталоге миссии (поколение 0, 1, …). Не путать с [CP](#cp) (игровой прогресс) и с [save state](#save-state) эмулятора.
 
 ### CP
 
@@ -52,7 +52,7 @@
 | Аспект | Правило |
 | ------ | ------- |
 | Где | `tmp/bench/<session>/` через `artifact_quarantine_dir("bench", …)` |
-| Артефакты | JSON результатов, скриншоты PPU; не `games/…/logs/`, не `checkpoints/` |
+| Артефакты | JSON результатов, скриншоты PPU; не `games/…/logs/`, не `models/` |
 | Жизненный цикл | после фиксации вердикта в [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md) — harness-скрипт удалить, JSON оставить |
 | Gate | [PPU](#ppu) на GUI оператором; headless probe — вспомогательный, не закрывает issue (P22) |
 | Не путать с | `play_inference_fm2.py`, `run_inference.py`, `smoke_*.py` (регрессия/production) |
@@ -130,11 +130,11 @@
 
 ### Save state
 
-Снимок состояния **эмулятора** [FCEUX](#fceux) (`states/cpN.fc`* в каталоге миссии); стартовая позиция эпизода при `env.reset()`.
+Снимок состояния **эмулятора** [FCEUX](#fceux) (`save_states/cpN.fc*` в каталоге миссии); стартовая позиция эпизода при `env.reset()`.
 
 ### seg
 
-**Сегмент** — фрагмент [эталона](#etalon) (`seg_001`…); demo `.npz`, границы в [manifest](#manifest).
+**Сегмент** — фрагмент [эталона](#etalon) (`seg_001`…); BC-demo в `reference/demos_for_bc/*.npz`, границы в [manifest](#manifest).
 
 ### SB3
 
@@ -214,4 +214,4 @@ rollout_metrics: #2 wall=95.1s steps=768 rate=8.079 avail_ram_mb=9262.2
 
 ### Эталон
 
-Полное прохождение миссии автором: [FM2](#fm2) + `reference/human_playthrough.jsonl` + save states в `games/<game>/missions/<m>/`; для [seg](#seg) и [дообучения](#doobuchenie).
+Полное прохождение миссии автором: [FM2](#fm2) + `reference/human_playthrough.jsonl` + `save_states/` + `reference/demos_for_bc/`; для [seg](#seg) и [дообучения](#doobuchenie).

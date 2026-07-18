@@ -74,7 +74,7 @@ noop | left | right | down | up | right+up | left+up | A | B
 
 В RAM `lives` на смерти часто кратковременно **0** (анимация), затем respawn с lives−1 — поэтому `game_over` считает **события** потери жизни, а не `lives==0`. CLI: `--death-mode` у `train_ppo` / `smoke_env`.
 
-Smoke (random, `states/cp0.fc0`, 2026-07-18): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
+Smoke (random, `save_states/cp0.fc0`, 2026-07-18): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
 
 ---
 
@@ -144,10 +144,10 @@ CP5: mission clear
 | Jsonl эталона | `reference/human_playthrough.jsonl` |
 | Manifest | `config/playthrough_manifest.yaml` |
 | Routes | `config/routes.yaml` |
-| Save states | `states/cpN.fc*` |
-| Demos | `demos/seg_*.npz` |
-| Checkpoints модели | `checkpoints/m1_vN.zip` |
-| Inference start | `states/inference_cp0.fc0` |
+| Save states | `save_states/cpN.fc*` |
+| Demos (BC) | `reference/demos_for_bc/seg_*.npz` |
+| Поколения модели | `models/genN.zip` |
+| Inference start | `save_states/inference_cp0.fc0` |
 
 Общий контракт записи / IPC — [ML_CONCEPT.md §7](ML_CONCEPT.md#7-эталонное-прохождение-и-дообучение).
 
@@ -181,24 +181,24 @@ segments:
     checkpoint_from: 0
     checkpoint_to: 1
     room_ids: [0x01, 0x02]
-    demo_file: demos/seg_001.npz
-    save_state: states/cp0.fc*
+    demo_file: reference/demos_for_bc/seg_001.npz
+    save_state: save_states/cp0.fc*
 
   - id: seg_002
     name: ladder_section
     checkpoint_from: 1
     checkpoint_to: 2
     room_ids: [0x03, 0x04]
-    demo_file: demos/seg_002.npz
-    save_state: states/cp1.fc*
+    demo_file: reference/demos_for_bc/seg_002.npz
+    save_state: save_states/cp1.fc*
 
   - id: seg_003
     name: mid_mission_alley
     checkpoint_from: 2
     checkpoint_to: 3
     room_ids: [0x05, 0x06]
-    demo_file: demos/seg_003.npz
-    save_state: states/cp2.fc*
+    demo_file: reference/demos_for_bc/seg_003.npz
+    save_state: save_states/cp2.fc*
 ```
 
 ### `config/routes.yaml` (фрагмент)
@@ -251,10 +251,10 @@ heuristics:
     "x_bucket": 160,
     "deaths": 12
   },
-  "checkpoint_in": "checkpoints/m1_v3.zip",
-  "checkpoint_out": "checkpoints/m1_v4.zip",
+  "model_in": "models/gen3.zip",
+  "model_out": "models/gen4.zip",
   "segment_id": "seg_003",
-  "save_state": "states/cp2.fc*",
+  "save_state": "save_states/cp2.fc*",
   "route_config": "config/routes.yaml",
   "reward_profile": "hot_zone",
   "hot_zone": { "x_from": 128, "x_to": 192 },
@@ -297,10 +297,10 @@ heuristics:
 - [ ] `config/routes.yaml` с ≥4 CP, согласован с эталоном
 - [ ] `ram_map.md` — ключевые адреса RAM
 - [ ] `RushnAttackEnv` — smoke test
-- [ ] `m1_v0.zip` обучена на CPU; inference на том же ПК
+- [ ] `models/gen0.zip` обучена на CPU; inference на том же ПК
 - [ ] Стабильно **CP2–3** (≥30% попыток)
-- [ ] Цикл дообучения: триггер → `train_task.json` → train → новый checkpoint
-- [ ] Rollback (v_new хуже → v_prev)
+- [ ] Цикл дообучения: триггер → `train_task.json` → train → новое поколение (`genN`)
+- [ ] Rollback (`gen_new` хуже → `gen_prev`)
 
 ---
 

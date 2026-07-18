@@ -22,7 +22,7 @@ def main() -> None:
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
     parser.add_argument("--n-envs", type=int, default=8)
-    parser.add_argument("--save-state", default="states/cp0.fc0")
+    parser.add_argument("--save-state", default="save_states/cp0.fc0")
     parser.add_argument("--cycles", type=int, default=30, help="step rounds on all envs")
     parser.add_argument(
         "--reset-every",

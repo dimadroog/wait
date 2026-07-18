@@ -96,7 +96,7 @@ def _resolve_save_state(mission: Path, arg: str | None) -> str:
 
 
 def _bench_checkpoint_dir(session: str) -> Path:
-    """Абсолютный tmp/bench/<session>/ — не mission/checkpoints."""
+    """Абсолютный tmp/bench/<session>/ — не mission/models/."""
     return artifact_quarantine_dir("bench", session).resolve()
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Нарезка demos/seg_*.npz из manifest + human_playthrough.jsonl."""
+"""Нарезка reference/demos_for_bc/seg_*.npz из manifest + human_playthrough.jsonl."""
 from __future__ import annotations
 
 import json
@@ -13,6 +13,7 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from playthrough_build import encode_action  # noqa: E402
+from project_paths import demos_for_bc_dir  # noqa: E402
 
 
 def _load_human_jsonl(path: Path) -> dict[int, dict]:
@@ -36,7 +37,7 @@ def build_demos(mission: Path) -> list[Path]:
 
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
     by_frame = _load_human_jsonl(human_path)
-    demos_dir = mission / "demos"
+    demos_dir = demos_for_bc_dir(mission)
     demos_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
@@ -74,7 +75,7 @@ def main() -> None:
 
     from project_paths import resolve_mission_fm2
 
-    parser = argparse.ArgumentParser(description="Segment playthrough into demos/*.npz")
+    parser = argparse.ArgumentParser(description="Segment playthrough into reference/demos_for_bc/*.npz")
     parser.add_argument(
         "fm2",
         help="путь к FM2 (для определения миссии): games/.../reference/<file>.fm2",

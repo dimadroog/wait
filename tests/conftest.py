@@ -11,7 +11,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from project_paths import (  # noqa: E402
     cleanup_artifact_quarantine,
-    cleanup_mission_smoke_checkpoints,
+    cleanup_mission_smoke_models,
     find_stray_smoke_artifacts,
     mission_dir,
     resolve_fceux_binary,
@@ -58,6 +58,6 @@ def _bridge_and_smoke_hygiene(mission_m1: Path) -> None:
     cleanup_bridge_sessions("train_")
     cleanup_bridge_sessions("bench_")
     cleanup_artifact_quarantine("smoke")
-    cleanup_mission_smoke_checkpoints(mission_m1)
+    cleanup_mission_smoke_models(mission_m1)
     stray = find_stray_smoke_artifacts(mission_m1)
-    assert not stray, f"stray smoke_* in mission checkpoints: {stray}"
+    assert not stray, f"stray smoke_* in mission models: {stray}"

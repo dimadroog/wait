@@ -365,7 +365,7 @@ class FceuxBridge:
         raise FceuxBridgeError(f"Bridge ready timeout ({timeout}s)")
 
     def start(self, *, load_state: str | Path | None = None, timeout: float = DEFAULT_TIMEOUT) -> None:
-        """Запуск FCEUX. load_state — путь относительно mission/ (напр. states/cp1.fc0)."""
+        """Запуск FCEUX. load_state — путь относительно mission/ (напр. save_states/cp1.fc0)."""
         if self._proc and self._proc.poll() is None:
             self.close()
 

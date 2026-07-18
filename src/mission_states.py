@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from fceux_launch import run_fceux_movie
-from project_paths import parse_fm2_rom_basename, repo_root, resolve_fceux_home
+from project_paths import parse_fm2_rom_basename, repo_root, resolve_fceux_home, save_states_dir
 
 
 def stage_fm2_for_fceux(fm2: Path, rom: Path, staging: Path) -> tuple[Path, Path]:
@@ -25,8 +25,8 @@ def _fceux_fcs_dir() -> Path:
 
 
 def collect_slot_states(mission: Path, fm2: Path, plan: list[dict], rom_base: str) -> None:
-    """Копирует save states из fceux/portable/fcs/ в mission/states/."""
-    states = mission / "states"
+    """Копирует save states из fceux/portable/fcs/ в mission/save_states/."""
+    states = save_states_dir(mission)
     states.mkdir(parents=True, exist_ok=True)
     fcs_dir = _fceux_fcs_dir()
     movie_stem = fm2.stem
@@ -42,7 +42,7 @@ def collect_slot_states(mission: Path, fm2: Path, plan: list[dict], rom_base: st
             for src in fcs_dir.glob(pattern):
                 shutil.copy2(src, dest)
                 found = True
-                print(f"  {src.name} -> states/{dest.name}")
+                print(f"  {src.name} -> save_states/{dest.name}")
                 break
             if found:
                 break
@@ -66,7 +66,7 @@ def save_fm2_states(
     """Проигрывает FM2 в FCEUX и сохраняет states по plan (save_states.lua)."""
     if not plan:
         return
-    states = mission / "states"
+    states = save_states_dir(mission)
     states.mkdir(parents=True, exist_ok=True)
     staging = repo_root() / "tmp" / staging_subdir / "staging"
     staged_fm2, staged_rom = stage_fm2_for_fceux(fm2, rom, staging)
@@ -79,7 +79,7 @@ def save_fm2_states(
     config_path.write_text(
         json.dumps(
             {
-                "states_dir": "states",
+                "states_dir": "save_states",
                 "done_flag": done_flag.resolve().as_posix(),
                 "save_frames": plan,
             }

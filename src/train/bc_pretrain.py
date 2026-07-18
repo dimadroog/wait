@@ -1,4 +1,4 @@
-"""Behavioral Cloning на demos/seg_*.npz (optional перед PPO)."""
+"""Behavioral Cloning на reference/demos_for_bc/seg_*.npz (optional перед PPO)."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.policies import ActorCriticCnnPolicy
 
-from project_paths import game_dir, load_yaml, mission_dir
+from project_paths import demos_for_bc_dir, game_dir, load_yaml, mission_dir
 from train.action_map import action_string_to_index
 
 
@@ -60,7 +60,7 @@ def load_demo_dataset(
     require_real_obs: bool = True,
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """Собирает (obs, actions) из npz; actions пересчитываются из human jsonl."""
-    demos_dir = mission / "demos"
+    demos_dir = demos_for_bc_dir(mission)
     paths = demo_paths or sorted(demos_dir.glob("seg_*.npz"))
     if not paths:
         return None

@@ -37,9 +37,9 @@ def main() -> None:
     parser.add_argument(
         "--skip-inference-states",
         action="store_true",
-        help="не создавать states/inference_cp0.fc0 (gameplay start)",
+        help="не создавать save_states/inference_cp0.fc0 (gameplay start)",
     )
-    parser.add_argument("--skip-demos", action="store_true", help="не создавать demos/seg_*.npz")
+    parser.add_argument("--skip-demos", action="store_true", help="не создавать reference/demos_for_bc/seg_*.npz")
     args = parser.parse_args()
 
     try:
@@ -97,7 +97,7 @@ def main() -> None:
         from segment_playthrough import build_demos  # noqa: E402
 
         build_demos(mission)
-        print("Wrote demos/seg_*.npz")
+        print("Wrote reference/demos_for_bc/seg_*.npz")
 
     print("Done.")
 

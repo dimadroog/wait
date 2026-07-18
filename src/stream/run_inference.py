@@ -56,14 +56,14 @@ def run_inference(args: argparse.Namespace) -> None:
         )
 
     mission = mission_dir(args.game, args.mission)
-    checkpoint = Path(args.checkpoint)
-    if not checkpoint.is_absolute():
-        candidate = mission / checkpoint
-        checkpoint = candidate if candidate.is_file() else mission / "checkpoints" / checkpoint
-    if not checkpoint.is_file() and not str(checkpoint).endswith(".zip"):
-        checkpoint = checkpoint.with_suffix(".zip")
-    if not checkpoint.is_file():
-        raise SystemExit(f"Checkpoint not found: {checkpoint}")
+    model_path = Path(args.model)
+    if not model_path.is_absolute():
+        candidate = mission / model_path
+        model_path = candidate if candidate.is_file() else mission / "models" / model_path
+    if not model_path.is_file() and not str(model_path).endswith(".zip"):
+        model_path = model_path.with_suffix(".zip")
+    if not model_path.is_file():
+        raise SystemExit(f"Model not found: {model_path}")
 
     save_state = args.save_state
     if not save_state:
@@ -81,7 +81,7 @@ def run_inference(args: argparse.Namespace) -> None:
     show_window = args.show_window or not bool(profile.get("headless", True))
     turbo = profile.get("turbo", False) if args.turbo is None else args.turbo
 
-    model_version = args.model_version or checkpoint.stem
+    model_version = args.model_version or model_path.stem
     logs_dir = mission / "logs"
     attempt_logger = AttemptLogger(logs_dir)
     input_logger = InferenceInputLogger(logs_dir)
@@ -96,7 +96,7 @@ def run_inference(args: argparse.Namespace) -> None:
         reward_profile=args.reward_profile,
         show_window=show_window,
     )
-    model = PPO.load(str(checkpoint.with_suffix("")), device="cpu")
+    model = PPO.load(str(model_path.with_suffix("")), device="cpu")
 
     day_dir = dated_day_dir(logs_dir)
 
@@ -202,7 +202,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Local PPO inference")
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
-    parser.add_argument("--checkpoint", default="m1_v0.zip", help="checkpoints/m1_v0.zip или имя файла")
+    parser.add_argument("--model", default="gen0.zip", help="models/gen0.zip или имя файла")
     parser.add_argument("--episodes", type=int, default=5)
     parser.add_argument("--max-steps", type=int, default=8000)
     parser.add_argument("--save-state", default=None)
