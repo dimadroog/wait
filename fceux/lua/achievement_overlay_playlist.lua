@@ -92,7 +92,6 @@ local last_overlay_raw = ""
 local block_label = ""
 local block_label_until = 0
 local movie_ever_active = false
-local hold_until = nil
 local finished_all = false
 
 local function movie_is_active()
@@ -251,7 +250,6 @@ local function start_clip(i)
   overlay_cache = nil
   last_overlay_raw = ""
   movie_ever_active = false
-  hold_until = nil
   block_label = current.block_label or ""
   if block_label ~= "" then
     block_label_until = emu.framecount() + BLOCK_LABEL_FRAMES
@@ -280,17 +278,8 @@ local function start_clip(i)
 end
 
 local function advance_or_finish()
-  if hold_until == nil then
-    local hold = (current and current.hold) or 180
-    if overlay_cache and overlay_cache.show_until_frame then
-      hold = math.max(hold, overlay_cache.show_until_frame)
-    end
-    hold_until = emu.framecount() + hold
-    return
-  end
-  if emu.framecount() < hold_until then
-    return
-  end
+  -- Без post-movie hold: free-run после movie → game over → title/attract.
+  -- Overlay уже показан в начале клипа (show_until_frame).
   if clip_idx >= #CLIPS then
     log_msg("finish_all after clip " .. tostring(clip_idx))
     finish_all()
@@ -319,10 +308,6 @@ emu.registerafter(function()
   draw_overlay()
   if movie_is_active() then
     movie_ever_active = true
-  end
-  if hold_until ~= nil then
-    advance_or_finish()
-    return
   end
   if movie_is_finished() then
     advance_or_finish()

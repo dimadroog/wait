@@ -19,9 +19,15 @@ lives:
 # H3: эпизод до game over (все жизни), не до первой смерти — меньше reset storm.
 # A/B со старым поведением: --death-mode life_lost
 death_mode: game_over
+# Игнорировать dip lives на смене комнаты (streak до 3 step; confirm должен быть больше).
+death_confirm_steps: 4
 
-# Стоп записи на title (не писать title/attract в FM2 после game over).
-# lives<1 + room ∈ rooms, confirm_steps подряд, только после ≥1 death в эпизоде.
+# Стоп записи на title/attract после game over:
+# - возврат в позу title (room + title_x) после ухода с неё (главный сигнал attract);
+# - refill lives в title-room после смерти;
+# - lives<1 + room ∈ rooms, confirm_steps подряд.
 episode_end_title:
   rooms: ["0x00"]
+  title_x: 129
+  pose_confirm_steps: 45
   confirm_steps: 8

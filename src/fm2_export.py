@@ -320,6 +320,39 @@ def write_fm2_sidecar(
     return sidecar
 
 
+def trim_fm2_tail_frames(
+    fm2_path: Path,
+    drop_frames: int,
+    *,
+    min_keep: int = 60,
+) -> int:
+    """Удалить последние ``drop_frames`` input-строк ``|…`` из FM2. Возвращает сколько снято."""
+    if drop_frames <= 0:
+        return 0
+    lines = fm2_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    header: list[str] = []
+    frame_lines: list[str] = []
+    trailer: list[str] = []
+    seen_frame = False
+    for line in lines:
+        if line.startswith("|"):
+            seen_frame = True
+            frame_lines.append(line)
+        elif not seen_frame:
+            header.append(line)
+        else:
+            trailer.append(line)
+    if len(frame_lines) <= min_keep:
+        return 0
+    keep = max(min_keep, len(frame_lines) - drop_frames)
+    dropped = len(frame_lines) - keep
+    if dropped <= 0:
+        return 0
+    out = header + frame_lines[:keep] + trailer
+    fm2_path.write_text("\n".join(out) + "\n", encoding="utf-8", newline="\n")
+    return dropped
+
+
 def export_fm2(
     jsonl_path: Path,
     out_path: Path,

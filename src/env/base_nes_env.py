@@ -26,6 +26,11 @@ DEATH_MODES = frozenset({DEATH_MODE_LIFE_LOST, DEATH_MODE_GAME_OVER})
 TERMINATE_REASON_DEATH = "death"
 TERMINATE_REASON_TITLE = "title_screen"
 DEFAULT_TITLE_END_CONFIRM_STEPS = 8
+# Rush'n Attack: lives RAM часто 6→5→6 на смене комнаты (streak до 3 env-step); confirm > max flicker.
+DEFAULT_DEATH_CONFIRM_STEPS = 4
+# После ухода с позы title (room + x) возврат и удержание = title/attract (G0 / ISSUE_INFERENCE).
+DEFAULT_TITLE_POSE_X = 129
+DEFAULT_TITLE_POSE_CONFIRM_STEPS = 45
 
 
 def _parse_room_id(value: Any) -> int:
@@ -64,8 +69,11 @@ class BaseNesEnv(gym.Env):
         show_window: bool = False,
         fm2_template: str | Path | None = None,
         death_mode: str = DEATH_MODE_LIFE_LOST,
+        death_confirm_steps: int = DEFAULT_DEATH_CONFIRM_STEPS,
         title_end_rooms: Sequence[Any] | None = None,
         title_end_confirm_steps: int = DEFAULT_TITLE_END_CONFIRM_STEPS,
+        title_pose_x: int | None = DEFAULT_TITLE_POSE_X,
+        title_pose_confirm_steps: int = DEFAULT_TITLE_POSE_CONFIRM_STEPS,
     ) -> None:
         super().__init__()
         self.game_id = game_id
@@ -78,8 +86,11 @@ class BaseNesEnv(gym.Env):
         if mode not in DEATH_MODES:
             raise ValueError(f"death_mode must be one of {sorted(DEATH_MODES)}, got {death_mode!r}")
         self.death_mode = mode
+        self.death_confirm_steps = max(1, int(death_confirm_steps))
         self.title_end_rooms = parse_title_end_rooms(title_end_rooms)
         self.title_end_confirm_steps = max(1, int(title_end_confirm_steps))
+        self.title_pose_x = None if title_pose_x is None else int(title_pose_x)
+        self.title_pose_confirm_steps = max(1, int(title_pose_confirm_steps))
         self.save_state = save_state or self._default_save_state()
         self.frame_skip = frame_skip
         self.max_episode_steps = max_episode_steps
@@ -98,6 +109,11 @@ class BaseNesEnv(gym.Env):
         self._prev_lives: int | None = None
         self._death_count = 0
         self._title_end_streak = 0
+        self._pending_lives_from: int | None = None
+        self._pending_death_streak = 0
+        self._left_title_pose = False
+        self._title_pose_streak = 0
+        self._seen_level_room = False
 
     def _default_save_state(self) -> str:
         manifest = self.mission / "config" / "playthrough_manifest.yaml"
@@ -136,8 +152,15 @@ class BaseNesEnv(gym.Env):
     def _push_obs(self, gray: np.ndarray) -> None:
         self._frames.append(gray.astype(np.uint8))
 
+    def _clear_pending_death(self) -> None:
+        self._pending_lives_from = None
+        self._pending_death_streak = 0
+
     def _death_occurred(self, ram: dict[str, Any]) -> bool:
-        """True, если за этот step потеряна жизнь (lives уменьшились)."""
+        """True, если подтверждена потеря жизни (dip lives держится death_confirm_steps).
+
+        Короткий 6→5→6 на смене комнаты (Rush'n Attack) не считается смертью.
+        """
         lives = int(ram.get("lives", 0))
         if not self._valid_lives(lives):
             return False
@@ -145,8 +168,30 @@ class BaseNesEnv(gym.Env):
             self._episode_start_lives = lives
             self._prev_lives = lives
             return False
+
+        if self._pending_lives_from is not None:
+            if lives >= self._pending_lives_from:
+                # полный откат dip (flicker) — не смерть
+                self._clear_pending_death()
+                self._prev_lives = lives
+                return False
+            self._pending_death_streak += 1
+            if self._pending_death_streak >= self.death_confirm_steps:
+                self._clear_pending_death()
+                self._prev_lives = lives
+                return True
+            return False
+
         if self._prev_lives is not None and lives < self._prev_lives:
-            return True
+            self._pending_lives_from = self._prev_lives
+            self._pending_death_streak = 1
+            if self._pending_death_streak >= self.death_confirm_steps:
+                self._clear_pending_death()
+                self._prev_lives = lives
+                return True
+            return False
+
+        self._prev_lives = lives
         return False
 
     def _terminate_on_death(self, died: bool, ram: dict[str, Any]) -> bool:
@@ -160,18 +205,67 @@ class BaseNesEnv(gym.Env):
         budget = max(int(self._episode_start_lives or 1), 1)
         return self._death_count >= budget
 
+    def _ram_int(self, ram: dict[str, Any], key: str, default: int = -1) -> int:
+        try:
+            return _parse_room_id(ram.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
+    def _is_title_pose(self, ram: dict[str, Any]) -> bool:
+        """Классическая поза title/attract: room ∈ title_rooms и x == title_pose_x."""
+        if not self.title_end_rooms or self.title_pose_x is None:
+            return False
+        room = self._ram_int(ram, "room")
+        x = self._ram_int(ram, "x")
+        return room in self.title_end_rooms and x == self.title_pose_x
+
     def _title_screen_match(self, ram: dict[str, Any]) -> bool:
-        """Title/attract entry: lives<1 in a configured title room (after ≥1 death)."""
+        """Title entry: lives<1 in a configured title room (after ≥1 death)."""
         if not self.title_end_rooms or self._death_count < 1:
             return False
         lives = int(ram.get("lives", 0))
         if lives >= 1:
             return False
-        room = int(ram.get("room", -1))
+        room = self._ram_int(ram, "room")
         return room in self.title_end_rooms
 
+    def _lives_refill_after_death(self, ram: dict[str, Any]) -> bool:
+        """После смерти полный refill lives в title-room ⇒ soft-reset title/attract."""
+        if self._death_count < 1 or self._episode_start_lives is None:
+            return False
+        if not self.title_end_rooms or self._pending_lives_from is not None:
+            return False
+        lives = int(ram.get("lives", 0))
+        if not self._valid_lives(lives) or lives < int(self._episode_start_lives):
+            return False
+        room = self._ram_int(ram, "room")
+        return room in self.title_end_rooms
+
+    def _title_pose_return(self, ram: dict[str, Any]) -> bool:
+        """После level-room вернулись в позу title и держимся → attract/title."""
+        if not self.title_end_rooms or self.title_pose_x is None:
+            return False
+        room = self._ram_int(ram, "room")
+        # Deep/level rooms (не transition 0x01..0x05 и не стартовый 0x00).
+        if room >= 0x08:
+            self._seen_level_room = True
+        if self._is_title_pose(ram):
+            if self._left_title_pose and self._seen_level_room:
+                self._title_pose_streak += 1
+            else:
+                self._title_pose_streak = 0
+            return self._title_pose_streak >= self.title_pose_confirm_steps
+        self._title_pose_streak = 0
+        if self._step_count >= 1:
+            self._left_title_pose = True
+        return False
+
     def _terminate_on_title(self, ram: dict[str, Any]) -> bool:
-        """Стоп, если title-сигнатура держится confirm_steps подряд."""
+        """Стоп на title/attract: возврат в позу title, refill, или lives<1 streak."""
+        if self._title_pose_return(ram):
+            return True
+        if self._lives_refill_after_death(ram):
+            return True
         if self._title_screen_match(ram):
             self._title_end_streak += 1
         else:
@@ -200,6 +294,10 @@ class BaseNesEnv(gym.Env):
         self._prev_lives = None
         self._death_count = 0
         self._title_end_streak = 0
+        self._left_title_pose = False
+        self._title_pose_streak = 0
+        self._seen_level_room = False
+        self._clear_pending_death()
 
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
@@ -250,6 +348,10 @@ class BaseNesEnv(gym.Env):
         self._prev_lives = None
         self._death_count = 0
         self._title_end_streak = 0
+        self._left_title_pose = False
+        self._title_pose_streak = 0
+        self._seen_level_room = False
+        self._clear_pending_death()
 
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
@@ -310,9 +412,6 @@ class BaseNesEnv(gym.Env):
         terminated_title = False if terminated_death else self._terminate_on_title(ram)
         terminated = terminated_death or terminated_title
         truncated = self._step_count >= self.max_episode_steps
-        lives_now = int(ram.get("lives", 0))
-        if self._valid_lives(lives_now):
-            self._prev_lives = lives_now
 
         info: dict[str, Any] = {
             "ram": ram,

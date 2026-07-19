@@ -16,6 +16,7 @@ from fm2_export import (
     fm2_has_embedded_savestate,
     refresh_fm2_embedded_savestate,
     remap_fm2_guid,
+    trim_fm2_tail_frames,
 )
 from inference_states import resolve_inference_reset_state
 from jsonl_logs import dated_day_dir, utc_date_prefix
@@ -24,6 +25,12 @@ from project_paths import mission_dir, repo_root
 PAD_SLUG = "pad"
 PAD_IDX = 99
 PAD_LABEL = "Pad"
+# После death FM2 хвостом: game over → title/attract. death_x=129 = title-сигнатура Rush'n Attack.
+DIED_ATTRACT_TAIL_FRAMES = 900
+DIED_TITLE_X_TAIL_FRAMES = 1500  # death_x==129: сильнее (game over + title)
+DIED_ATTRACT_MIN_KEEP_FRAMES = 60
+# Классический title/attract x (ISSUE_INFERENCE / G0).
+TITLE_ATTRACT_X = 129
 
 
 def _sort_key_for_slug(slug: str, record: dict[str, Any]) -> tuple:
@@ -192,6 +199,30 @@ def _resolve_source_fm2(record: dict[str, Any], day_dir: Path) -> Path | None:
     return None
 
 
+def _died_tail_trim_frames(record: dict[str, Any]) -> int:
+    if not record.get("died"):
+        return 0
+    try:
+        death_x = int(record.get("death_x")) if record.get("death_x") is not None else None
+    except (TypeError, ValueError):
+        death_x = None
+    if death_x == TITLE_ATTRACT_X:
+        return DIED_TITLE_X_TAIL_FRAMES
+    return DIED_ATTRACT_TAIL_FRAMES
+
+
+def _trim_died_attract_tail(dest: Path, record: dict[str, Any]) -> int:
+    """Срезать game over / title/attract-хвост у клипов с died=True."""
+    drop = _died_tail_trim_frames(record)
+    if drop <= 0:
+        return 0
+    return trim_fm2_tail_frames(
+        dest,
+        drop,
+        min_keep=DIED_ATTRACT_MIN_KEEP_FRAMES,
+    )
+
+
 def _materialize_clip_fm2(
     *,
     record: dict[str, Any],
@@ -211,6 +242,7 @@ def _materialize_clip_fm2(
         refresh_fm2_embedded_savestate(dest, embed_save_state_path, guid=clip_guid)
         if not fm2_has_embedded_savestate(dest):
             raise ValueError(f"Source FM2 is not self-contained: {src}")
+        _trim_died_attract_tail(dest, record)
         return src
     if inference_inputs_path and inference_inputs_path.is_file():
         export_fm2(
@@ -223,6 +255,7 @@ def _materialize_clip_fm2(
         )
         remap_fm2_guid(dest, clip_guid)
         refresh_fm2_embedded_savestate(dest, embed_save_state_path, guid=clip_guid)
+        _trim_died_attract_tail(dest, record)
         return dest
     return None
 

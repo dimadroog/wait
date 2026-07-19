@@ -10,11 +10,136 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from achievements.playlist import (  # noqa: E402
+    DIED_ATTRACT_TAIL_FRAMES,
+    DIED_TITLE_X_TAIL_FRAMES,
+    TITLE_ATTRACT_X,
     build_playlist,
     write_overlay_clip,
 )
+from fm2_export import (  # noqa: E402
+    build_empty_fm2,
+    default_fm2_template,
+    episode_fm2_guid,
+    trim_fm2_tail_frames,
+)
 from jsonl_logs import utc_date_prefix  # noqa: E402
-from project_paths import repo_root  # noqa: E402
+from project_paths import count_fm2_frames, mission_dir, repo_root  # noqa: E402
+
+
+def test_trim_fm2_tail_frames(tmp_path: Path) -> None:
+    mdir = mission_dir("rushn_attack", "m1")
+    fc0 = mdir / "save_states" / "inference_cp0.fc0"
+    if not fc0.is_file():
+        return
+    fm2 = tmp_path / "clip.fm2"
+    build_empty_fm2(
+        fm2,
+        template=default_fm2_template("rushn_attack", "m1"),
+        save_state_path=fc0,
+        guid=episode_fm2_guid(salt="trim-test"),
+        num_frames=300,
+    )
+    assert count_fm2_frames(fm2) == 300
+    dropped = trim_fm2_tail_frames(fm2, 100, min_keep=60)
+    assert dropped == 100
+    assert count_fm2_frames(fm2) == 200
+
+
+def test_build_playlist_trims_died_attract_tail() -> None:
+    logs = repo_root() / "tmp" / "smoke" / "playlist_trim_died" / "logs"
+    if logs.exists():
+        shutil.rmtree(logs)
+    day = logs / utc_date_prefix()
+    day.mkdir(parents=True)
+    n_steps = 400  # → 1600 FM2 frames; died without title-x → trim 900
+    inputs = day / "inference_inputs.jsonl"
+    inputs.write_text(
+        "\n".join(
+            json.dumps({"episode": 1, "step": i, "frame": i, "action": "right"})
+            for i in range(n_steps)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    attempts = day / "attempts.jsonl"
+    attempts.write_text(
+        json.dumps(
+            {
+                "episode": 1,
+                "episode_reward": 42.0,
+                "episode_frames": n_steps,
+                "max_checkpoint": 2,
+                "died": True,
+                "death_x": 50,
+                "tags": ["episode_reward"],
+                "inference_inputs_ref": inputs.name,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _, manifest_path, clip_count = build_playlist(
+        attempts,
+        logs,
+        config=_minimal_config(),
+        inference_inputs_path=inputs,
+        game="rushn_attack",
+        mission="m1",
+    )
+    assert clip_count == 1
+    assert manifest_path
+    fm2 = day / json.loads(manifest_path.read_text(encoding="utf-8"))["clips"][0]["fm2"]
+    full = n_steps * 4
+    assert count_fm2_frames(fm2) == full - DIED_ATTRACT_TAIL_FRAMES
+
+
+def test_build_playlist_trims_title_death_x_harder() -> None:
+    logs = repo_root() / "tmp" / "smoke" / "playlist_trim_title_x" / "logs"
+    if logs.exists():
+        shutil.rmtree(logs)
+    day = logs / utc_date_prefix()
+    day.mkdir(parents=True)
+    n_steps = 500  # → 2000 frames; death_x=129 → trim 1500 → 500
+    inputs = day / "inference_inputs.jsonl"
+    inputs.write_text(
+        "\n".join(
+            json.dumps({"episode": 1, "step": i, "frame": i, "action": "right"})
+            for i in range(n_steps)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    attempts = day / "attempts.jsonl"
+    attempts.write_text(
+        json.dumps(
+            {
+                "episode": 1,
+                "episode_reward": 42.0,
+                "episode_frames": n_steps,
+                "max_checkpoint": 2,
+                "died": True,
+                "death_x": TITLE_ATTRACT_X,
+                "tags": ["episode_reward"],
+                "inference_inputs_ref": inputs.name,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _, manifest_path, clip_count = build_playlist(
+        attempts,
+        logs,
+        config=_minimal_config(),
+        inference_inputs_path=inputs,
+        game="rushn_attack",
+        mission="m1",
+    )
+    assert clip_count == 1
+    assert manifest_path
+    fm2 = day / json.loads(manifest_path.read_text(encoding="utf-8"))["clips"][0]["fm2"]
+    assert count_fm2_frames(fm2) == n_steps * 4 - DIED_TITLE_X_TAIL_FRAMES
 
 
 def test_write_overlay_clip_no_save_state(tmp_path: Path) -> None:
