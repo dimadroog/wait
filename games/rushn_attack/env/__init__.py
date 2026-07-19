@@ -31,6 +31,11 @@ def make_env(
     lives = env_config.get("lives") or {}
     if "death_mode" not in kwargs and env_config.get("death_mode"):
         kwargs["death_mode"] = str(env_config["death_mode"])
+    title_end = env_config.get("episode_end_title") or {}
+    if "title_end_rooms" not in kwargs and title_end.get("rooms") is not None:
+        kwargs["title_end_rooms"] = title_end.get("rooms")
+    if "title_end_confirm_steps" not in kwargs and title_end.get("confirm_steps") is not None:
+        kwargs["title_end_confirm_steps"] = int(title_end["confirm_steps"])
     env = BaseNesEnv(
         game_id=game_id,
         mission_id=mission_id,

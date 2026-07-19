@@ -23,6 +23,25 @@ DEATH_MODE_LIFE_LOST = "life_lost"
 DEATH_MODE_GAME_OVER = "game_over"
 DEATH_MODES = frozenset({DEATH_MODE_LIFE_LOST, DEATH_MODE_GAME_OVER})
 
+TERMINATE_REASON_DEATH = "death"
+TERMINATE_REASON_TITLE = "title_screen"
+DEFAULT_TITLE_END_CONFIRM_STEPS = 8
+
+
+def _parse_room_id(value: Any) -> int:
+    if isinstance(value, int):
+        return int(value)
+    text = str(value).strip().lower()
+    if text.startswith("0x"):
+        return int(text, 16)
+    return int(text, 0) if text else 0
+
+
+def parse_title_end_rooms(rooms: Sequence[Any] | None) -> frozenset[int]:
+    if not rooms:
+        return frozenset()
+    return frozenset(_parse_room_id(r) for r in rooms)
+
 
 class BaseNesEnv(gym.Env):
     """reset/step через FceuxBridge; награды — в CheckpointRewardWrapper."""
@@ -45,6 +64,8 @@ class BaseNesEnv(gym.Env):
         show_window: bool = False,
         fm2_template: str | Path | None = None,
         death_mode: str = DEATH_MODE_LIFE_LOST,
+        title_end_rooms: Sequence[Any] | None = None,
+        title_end_confirm_steps: int = DEFAULT_TITLE_END_CONFIRM_STEPS,
     ) -> None:
         super().__init__()
         self.game_id = game_id
@@ -57,6 +78,8 @@ class BaseNesEnv(gym.Env):
         if mode not in DEATH_MODES:
             raise ValueError(f"death_mode must be one of {sorted(DEATH_MODES)}, got {death_mode!r}")
         self.death_mode = mode
+        self.title_end_rooms = parse_title_end_rooms(title_end_rooms)
+        self.title_end_confirm_steps = max(1, int(title_end_confirm_steps))
         self.save_state = save_state or self._default_save_state()
         self.frame_skip = frame_skip
         self.max_episode_steps = max_episode_steps
@@ -74,6 +97,7 @@ class BaseNesEnv(gym.Env):
         self._episode_start_lives: int | None = None
         self._prev_lives: int | None = None
         self._death_count = 0
+        self._title_end_streak = 0
 
     def _default_save_state(self) -> str:
         manifest = self.mission / "config" / "playthrough_manifest.yaml"
@@ -136,6 +160,24 @@ class BaseNesEnv(gym.Env):
         budget = max(int(self._episode_start_lives or 1), 1)
         return self._death_count >= budget
 
+    def _title_screen_match(self, ram: dict[str, Any]) -> bool:
+        """Title/attract entry: lives<1 in a configured title room (after ≥1 death)."""
+        if not self.title_end_rooms or self._death_count < 1:
+            return False
+        lives = int(ram.get("lives", 0))
+        if lives >= 1:
+            return False
+        room = int(ram.get("room", -1))
+        return room in self.title_end_rooms
+
+    def _terminate_on_title(self, ram: dict[str, Any]) -> bool:
+        """Стоп, если title-сигнатура держится confirm_steps подряд."""
+        if self._title_screen_match(ram):
+            self._title_end_streak += 1
+        else:
+            self._title_end_streak = 0
+        return self._title_end_streak >= self.title_end_confirm_steps
+
     def reset(
         self,
         *,
@@ -157,6 +199,7 @@ class BaseNesEnv(gym.Env):
         self._episode_start_lives = None
         self._prev_lives = None
         self._death_count = 0
+        self._title_end_streak = 0
 
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
@@ -206,6 +249,7 @@ class BaseNesEnv(gym.Env):
         self._episode_start_lives = None
         self._prev_lives = None
         self._death_count = 0
+        self._title_end_streak = 0
 
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
@@ -262,7 +306,9 @@ class BaseNesEnv(gym.Env):
 
         died = self._death_occurred(ram)
         self._step_count += 1
-        terminated = self._terminate_on_death(died, ram)
+        terminated_death = self._terminate_on_death(died, ram)
+        terminated_title = False if terminated_death else self._terminate_on_title(ram)
+        terminated = terminated_death or terminated_title
         truncated = self._step_count >= self.max_episode_steps
         lives_now = int(ram.get("lives", 0))
         if self._valid_lives(lives_now):
@@ -278,6 +324,10 @@ class BaseNesEnv(gym.Env):
             "episode_frames": self._step_count,
             "action": action_str,
         }
+        if terminated_death:
+            info["terminate_reason"] = TERMINATE_REASON_DEATH
+        elif terminated_title:
+            info["terminate_reason"] = TERMINATE_REASON_TITLE
         return self._obs_stack(), 0.0, terminated, truncated, info
 
     def close(self) -> None:

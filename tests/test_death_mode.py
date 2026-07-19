@@ -9,11 +9,19 @@ import pytest
 from env.base_nes_env import (
     DEATH_MODE_GAME_OVER,
     DEATH_MODE_LIFE_LOST,
+    TERMINATE_REASON_DEATH,
+    TERMINATE_REASON_TITLE,
     BaseNesEnv,
 )
 
 
-def _make_env(*, death_mode: str = DEATH_MODE_LIFE_LOST, start_lives: int = 3) -> BaseNesEnv:
+def _make_env(
+    *,
+    death_mode: str = DEATH_MODE_LIFE_LOST,
+    start_lives: int = 3,
+    title_end_rooms: tuple[int, ...] | None = (0x00,),
+    title_end_confirm_steps: int = 8,
+) -> BaseNesEnv:
     with patch("env.base_nes_env.mission_dir") as mission_dir:
         mission_dir.return_value = MagicMock()
         env = BaseNesEnv(
@@ -23,16 +31,19 @@ def _make_env(*, death_mode: str = DEATH_MODE_LIFE_LOST, start_lives: int = 3) -
             save_state="save_states/cp0.fc0",
             session_id="test_death",
             death_mode=death_mode,
+            title_end_rooms=title_end_rooms,
+            title_end_confirm_steps=title_end_confirm_steps,
         )
     env._bridge = MagicMock()
     env._frames.append(np.zeros((84, 84), dtype=np.uint8))
     env._episode_start_lives = start_lives
     env._prev_lives = start_lives
     env._death_count = 0
+    env._title_end_streak = 0
     return env
 
 
-def _step_with_lives(env: BaseNesEnv, lives: int):
+def _step_with_lives(env: BaseNesEnv, lives: int, *, room: int = 0x06):
     bridge = env._bridge
     bridge.step.return_value = {
         "obs_file": "x",
@@ -40,7 +51,7 @@ def _step_with_lives(env: BaseNesEnv, lives: int):
         "w": 84,
         "h": 84,
         "lives": lives,
-        "room": 0,
+        "room": room,
         "x": 10,
         "y": 20,
     }
@@ -92,3 +103,65 @@ def test_no_death_when_lives_stable() -> None:
     assert info["died"] is False
     assert terminated is False
     assert info["death_count"] == 0
+
+
+def test_level_death_lives_zero_does_not_title_stop() -> None:
+    """Анимация смерти в level-room (не title room) не триггерит title_screen."""
+    env = _make_env(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=3,
+        title_end_rooms=(0x00,),
+        title_end_confirm_steps=3,
+    )
+    _step_with_lives(env, 0, room=0x06)
+    for _ in range(5):
+        _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room=0x06)
+        assert terminated is False
+        assert info.get("terminate_reason") is None
+
+
+def test_title_screen_stops_after_confirm_streak() -> None:
+    env = _make_env(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=3,
+        title_end_rooms=(0x00,),
+        title_end_confirm_steps=3,
+    )
+    # death 1 in level, then title room with lives=0
+    _step_with_lives(env, 0, room=0x06)
+    _step_with_lives(env, 2, room=0x06)
+    for _ in range(2):
+        _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room=0x00)
+        assert terminated is False
+    _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room=0x00)
+    assert terminated is True
+    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
+
+
+def test_title_stop_requires_prior_death() -> None:
+    """Без death_count title-сигнатура не завершает эпизод."""
+    env = _make_env(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=3,
+        title_end_rooms=(0x00,),
+        title_end_confirm_steps=2,
+    )
+    # lives уже 0, уменьшения нет → died=False, death_count=0
+    env._prev_lives = 0
+    for _ in range(4):
+        _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room=0x00)
+        assert info["died"] is False
+        assert info["death_count"] == 0
+        assert terminated is False
+
+
+def test_game_over_budget_sets_terminate_reason_death() -> None:
+    env = _make_env(death_mode=DEATH_MODE_GAME_OVER, start_lives=3, title_end_rooms=(0x00,))
+    _step_with_lives(env, 0, room=0x06)
+    _step_with_lives(env, 2, room=0x06)
+    _step_with_lives(env, 0, room=0x06)
+    _step_with_lives(env, 1, room=0x06)
+    _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room=0x06)
+    assert terminated is True
+    assert info["terminate_reason"] == TERMINATE_REASON_DEATH
+    assert info["death_count"] == 3

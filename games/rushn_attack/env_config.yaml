@@ -19,3 +19,9 @@ lives:
 # H3: эпизод до game over (все жизни), не до первой смерти — меньше reset storm.
 # A/B со старым поведением: --death-mode life_lost
 death_mode: game_over
+
+# Стоп записи на title (не писать title/attract в FM2 после game over).
+# lives<1 + room ∈ rooms, confirm_steps подряд, только после ≥1 death в эпизоде.
+episode_end_title:
+  rooms: ["0x00"]
+  confirm_steps: 8

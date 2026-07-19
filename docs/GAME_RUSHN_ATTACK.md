@@ -74,6 +74,8 @@ noop | left | right | down | up | right+up | left+up | A | B
 
 В RAM `lives` на смерти часто кратковременно **0** (анимация), затем respawn с lives−1 — поэтому `game_over` считает **события** потери жизни, а не `lives==0`. CLI: `--death-mode` у `train_ppo` / `smoke_env`.
 
+Дополнительно (`episode_end_title` в `env_config.yaml`): после ≥1 death эпизод заканчивается на устойчивом **title** (`lives<1` + `room` из списка, `confirm_steps` подряд) — чтобы title/attract не попадали в inference FM2. `info.terminate_reason`: `death` | `title_screen`.
+
 Smoke (random, `save_states/cp0.fc0`, 2026-07-18): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
 
 ---
