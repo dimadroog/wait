@@ -37,7 +37,7 @@ episode_end_title:
   title_ys: [131, 133, 135]
   # Mid-flash до ~28; 24 режет первый устойчивый title-like, не ждёт «idle≫flash».
   pose_confirm_steps: 24
-  # Стоп на экране GAME OVER до title/attract (см. TASK_STOP_TITLE_ATTRACT).
+  # Стоп на экране GAME OVER до title/attract (см. docs/tasks/archive/TASK_STOP_TITLE_ATTRACT.md).
   go_freeze_confirm_steps: 32
   min_attempt_steps: 120
   truncate_grace_steps: 40

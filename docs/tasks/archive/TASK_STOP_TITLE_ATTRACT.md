@@ -1,11 +1,12 @@
 # TASK_STOP_TITLE_ATTRACT — граница конца inference-клипа
 
-**Статус:** done — **DoD visual PASS 2026-07-20**  
+**Статус:** done  
+**Закрыто:** 2026-07-20 — secondary `go_freeze` (`terminate_reason=game_over_screen`); DoD visual PASS; пост-hoc trim FM2 `logs/20260718`+`20260719` по тому же сигналу.  
 **Приоритет:** high  
-**Ветка:** `task/stop-title-attract` — проработку этой задачи выполнять **только в этой ветке**.  
+**Ветка:** `task/stop-title-attract` (`83a8931` → main).  
 **Зависит от:** —  
 **Файлы:** `src/env/base_nes_env.py`, `games/rushn_attack/env/`, `games/rushn_attack/env_config.yaml`, `src/attempt_logger.py`, `src/achievements/playlist.py`, `src/fm2_export.py`, `fceux/lua/achievement_overlay_playlist.lua`, `docs/GAME_RUSHN_ATTACK.md`, `docs/SCRIPTS.md`, `docs/DESIGN.md`, `games/rushn_attack/missions/m1/reference/go_to_attract{,2,3,_another_place}.fm2`  
-**Контекст в чат:** этот файл + [DESIGN.md](../DESIGN.md) § ядро/плагин + файлы из шпаргалки выше  
+**Контекст в чат:** этот файл + [DESIGN.md](../../DESIGN.md) § ядро/плагин + файлы из шпаргалки выше  
 
 **Тупик (не merge):** `experiment/stop-title-attract` (`9eef8af`) — pose-stop `x=129` + trim по `death_x==129`.
 
@@ -25,15 +26,17 @@ Inference-клип (FM2 / playlist) должен заканчиваться на
 - [x] Pluggable Core: title/attract в `RushnAttackEnv` + `env_config.yaml`, не в ядре
 - [x] Эталон GO→title→attract: `reference/go_to_attract{,2,3,_another_place}.fm2` + ram_scout + визуал; **`y` не инвариант**; GO с другого места уровня → тот же `r=0,x=129`
 - [x] Secondary stop на **GO-freeze** (`r=0,x=129`, `y∉title_ys`, confirm≥32) — код + unit
-- [x] **DoD visual:** клип без GO→title→attract (оператор) — **PASS 2026-07-20** (`tmp/smoke/visual_go_freeze/`)
+- [x] **DoD visual:** клип без GO→title→attract (оператор) — **PASS 2026-07-20** (`logs/20260720/ep0001.fm2`, `terminate_reason=game_over_screen`)
+- [x] Пост-hoc trim существующих FM2 по GO-freeze: `logs/20260718` (5/12) + `logs/20260719` (25/25) + refresh `playlist.json` airtime
 
 ### Критерий готовности (DoD)
 
 - [x] Новый inference-клип: **нет** GAME OVER / title menu / attract demo в просмотре
 - [x] Не early-stop на flicker / короткий mid-flash коридора
 - [x] Hold между клипами OK (probe п.3)
-- [x] Игро-специфика в плагине ([DESIGN](../DESIGN.md) Pluggable Core / Template Method)
+- [x] Игро-специфика в плагине ([DESIGN](../../DESIGN.md) Pluggable Core / Template Method)
 - [x] Unit зелёные; experiment не merge
+- [x] Исторические плейлисты 18–19.07 обрезаны по GO-freeze (без title/attract в хвосте)
 
 ### Операторский visual FAIL (2026-07-20, вечер)
 
@@ -197,7 +200,7 @@ Play: `./.venv/Scripts/python.exe scripts/play_fm2_gui.py tmp/smoke/visual_go_fr
 - Слепой `trim_fm2_tail_frames` / trim по `death_x==129`
 - OBS / Twitch / пересбор часового эфирного плейлиста как цель задачи
 - Смена reward / train hyperparams
-- Повтор [ISSUE_INFERENCE](archive/ISSUE_INFERENCE.md) (title **в начале** playback / embed) — только ссылка при пересечении
+- Повтор [ISSUE_INFERENCE](ISSUE_INFERENCE.md) (title **в начале** playback / embed) — только ссылка при пересечении
 
 ### Исследование (2026-07-20)
 
