@@ -77,10 +77,11 @@ noop | left | right | down | up | right+up | left+up | A | B
 Dip `lives` на смене комнаты (streak ≤3) не считается смертью: в `env_config.yaml` задаётся `death_confirm_steps: 4` (общий confirm — в `BaseNesEnv`).
 
 Дополнительно (`episode_end_title` → `RushnAttackEnv`, secondary после попытки):
+- **GO-freeze** `L≥1`: room + `title_x` + **`y ∉ title_ys`**, тот же `(x,y)` ≥ `go_freeze_confirm_steps` (default 32) — стоп на GAME OVER до title/attract;
 - **title** `lives<1` + room (в т.ч. soft-reset/GO без counted death, если уже был level-room);
 - **attract standing** `L≥1`: room + `title_x` + `title_ys` (не коридор `y≈59/67`), `pose_confirm_steps` > mid-flash (~28);
 - опционально `truncate_grace` / `truncate_cool` после `max_episode_steps`.  
-`info.terminate_reason`: `death` | `title_screen`.
+`info.terminate_reason`: `death` | `game_over_screen` | `title_screen`.
 
 Smoke (random, `save_states/cp0.fc0`, 2026-07-18): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
 

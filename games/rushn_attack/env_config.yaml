@@ -25,6 +25,8 @@ death_confirm_steps: 4
 # Secondary конец эпизода после попытки:
 # попытка = min_attempt_steps ИЛИ level-room ИЛИ ≥1 death
 # (иначе gen0 в room=0x00 никогда не включает secondary).
+# - GO-freeze: room + title_x + y∉title_ys, тот же (x,y) ≥ go_freeze_confirm_steps
+#   (эталон go_to_attract*: y=95|41; max mid-game freeze ≤31 NES ≈ ≪32 env-step);
 # - lives<1 + title room;
 # - attract standing: title room + title_x + title_ys, confirm > mid-flash (~28);
 # - truncate_grace/cool опционально.
@@ -35,6 +37,8 @@ episode_end_title:
   title_ys: [131, 133, 135]
   # Mid-flash до ~28; 24 режет первый устойчивый title-like, не ждёт «idle≫flash».
   pose_confirm_steps: 24
+  # Стоп на экране GAME OVER до title/attract (см. TASK_STOP_TITLE_ATTRACT).
+  go_freeze_confirm_steps: 32
   min_attempt_steps: 120
   truncate_grace_steps: 40
   truncate_cool_steps: 16

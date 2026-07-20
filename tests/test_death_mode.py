@@ -10,6 +10,7 @@ from env.base_nes_env import (
     DEATH_MODE_GAME_OVER,
     DEATH_MODE_LIFE_LOST,
     TERMINATE_REASON_DEATH,
+    TERMINATE_REASON_GO,
     TERMINATE_REASON_TITLE,
     BaseNesEnv,
 )
@@ -61,6 +62,7 @@ def _make_rna(
     title_min_attempt_steps: int = 120,
     title_pose_truncate_grace: int = 40,
     title_pose_truncate_cool: int = 16,
+    go_freeze_confirm_steps: int = 0,
     max_episode_steps: int = 8000,
 ) -> RushnAttackEnv:
     with patch("env.base_nes_env.mission_dir") as mission_dir:
@@ -82,6 +84,7 @@ def _make_rna(
             title_min_attempt_steps=title_min_attempt_steps,
             title_pose_truncate_grace=title_pose_truncate_grace,
             title_pose_truncate_cool=title_pose_truncate_cool,
+            go_freeze_confirm_steps=go_freeze_confirm_steps,
             max_episode_steps=max_episode_steps,
         )
     env._bridge = MagicMock()
@@ -453,3 +456,95 @@ def test_truncate_not_deferred_on_level_death_pose() -> None:
     _obs, _r, term, trunc, info = _step_ram(env, lives=5, room=0x0B, x=129, y=131)
     assert trunc is True
     assert info["episode_frames"] == 3
+
+
+def _go_freeze_env(*, confirm: int = 32) -> RushnAttackEnv:
+    return _make_rna(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=6,
+        death_confirm_steps=4,
+        title_end_rooms=(0x00,),
+        title_end_confirm_steps=99,
+        title_pose_x=129,
+        title_pose_ys=(131, 133, 135),
+        title_pose_confirm_steps=99,
+        title_level_room_min=0x08,
+        title_min_attempt_steps=120,
+        go_freeze_confirm_steps=confirm,
+    )
+
+
+def test_go_freeze_below_confirm_does_not_stop() -> None:
+    env = _go_freeze_env(confirm=32)
+    _step_ram(env, lives=6, room=0x08, x=40, y=40)
+    for _ in range(31):
+        _obs, _r, terminated, _trunc, info = _step_ram(
+            env, lives=6, room=0x00, x=129, y=95
+        )
+        assert terminated is False
+        assert info.get("terminate_reason") is None
+
+
+def test_go_freeze_confirmed_stops_y95() -> None:
+    env = _go_freeze_env(confirm=32)
+    _step_ram(env, lives=6, room=0x08, x=40, y=40)
+    for _ in range(31):
+        _step_ram(env, lives=6, room=0x00, x=129, y=95)
+    _obs, _r, terminated, _trunc, info = _step_ram(
+        env, lives=6, room=0x00, x=129, y=95
+    )
+    assert terminated is True
+    assert info["terminate_reason"] == TERMINATE_REASON_GO
+    assert info["death_count"] == 0
+
+
+def test_go_freeze_confirmed_stops_y41() -> None:
+    """y на GO не фиксирован (эталон another_place / go3)."""
+    env = _go_freeze_env(confirm=5)
+    _step_ram(env, lives=6, room=0x08, x=40, y=40)
+    for _ in range(4):
+        _step_ram(env, lives=6, room=0x00, x=129, y=41)
+    _obs, _r, terminated, _trunc, info = _step_ram(
+        env, lives=6, room=0x00, x=129, y=41
+    )
+    assert terminated is True
+    assert info["terminate_reason"] == TERMINATE_REASON_GO
+
+
+def test_go_freeze_y_change_resets_streak() -> None:
+    env = _go_freeze_env(confirm=5)
+    _step_ram(env, lives=6, room=0x08, x=40, y=40)
+    for _ in range(4):
+        _step_ram(env, lives=6, room=0x00, x=129, y=95)
+    for _ in range(4):
+        _obs, _r, terminated, _trunc, info = _step_ram(
+            env, lives=6, room=0x00, x=129, y=41
+        )
+        assert terminated is False
+    _obs, _r, terminated, _trunc, info = _step_ram(
+        env, lives=6, room=0x00, x=129, y=41
+    )
+    assert terminated is True
+    assert info["terminate_reason"] == TERMINATE_REASON_GO
+
+
+def test_go_freeze_title_ys_not_go_match() -> None:
+    """title standing идёт по attract-пути, не game_over_screen."""
+    env = _make_rna(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=6,
+        title_end_rooms=(0x00,),
+        title_pose_x=129,
+        title_pose_ys=(133,),
+        title_pose_confirm_steps=3,
+        title_level_room_min=0x08,
+        go_freeze_confirm_steps=3,
+    )
+    _step_ram(env, lives=6, room=0x08, x=40, y=40)
+    for _ in range(2):
+        _step_ram(env, lives=6, room=0x00, x=129, y=133)
+    _obs, _r, terminated, _trunc, info = _step_ram(
+        env, lives=6, room=0x00, x=129, y=133
+    )
+    assert terminated is True
+    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
