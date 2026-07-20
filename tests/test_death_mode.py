@@ -57,7 +57,8 @@ def _make_rna(
     title_pose_x: int | None = None,
     title_pose_ys: tuple[int, ...] | None = None,
     title_pose_confirm_steps: int = 32,
-    title_level_room_min: int = 0x08,
+    title_level_room_min: int | None = 0x08,
+    title_min_attempt_steps: int = 120,
     title_pose_truncate_grace: int = 40,
     title_pose_truncate_cool: int = 16,
     max_episode_steps: int = 8000,
@@ -78,6 +79,7 @@ def _make_rna(
             title_pose_ys=title_pose_ys,
             title_pose_confirm_steps=title_pose_confirm_steps,
             title_level_room_min=title_level_room_min,
+            title_min_attempt_steps=title_min_attempt_steps,
             title_pose_truncate_grace=title_pose_truncate_grace,
             title_pose_truncate_cool=title_pose_truncate_cool,
             max_episode_steps=max_episode_steps,
@@ -210,12 +212,14 @@ def test_title_stop_after_level_without_death_count() -> None:
 
 
 def test_title_stop_requires_prior_progress() -> None:
-    """Без level/death title L=0 не стопит (старт)."""
+    """Без progress title L=0 не стопит (старт)."""
     env = _make_rna(
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=3,
         title_end_rooms=(0x00,),
         title_end_confirm_steps=2,
+        title_min_attempt_steps=10_000,
+        title_level_room_min=0x08,
     )
     env._prev_lives = 0
     for _ in range(4):
@@ -309,14 +313,49 @@ def test_corridor_pose_x129_y59_does_not_title_stop() -> None:
         assert info.get("terminate_reason") is None
 
 
-def test_attract_pose_before_level_room_does_not_stop() -> None:
-    env = _pose_env(confirm=5)
+def test_attract_pose_before_attempt_progress_does_not_stop() -> None:
+    env = _make_rna(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=6,
+        title_end_rooms=(0x00,),
+        title_pose_x=129,
+        title_pose_ys=(133,),
+        title_pose_confirm_steps=5,
+        title_level_room_min=0x08,
+        title_min_attempt_steps=10_000,
+    )
     for _ in range(10):
         _obs, _r, terminated, _trunc, info = _step_ram(
             env, lives=6, room=0x00, x=129, y=133
         )
         assert terminated is False
         assert info["death_count"] == 0
+
+
+def test_attract_pose_after_min_steps_stops_without_level() -> None:
+    """gen0 в room=0: secondary должен сработать после min_attempt_steps."""
+    env = _make_rna(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=6,
+        title_end_rooms=(0x00,),
+        title_pose_x=129,
+        title_pose_ys=(133,),
+        title_pose_confirm_steps=3,
+        title_level_room_min=0x08,
+        title_min_attempt_steps=5,
+    )
+    for _ in range(4):
+        _step_ram(env, lives=6, room=0x00, x=10, y=59)
+    for _ in range(2):
+        _obs, _r, terminated, _trunc, info = _step_ram(
+            env, lives=6, room=0x00, x=129, y=133
+        )
+        assert terminated is False
+    _obs, _r, terminated, _trunc, info = _step_ram(
+        env, lives=6, room=0x00, x=129, y=133
+    )
+    assert terminated is True
+    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
 
 
 def test_attract_pose_flash_below_confirm_does_not_stop() -> None:

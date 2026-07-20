@@ -33,7 +33,7 @@ Inference-клип (FM2 / playlist) должен заканчиваться на
 - [x] Игро-специфика в плагине ([DESIGN](../DESIGN.md) Pluggable Core / Template Method)
 - [x] Unit зелёные; experiment не merge
 
-**2026-07-20:** visual one-clip всё ещё с title/attract idle — DoD **не** закрыт. Truncate-grace ≠ цель задачи.
+**2026-07-20 visual:** в клипе `death_count=0`, весь прогон `room=0x00` — гейт secondary только по `level≥0x08` **никогда не включался**; оператор видел несколько title/attract (PPU) при `L=6`, не «после GO». Фикс: `min_attempt_steps` OR level OR death.
 
 ### Не делать (антискоуп)
 

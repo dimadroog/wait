@@ -22,17 +22,19 @@ death_mode: game_over
 # Игнорировать dip lives на смене комнаты (streak ≤3); confirm должен быть больше.
 death_confirm_steps: 4
 
-# Secondary конец эпизода после попытки (level-room или ≥1 death):
-# - lives<1 + title room (в т.ч. soft-reset/GO без counted death);
+# Secondary конец эпизода после попытки:
+# попытка = min_attempt_steps ИЛИ level-room ИЛИ ≥1 death
+# (иначе gen0 в room=0x00 никогда не включает secondary).
+# - lives<1 + title room;
 # - attract standing: title room + title_x + title_ys, confirm > mid-flash (~28);
-# - truncate_grace/cool опционально (не главный путь).
+# - truncate_grace/cool опционально.
 episode_end_title:
   rooms: ["0x00"]
   confirm_steps: 8
   title_x: 129
   title_ys: [131, 133, 135]
-  # Чуть выше max mid-episode flash (~28), чтобы резать idle attract, не flash.
   pose_confirm_steps: 32
+  min_attempt_steps: 120
   truncate_grace_steps: 40
   truncate_cool_steps: 16
   level_room_min: "0x08"
