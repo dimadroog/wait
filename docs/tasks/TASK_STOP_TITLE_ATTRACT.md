@@ -25,19 +25,20 @@ Inference-клип (FM2 / playlist) должен заканчиваться на
 - [x] Observability: `terminate_reason`, `death_count` (и стабильный end-RAM) в `attempts.jsonl`
 - [x] Playlist: не использовать слепой trim по `death_x`; free-run hold не доигрывает до attract между клипами
 - [x] Антирегрессия unit: `death_mode=game_over` + flicker confirm (`tests/test_death_mode.py`)
-- [ ] Короткий inference smoke-клип в `tmp/smoke/` + probe хвоста (закрытие DoD)
+- [x] Короткий inference smoke-клип в `tmp/smoke/` + probe хвоста (**FAIL / gap** — см. ниже)
 - [x] Доки: GAME_RUSHN_ATTACK / SCRIPTS — убрать описание trim с main, если его нет в коде
+- [ ] **Gap:** конец попытки при отсутствии confirmed death (truncate / title-like `L=6`) — secondary без ложного early-stop
 
 ### Критерий готовности (DoD)
 
 - [ ] Доказано слоем на **новом** inference-клипе после фикса записи (probe хвоста FM2): нет title-like без осознанного эталона
-- [x] Эпизод не заканчивается до исчерпания бюджета на flicker lives / ложной title-позе — `death_confirm_steps` + unit
+- [x] Эпизод не заканчивается до исчерпания бюджета на flicker lives / ложной title-позе — `death_confirm_steps` + unit + smoke diag
 - [x] На эфире/playlist между клипами нет доигрывания в attract — hold OK по probe п.3; trim не используется
 - [x] Игро-специфика не раздувает `src/env/base_nes_env.py` — confirm generic; порог/rooms в `env_config.yaml`
 - [x] Unit на смерть + конец эпизода / attempts observability зелёные
 - [x] `experiment/stop-title-attract` не merge; pose-stop и trim-by-death_x отвергнуты
 
-**Осталось до закрытия задачи:** короткий inference smoke → FM2 в `tmp/smoke/` → probe хвоста (закрыть первый DoD).
+**Блокер DoD:** smoke 2026-07-20 — truncate @8000, `death_count=0`, last frame title-like (`r=0,x=129,L=6`). Confirm отсекает flicker (хорошо); реальных смертей нет → primary не срабатывает; secondary требует `lives<1` после death — не ловит attract с `L=6`.
 
 ### Не делать (антискоуп)
 
@@ -139,6 +140,22 @@ Attempts: конец с `death_lives=5` — обрыв на **первой** (и
 - Playlist: `trim_fm2_*` / trim-by-`death_x` **нет** в `src/achievements/playlist.py`. Hold≈180 оставлен: probe п.3 — после gameplay-конца не уходит в title/attract за hold и даже ~30 с.
 - Антирегрессия: unit death_mode + attempt_logger зелёные (flicker не death).
 - SCRIPTS: ложного описания trim на main нет; GAME_RUSHN_ATTACK — `death_confirm_steps` + secondary title.
+
+#### Inference smoke + probe (2026-07-20)
+
+Прогон: `gen0` + `inference_cp0`, `death_mode=game_over`, `death_confirm_steps=4`, FM2 в `tmp/smoke/` (очищен).
+
+| Метрика | Результат |
+| ------- | --------- |
+| steps | **8000** (= `max_episode_steps`, truncate) |
+| `death_count` / `terminate_reason` | **0** / `null` |
+| end RAM | `r=0x00, x=129, y=133, L=6` |
+| probe −600 / −120 | gameplay, PPU≠title |
+| probe −1 | **`r=0,x=129,L=6`, PPU title_like** |
+
+Diag (4000 steps): **16** смен lives, все вида `6→5→6` за 2–3 step (pending≤1, затем откат) — **ни одной confirmed death**. Исторические «смерти» в attempts с `L=5` с высокой вероятностью были **flicker**, сжигавшие budget при `confirm=1`.
+
+**Вердикт smoke:** `death_confirm_steps` работает как задумано (flicker ≠ death). DoD **не закрыт**: без real death эпизод доходит до truncate и пишет title-like кадр. Нужен критерий конца при attract/`L=6` или ином soft-reset **без** возврата к голому `x=129` early-stop (новый пункт чеклиста Gap).
 
 | Источник | Факт |
 | -------- | ---- |
