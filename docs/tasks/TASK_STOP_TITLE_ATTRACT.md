@@ -1,6 +1,6 @@
 # TASK_STOP_TITLE_ATTRACT — граница конца inference-клипа
 
-**Статус:** open  
+**Статус:** open — **цель не достигнута**  
 **Приоритет:** high  
 **Ветка:** `task/stop-title-attract` — проработку этой задачи выполнять **только в этой ветке**.  
 **Зависит от:** —  
@@ -11,9 +11,9 @@
 
 ### Цель
 
-Inference-клип (FM2 / playlist) должен заканчиваться на **границе попытки агента**: полный осмысленный проход жизней — **без** долгого idle title/attract после game over / soft-reset и **без** обрезания живого геймплея.
+Inference-клип (FM2 / playlist) должен заканчиваться на **границе попытки агента**: полный осмысленный проход жизней — **без** GAME OVER → title → attract в записи и **без** обрезания живого геймплея.
 
-Триггер: confirmed deaths до бюджета; secondary — title/attract idle после попытки (`RushnAttackEnv`). Не голый `x=129`, не слепой trim.
+Триггер: confirmed deaths до бюджета; secondary — конец **до** или **на** границе GO, не после входа в title/attract. Не голый `x=129`, не слепой trim.
 
 ### Чеклист сессии
 
@@ -23,17 +23,38 @@ Inference-клип (FM2 / playlist) должен заканчиваться на
 - [x] Playlist без trim-by-`death_x`
 - [x] Unit death_mode + RnA title/attract secondary
 - [x] Pluggable Core: title/attract в `RushnAttackEnv` + `env_config.yaml`, не в ядре
-- [ ] **DoD visual:** клип без долгого idle title/attract после конца попытки (оператор)
+- [ ] **DoD visual:** клип без GO→title→attract (оператор) — **FAIL 2026-07-20**
 
 ### Критерий готовности (DoD)
 
-- [ ] Новый inference-клип: нет длительного idle title/attract после GO/soft-reset
-- [x] Не early-stop на flicker / mid-flash (`confirm` > flash)
-- [x] Hold между клипами OK (probe)
+- [ ] Новый inference-клип: **нет** GAME OVER / title menu / attract demo в просмотре
+- [ ] Не early-stop на flicker / короткий mid-flash коридора
+- [x] Hold между клипами OK (probe п.3)
 - [x] Игро-специфика в плагине ([DESIGN](../DESIGN.md) Pluggable Core / Template Method)
 - [x] Unit зелёные; experiment не merge
 
-**2026-07-20 visual:** в клипе `death_count=0`, весь прогон `room=0x00` — гейт secondary только по `level≥0x08` **никогда не включался**; оператор видел несколько title/attract (PPU) при `L=6`, не «после GO». Фикс: `min_attempt_steps` OR level OR death.
+### Операторский visual FAIL (2026-07-20, вечер)
+
+Клип: `tmp/smoke/visual_one_clip/` — `terminate_reason=title_screen` @ **1447** env-steps (`fm2≈5788` frames), `death_count=0`, end RAM `r=0,x=129,y=133,L=6`.
+
+Просмотр playlist (`play_inference_fm2`, overlay HUD):
+
+| f (HUD) | Что на экране | HUD |
+| ------- | ------------- | --- |
+| **5031** | **GAME OVER** (белый текст на чёрном) | `r=0x00 L=6` |
+| **5714** | **Title** (Konami / Rush'n Attack / 1 PLAYER) | `r=0x00 L=6` |
+| **5918** | **Attract demo** (коридор, бег; score у 1P пустой — признак demo) | `r=0x00 L=6` |
+
+`f=5918` > длины movie (~5788) — хвост attract может быть **hold/free-run** после movie; GO@5031 и title@5714 — **внутри** FM2.
+
+**Выводы (зафиксировать):**
+
+1. Цель **не** достигнута: в клипе есть полная цепочка GO → title → (далее attract).
+2. Экран **GAME OVER при `L=6`** — secondary по `lives<1` его **не видит**; `death_count` тоже 0 (нет confirmed death).
+3. Стоп по attract standing (`y∈{131,133,135}`, confirm=24) срабатывает **слишком поздно**: к моменту terminate уже записаны GO и title.
+4. Нужен эталон/сигнал именно **экрана GAME OVER** (или более ранний конец попытки), не только поза title standing / `lives<1`.
+
+Ранее: гейт только `level≥0x08` не включал secondary при gen0 в `room=0` → `min_attempt_steps`; confirm 32→24 убрал «4 цикла» до truncate, но не убрал GO→title из хвоста.
 
 ### Не делать (антискоуп)
 
