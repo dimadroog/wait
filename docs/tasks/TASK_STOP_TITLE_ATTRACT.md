@@ -1,55 +1,159 @@
-# TASK_STOP_TITLE_ATTRACT — не писать title/attract в inference FM2
+# TASK_STOP_TITLE_ATTRACT — граница конца inference-клипа
 
 **Статус:** open  
 **Приоритет:** high  
 **Ветка:** `task/stop-title-attract` — проработку этой задачи выполнять **только в этой ветке**.  
 **Зависит от:** —  
-**Файлы:** `src/env/base_nes_env.py`, `games/rushn_attack/env/`, `games/rushn_attack/env_config.yaml`, `src/achievements/playlist.py`, `src/fm2_export.py`, `fceux/lua/achievement_overlay_playlist.lua`, `docs/DESIGN.md`, `docs/GAME_RUSHN_ATTACK.md`  
+**Файлы:** `src/env/base_nes_env.py`, `games/rushn_attack/env/`, `games/rushn_attack/env_config.yaml`, `src/attempt_logger.py`, `src/achievements/playlist.py`, `src/fm2_export.py`, `fceux/lua/achievement_overlay_playlist.lua`, `docs/GAME_RUSHN_ATTACK.md`, `docs/SCRIPTS.md`, `docs/DESIGN.md`  
 **Контекст в чат:** этот файл + [DESIGN.md](../DESIGN.md) § ядро/плагин + файлы из шпаргалки выше  
 
-**Черновик решения (не merge-ready):** ветка `experiment/stop-title-attract` (`9eef8af`).
+**Тупик (не merge):** `experiment/stop-title-attract` (`9eef8af`) — pose-stop `x=129` + trim по `death_x==129`.
 
 ### Цель
 
-После game over в inference FM2 не должны попадать title screen и attract demo. Эпизод должен заканчиваться на реальном конце попытки (исчерпание жизней / game over), без обрыва геймплея на ранних жизнях и без длинного хвоста меню/демо.
+Inference-клип (FM2 / playlist) должен заканчиваться на **границе попытки агента**: полный осмысленный проход жизней или иной эталонный конец попытки — **без** хвоста title/attract и **без** обрезания живого геймплея.
 
-### Архитектурное ограничение (DESIGN)
-
-По [DESIGN.md](../DESIGN.md): **игро-специфика → `games/<game_id>/`**, общее → `src/`.  
-Код в `experiment/stop-title-attract` **может противоречить DESIGN**: эвристики Rush'n Attack (`title_x=129`, level-room `≥0x08`, confirm lives dip и т.п.) зашиты в `BaseNesEnv`. Всё, что относится к конкретной игре, должно жить в плагине игры (`games/rushn_attack/…`) через hooks / config / override — и на этапе проработки считается **гипотезой**, не каноном ядра.
-
-### Симптом / наблюдения оператора
-
-- В клипах после game over идут title и attract.
-- Черновик в `experiment/stop-title-attract`: клип обрывается **ещё до окончания второй жизни** (стоп слишком агрессивный — ложный `title_screen` / поза `room=0x00,x=129`).
+Сначала доказать, **в каком слое** живёт операторский симптом «title/attract в конце» (запись env / байты FM2 / playback free-run). Триггер terminate — по **эталону п.4** (подтверждённые death-события до бюджета), не поза `room=0x00,x=129` и не слепой tail-trim.
 
 ### Чеклист сессии
 
-- [ ] Зафиксировать эталонный критерий конца попытки (RAM/room/x/lives или иной сигнал) на Rush'n Attack без ложных срабатываний в стартовом коридоре
-- [ ] Вынести игро-специфику из `BaseNesEnv` в `games/rushn_attack/` (config + hooks); в ядре — только общий механизм
-- [ ] Не ломать `death_mode=game_over` для train (ложные dip lives на смене комнаты)
-- [ ] Короткий inference-клип в `tmp/smoke/`: полный проход жизней, обрыв без title/attract
-- [ ] Согласовать с playlist: post-movie hold / tail-trim — только если нужны после фикса записи
-- [ ] Доки: GAME_RUSHN_ATTACK / SCRIPTS; не закреплять гипотезу как API ядра
+- [x] Probe хвоста raw FM2 (`logs/20260718/ep*.fm2`): RAM+PPU последних N кадров — есть ли title/attract *внутри* movie
+- [x] Probe хвоста playlist FM2 (`logs/20260719/*.fm2`) vs `episode_frames` в attempts (учёт trim 1500)
+- [x] Probe playback: после `movie` finished при hold в `achievement_overlay_playlist.lua` — уходит ли экран в title/attract без записи в FM2
+- [x] Зафиксировать эталон конца попытки Rush'n Attack (RAM/события), **отдельно** от позы `x=129`; сырой `lives` — только с confirm / не единственный сигнал
+- [ ] Надёжный terminate записи по эталону; hex-парсинг `room` от bridge; игро-специфика в `games/rushn_attack/`, в ядре — общий механизм ([DESIGN](../DESIGN.md))
+- [ ] Observability: `terminate_reason`, `death_count` (и стабильный end-RAM) в `attempts.jsonl`
+- [ ] Playlist: не использовать слепой trim по `death_x`; free-run hold не доигрывает до attract между клипами
+- [ ] Антирегрессия: train `death_mode=game_over` без ложных dip на смене комнаты; короткий smoke-клип в `tmp/smoke/`
+- [ ] Доки: GAME_RUSHN_ATTACK / SCRIPTS — убрать описание trim с main, если его нет в коде
 
 ### Критерий готовности (DoD)
 
-- [ ] Inference FM2 не содержит title/attract после game over
-- [ ] Эпизод не обрывается до исчерпания бюджета жизней (нет раннего stop на 1–2-й жизни)
-- [ ] Игро-специфика не раздувает `src/env/base_nes_env.py` (соответствие DESIGN)
+- [ ] Доказано слоем: title/attract либо отсутствует в FM2, либо срезан осознанно по эталону конца попытки (не по `x=129`)
+- [ ] Эпизод не заканчивается до исчерпания бюджета на flicker lives / ложной title-позе
+- [ ] На эфире/playlist между клипами нет доигрывания в attract
+- [ ] Игро-специфика не раздувает `src/env/base_nes_env.py`
 - [ ] Unit/smoke на смерть + конец эпизода зелёные
+- [ ] `experiment/stop-title-attract` не merge; pose-stop и trim-by-death_x отвергнуты
 
 ### Не делать (антискоуп)
 
-- Пересбор часового эфирного плейлиста
-- OBS / Twitch
+- Merge `experiment/stop-title-attract` в main
+- Стоп записи по позе `room + title_x=129` как главный критерий
+- Слепой `trim_fm2_tail_frames` / trim по `death_x==129`
+- OBS / Twitch / пересбор часового эфирного плейлиста как цель задачи
 - Смена reward / train hyperparams
-- Merge `experiment/stop-title-attract` в main «как есть»
+- Повтор [ISSUE_INFERENCE](archive/ISSUE_INFERENCE.md) (title **в начале** playback / embed) — только ссылка при пересечении
 
-### Заметки / гипотезы
+### Исследование (2026-07-20)
 
-- Lives RAM (`0x0017`) мигает 6→5→6 на смене комнаты (streak ≤3) — не надёжный счётчик смертей без confirm.
-- Поза title/attract: `room=0x00`, `x=129` (G0 / ISSUE_INFERENCE); та же поза бывает в стартовом коридоре → нужен gate (например level-room), иначе ранний stop.
-- Bridge отдаёт `room` как `"0x00"` (строка) — парсинг hex обязателен.
-- В experiment: playlist `trim_fm2_tail_frames` для `died` клипов; Lua playlist без post-movie hold — отдельный слой (playback), не замена стопа записи.
-- Черновик: `experiment/stop-title-attract` — отвалидировать или выкинуть после правильного решения в task-ветке.
+Оператор видит title/attract в конце просмотра; путь «стоп на title-позе» и experiment **не согласуются с логами**.
+
+#### Probe raw FM2 tail (2026-07-20) — пункт 1
+
+Инструмент: `probe_movie_playback_ppu` @ `mf ∈ {n−600, n−120, n−1}` на `logs/20260718/ep0001,02,04,05.fm2` (turbo playmovie). Артефакты в `tmp/smoke/` — очищены после прогона.
+
+| Клип | n frames | @ −600 | @ −120 | @ −1 (конец movie) |
+| ---- | -------- | ------ | ------ | ------------------ |
+| ep0001 | 7116 | gameplay `r=0,x≈5,L=6`, PPU≠title | то же | то же — **без title в хвосте** |
+| ep0002 | 6444 | gameplay `L=6` | **`r=0,x=129,L=6`, PPU title_like** | `r=17,x=129,L=5`, PPU чёрный (death flash?) |
+| ep0004 | 8260 | gameplay `L=6` | **`r=0,x=129,L=6`, PPU title_like** | `r=9,x=129,L=5`, PPU чёрный |
+| ep0005 | 9132 | gameplay `L=6` | **`r=0,x=129,L=6`, PPU title_like** | `r=17,x=129,L=5`, PPU чёрный |
+
+**Вердикт пункта 1:** title/attract-подобный участок **бывает внутри raw FM2** (~2 с до конца: `room=0,x=129,L=6` + PPU title_like) у ep0002/04/05; ep0001 — чистый gameplay до конца. Самый последний кадр — скорее death/black (`L=5`, ненулевой room), не меню «1 PLAYER». Симптом **не сводится** только к playback free-run; слой записи/FM2 тоже участвует. Слепой trim 25 с по `death_x` по-прежнему отвергнут (режет и нормальный геймплей @ −600).
+
+#### Probe playlist FM2 tail (2026-07-20) — пункт 2
+
+Все 25 клипов `logs/20260719/playlist.json`: `fm2_frames == episode_frames×4 − 1500` (trim experiment). Probe short/median/long: `04_many_achievements_{020,021,006}.fm2` @ `mf ∈ {n−600, n−120, n−1}`.
+
+| Клип | n (после trim) | steps×4 | trim | хвост −600/−120/−1 |
+| ---- | -------------- | ------- | ---- | ------------------ |
+| …_020 (ep21) | 5032 | 6532 | 1500 | везде gameplay `r=0,x≈1–6,L=6`, PPU≠title |
+| …_021 (ep22) | 6632 | 8132 | 1500 | то же |
+| …_006 (ep7) | 16116 | 17616 | 1500 | то же |
+
+**Вердикт пункта 2:** после trim 1500 хвост playlist FM2 — **чистый gameplay**, без title/attract внутри movie. Trim срезал title-like хвост raw (п.1), но с запасом ~25 с и ценой геймплея. Если оператор всё ещё видит title/attract на эфире/playlist — искать в **playback free-run после movie** (пункт 3), не в байтах этих FM2.
+
+#### Probe playback hold (2026-07-20) — пункт 3
+
+Имитация слоя playlist: `-playmovie` → при конце movie `movie.stop`/`close` → free-run. Сэмплы `@ hold ∈ {0,60,180,600,1800}` (default hold плейлиста = **180**). PPU screenshot в этом прогоне не записался (`title_like=null`) — вердикт по **RAM**.
+
+| Клип | конец FM2 (п.1–2) | hold 0…1800 после stop |
+| ---- | ----------------- | ---------------------- |
+| `20260719/…_020.fm2` (trimmed) | gameplay `L=6` | стабильно `r=0,x≈4–5,L=6`, `movie_active=false` — **без title/attract за 30 с** |
+| `20260718/ep0004.fm2` (raw) | deathish `r=8,x=129,L=5` | hold0: death; **hold60: refill `L=5→6`, `r=0,x=155`** (не классический title `x=129,L=0`); дальше corridor/gameplay `L=6` |
+
+**Вердикт пункта 3:** для **текущего playlist 20260719** (trim + hold≈180) free-run **не** уводит в title/attract в пределах hold и даже ~30 с. Симптом оператора на этом плейлисте **не объясняется** post-movie hold. На raw death-хвосте free-run даёт быстрый lives-refill/смену позы — отдельно от меню title; длинный attract за 30 с не поймали. Главный слой title-like для raw — **внутри FM2** (п.1); trim — костыль (п.2), не канон.
+
+#### Эталон конца попытки (2026-07-20) — пункт 4
+
+**Источники:** `human_playthrough.jsonl` (полного GO нет), dense RAM-probe хвоста `ep0004.fm2` (шаг 30 кадров, последние ~5 с), attempts 18–19.07, G0.
+
+**Отвергнутые одиночные сигналы (ложные друзья)**
+
+| Сигнал | Почему нельзя |
+| ------ | ------------- |
+| `x == 129` | В эталоне у gameplay (`lives∈[1,9]`) **3935** кадров с `x=129` (в т.ч. коридор `room=0x00`) |
+| `room == 0` | И title, и стартовый коридор |
+| `lives == 0` один кадр | Анимация смерти; не GO |
+| `death_x == 129` → trim | Путает death в level с title; см. п.2 |
+
+**Dense хвост raw ep0004 (n=8260)** — title-like **до** logged death, не «после полного GO»:
+
+| from_end | RAM | Интерпретация |
+| -------- | --- | ------------- |
+| −300…−180 | `r=0, x=0/155, L=6` | обычный геймплей |
+| −150…−30 | `r=0, x=129, L=6` | title-like поза при **ещё валидных** lives (+ PPU title_like @ −120, п.1) |
+| −1 | `r=9, x=129, L=5` | событие потери жизни (6→5) |
+
+Attempts: конец с `death_lives=5` — обрыв на **первой** (или ранней) смерти, не на исчерпании бюджета 6.
+
+**Канон для записи (рабочий эталон → п.5)**
+
+1. **Primary:** N-е **подтверждённое** событие потери жизни, N = `lives` на старте эпизода после валидного gameplay-чтения (`lives∈[1,9]`).  
+   Confirm: dip `lives` держится ≥ `death_confirm_steps`, и это **строго больше** max flicker на смене комнаты (эмпирика ≤3 env-step → confirm ≥4).  
+   Terminate на step подтверждения N-й смерти — **не ждать** title/attract.
+2. **Secondary (страховка, не главный путь):** после ≥1 confirmed death — устойчивый `lives<1` + title-room (hex-parse `"0x.."`, не `int("0x00")`) ≥ `confirm_steps`. Attract с `lives≥1` этим не ловится.
+3. Сырой `lives` — **только** как вход в confirmed-death / secondary; никогда единственный триггер.
+
+**Пробел эталона:** в `human_playthrough` нет полного drain жизней → GO→title; калибровка secondary — по controlled smoke (п.8) / будущему GO-прогону.
+
+**Вердикт пункта 4:** эталон зафиксирован — **бюджет подтверждённых death-событий**, не поза `x=129`. Реализация — п.5; отдельно выяснить, почему текущие inference attempts рвутся при `L=5` (flicker сжигает бюджет vs фактический early stop).
+
+| Источник | Факт |
+| -------- | ---- |
+| `logs/20260718`, `20260719` attempts | Все `died=true`: `death_room∈{0x0F,0x10}`, `(x,y)=(129,131)`, **`death_lives=5`** |
+| Title в эталоне | `room=0x00`, `x=129`, часто `lives=0` (`human_playthrough`, G0) |
+| Хвост `inference_inputs` | trailing noop ~1–22 env-step (≪ 15–25 с) |
+| Playlist `20260719` | у **всех 25** клипов `episode_frames×4 − fm2_frames == 1500` (trim experiment по `death_x==129`) |
+| Smoke experiment | `terminate_reason=title_screen` на **~203** steps — ложный ранний стоп |
+
+**Следствие (дополнено probe п.1):** `death_x=129` в attempts — конец на death/`L=5`, не доказательство «весь хвост = title». У части raw FM2 за ~2 с до конца movie уже есть title-like (`r=0,x=129,L=6` + PPU). Trim на ~25 с всё равно режет и нормальный геймплей (@ −600).
+
+```text
+Оператор: title/attract в конце просмотра
+    ├─ запись env (когда terminated)
+    ├─ содержимое FM2 (последние кадры movie)
+    └─ playback (free-run после movie end)
+Тупик experiment: pose-stop room+x=129 → early stop
+                 trim 900/1500 по death_x=129 → режет gameplay
+```
+
+**Уже в main / почему не закрывает**
+
+- `episode_end_title` (`bf579be`): `lives<1` + room + confirm — запасной путь, не канон конца попытки.
+- Баг: `_title_screen_match` делает `int(ram["room"])` при bridge `"0x00"` → `ValueError`; `_parse_room_id` есть, в match не используется.
+- Критерий не ловит attract с `lives≥1`.
+- FM2 на main = все steps до terminate, без trim; в SCRIPTS.md trim описан с experiment (дрейф доков).
+- Playlist Lua: после movie finished — hold ~180 кадров свободной эмуляции — отдельный слой симптома.
+- Attempts не пишут `terminate_reason` / `death_count`.
+
+**Гипотезы (проверять на п.5+)**
+
+- Сырой RAM `lives` (`0x0017`) шумит: анимация смерти →0; dip `6→5→6` на смене комнаты. Эталон п.4: только confirmed death / secondary.
+- При `death_mode=game_over` бюджет может сгорать на flicker → обрыв с `L=5` до настоящего GO; title-like в raw появляется **до** этой смерти (−150…−30), не только «после GO».
+- Штатная цепочка после настоящего GO: gameplay → title → attract; сейчас в логах полного GO нет.
+
+**Отвергнуто**
+
+- `experiment/stop-title-attract`: pose-return + refill + trim-by-death_x; early stop; игро-эвристики в `BaseNesEnv`.
