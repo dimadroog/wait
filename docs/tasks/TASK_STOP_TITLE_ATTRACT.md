@@ -21,20 +21,23 @@ Inference-клип (FM2 / playlist) должен заканчиваться на
 - [x] Probe хвоста playlist FM2 (`logs/20260719/*.fm2`) vs `episode_frames` в attempts (учёт trim 1500)
 - [x] Probe playback: после `movie` finished при hold в `achievement_overlay_playlist.lua` — уходит ли экран в title/attract без записи в FM2
 - [x] Зафиксировать эталон конца попытки Rush'n Attack (RAM/события), **отдельно** от позы `x=129`; сырой `lives` — только с confirm / не единственный сигнал
-- [ ] Надёжный terminate записи по эталону; hex-парсинг `room` от bridge; игро-специфика в `games/rushn_attack/`, в ядре — общий механизм ([DESIGN](../DESIGN.md))
-- [ ] Observability: `terminate_reason`, `death_count` (и стабильный end-RAM) в `attempts.jsonl`
-- [ ] Playlist: не использовать слепой trim по `death_x`; free-run hold не доигрывает до attract между клипами
-- [ ] Антирегрессия: train `death_mode=game_over` без ложных dip на смене комнаты; короткий smoke-клип в `tmp/smoke/`
-- [ ] Доки: GAME_RUSHN_ATTACK / SCRIPTS — убрать описание trim с main, если его нет в коде
+- [x] Надёжный terminate записи по эталону; hex-парсинг `room` от bridge; игро-специфика в `games/rushn_attack/`, в ядре — общий механизм ([DESIGN](../DESIGN.md))
+- [x] Observability: `terminate_reason`, `death_count` (и стабильный end-RAM) в `attempts.jsonl`
+- [x] Playlist: не использовать слепой trim по `death_x`; free-run hold не доигрывает до attract между клипами
+- [x] Антирегрессия unit: `death_mode=game_over` + flicker confirm (`tests/test_death_mode.py`)
+- [ ] Короткий inference smoke-клип в `tmp/smoke/` + probe хвоста (закрытие DoD)
+- [x] Доки: GAME_RUSHN_ATTACK / SCRIPTS — убрать описание trim с main, если его нет в коде
 
 ### Критерий готовности (DoD)
 
-- [ ] Доказано слоем: title/attract либо отсутствует в FM2, либо срезан осознанно по эталону конца попытки (не по `x=129`)
-- [ ] Эпизод не заканчивается до исчерпания бюджета на flicker lives / ложной title-позе
-- [ ] На эфире/playlist между клипами нет доигрывания в attract
-- [ ] Игро-специфика не раздувает `src/env/base_nes_env.py`
-- [ ] Unit/smoke на смерть + конец эпизода зелёные
-- [ ] `experiment/stop-title-attract` не merge; pose-stop и trim-by-death_x отвергнуты
+- [ ] Доказано слоем на **новом** inference-клипе после фикса записи (probe хвоста FM2): нет title-like без осознанного эталона
+- [x] Эпизод не заканчивается до исчерпания бюджета на flicker lives / ложной title-позе — `death_confirm_steps` + unit
+- [x] На эфире/playlist между клипами нет доигрывания в attract — hold OK по probe п.3; trim не используется
+- [x] Игро-специфика не раздувает `src/env/base_nes_env.py` — confirm generic; порог/rooms в `env_config.yaml`
+- [x] Unit на смерть + конец эпизода / attempts observability зелёные
+- [x] `experiment/stop-title-attract` не merge; pose-stop и trim-by-death_x отвергнуты
+
+**Осталось до закрытия задачи:** короткий inference smoke → FM2 в `tmp/smoke/` → probe хвоста (закрыть первый DoD).
 
 ### Не делать (антискоуп)
 
@@ -119,6 +122,23 @@ Attempts: конец с `death_lives=5` — обрыв на **первой** (и
 **Пробел эталона:** в `human_playthrough` нет полного drain жизней → GO→title; калибровка secondary — по controlled smoke (п.8) / будущему GO-прогону.
 
 **Вердикт пункта 4:** эталон зафиксирован — **бюджет подтверждённых death-событий**, не поза `x=129`. Реализация — п.5; отдельно выяснить, почему текущие inference attempts рвутся при `L=5` (flicker сжигает бюджет vs фактический early stop).
+
+#### Terminate по эталону (2026-07-20) — пункт 5
+
+Сделано в `task/stop-title-attract` (без pose `x=129` / trim):
+
+- `BaseNesEnv`: `death_confirm_steps` (generic); dip lives подтверждается streak'ом; flicker откатывается.
+- `_title_screen_match`: room через `_parse_room_id` / `_ram_int` (bridge `"0x00"`).
+- `games/rushn_attack/env_config.yaml`: `death_confirm_steps: 4`; `episode_end_title` — secondary only.
+- `make_env` прокидывает `death_confirm_steps` из config.
+- Unit: flicker / confirm streak / hex room string — `tests/test_death_mode.py`.
+
+#### Observability / playlist / docs (п.6–9)
+
+- `AttemptLogger`: `terminate_reason`, `death_count`; `death_lives` всегда из end-RAM. Tests: `tests/test_attempt_logger.py`.
+- Playlist: `trim_fm2_*` / trim-by-`death_x` **нет** в `src/achievements/playlist.py`. Hold≈180 оставлен: probe п.3 — после gameplay-конца не уходит в title/attract за hold и даже ~30 с.
+- Антирегрессия: unit death_mode + attempt_logger зелёные (flicker не death).
+- SCRIPTS: ложного описания trim на main нет; GAME_RUSHN_ATTACK — `death_confirm_steps` + secondary title.
 
 | Источник | Факт |
 | -------- | ---- |

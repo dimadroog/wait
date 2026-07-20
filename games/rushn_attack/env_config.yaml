@@ -19,9 +19,11 @@ lives:
 # H3: эпизод до game over (все жизни), не до первой смерти — меньше reset storm.
 # A/B со старым поведением: --death-mode life_lost
 death_mode: game_over
+# Игнорировать dip lives на смене комнаты (streak ≤3); confirm должен быть больше.
+death_confirm_steps: 4
 
-# Стоп записи на title (не писать title/attract в FM2 после game over).
-# lives<1 + room ∈ rooms, confirm_steps подряд, только после ≥1 death в эпизоде.
+# Secondary: стоп на title после ≥1 death (lives<1 + room), если budget death не сработал.
+# Не поза x=129. Bridge отдаёт room как "0x00" — парсинг hex в BaseNesEnv.
 episode_end_title:
   rooms: ["0x00"]
   confirm_steps: 8

@@ -19,6 +19,7 @@ def _make_env(
     *,
     death_mode: str = DEATH_MODE_LIFE_LOST,
     start_lives: int = 3,
+    death_confirm_steps: int = 1,
     title_end_rooms: tuple[int, ...] | None = (0x00,),
     title_end_confirm_steps: int = 8,
 ) -> BaseNesEnv:
@@ -31,6 +32,7 @@ def _make_env(
             save_state="save_states/cp0.fc0",
             session_id="test_death",
             death_mode=death_mode,
+            death_confirm_steps=death_confirm_steps,
             title_end_rooms=title_end_rooms,
             title_end_confirm_steps=title_end_confirm_steps,
         )
@@ -40,10 +42,12 @@ def _make_env(
     env._prev_lives = start_lives
     env._death_count = 0
     env._title_end_streak = 0
+    env._pending_lives_from = None
+    env._pending_death_streak = 0
     return env
 
 
-def _step_with_lives(env: BaseNesEnv, lives: int, *, room: int = 0x06):
+def _step_with_lives(env: BaseNesEnv, lives: int, *, room: int | str = 0x06):
     bridge = env._bridge
     bridge.step.return_value = {
         "obs_file": "x",
@@ -165,3 +169,52 @@ def test_game_over_budget_sets_terminate_reason_death() -> None:
     assert terminated is True
     assert info["terminate_reason"] == TERMINATE_REASON_DEATH
     assert info["death_count"] == 3
+
+
+def test_lives_flicker_not_counted_as_death() -> None:
+    """6→5→6 за < confirm_steps — не смерть (смена комнаты)."""
+    env = _make_env(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=6,
+        death_confirm_steps=4,
+    )
+    _obs, _r, terminated, _trunc, info = _step_with_lives(env, 5)
+    assert info["died"] is False
+    assert terminated is False
+    assert info["death_count"] == 0
+    _obs, _r, terminated, _trunc, info = _step_with_lives(env, 6)
+    assert info["died"] is False
+    assert info["death_count"] == 0
+
+
+def test_confirmed_death_requires_streak() -> None:
+    env = _make_env(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=6,
+        death_confirm_steps=4,
+    )
+    for _ in range(3):
+        _obs, _r, terminated, _trunc, info = _step_with_lives(env, 5)
+        assert info["died"] is False
+        assert info["death_count"] == 0
+        assert terminated is False
+    _obs, _r, terminated, _trunc, info = _step_with_lives(env, 5)
+    assert info["died"] is True
+    assert info["death_count"] == 1
+    assert terminated is False
+
+
+def test_title_stop_accepts_hex_room_string() -> None:
+    """Bridge отдаёт room как '0x00' — secondary title stop не падает на int()."""
+    env = _make_env(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=3,
+        title_end_rooms=(0x00,),
+        title_end_confirm_steps=2,
+    )
+    _step_with_lives(env, 0, room=0x06)
+    _step_with_lives(env, 2, room=0x06)
+    _step_with_lives(env, 0, room="0x00")
+    _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room="0x00")
+    assert terminated is True
+    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
