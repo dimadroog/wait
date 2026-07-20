@@ -74,9 +74,13 @@ noop | left | right | down | up | right+up | left+up | A | B
 
 В RAM `lives` на смерти часто кратковременно **0** (анимация), затем respawn с lives−1 — поэтому `game_over` считает **события** потери жизни, а не `lives==0`. CLI: `--death-mode` у `train_ppo` / `smoke_env`.
 
-Dip `lives` на смене комнаты (streak ≤3) не считается смертью: в `env_config.yaml` задаётся `death_confirm_steps: 4` (общий механизм confirm — в `BaseNesEnv`).
+Dip `lives` на смене комнаты (streak ≤3) не считается смертью: в `env_config.yaml` задаётся `death_confirm_steps: 4` (общий confirm — в `BaseNesEnv`).
 
-Дополнительно (`episode_end_title`, secondary): после ≥1 confirmed death эпизод может закончиться на устойчивом **title** (`lives<1` + `room` из списка, hex-строки bridge `"0x00"` поддерживаются). Не поза `x=129`. `info.terminate_reason`: `death` | `title_screen`.
+Дополнительно (`episode_end_title` → `RushnAttackEnv`, secondary после попытки):
+- **title** `lives<1` + room (в т.ч. soft-reset/GO без counted death, если уже был level-room);
+- **attract standing** `L≥1`: room + `title_x` + `title_ys` (не коридор `y≈59/67`), `pose_confirm_steps` > mid-flash (~28);
+- опционально `truncate_grace` / `truncate_cool` после `max_episode_steps`.  
+`info.terminate_reason`: `death` | `title_screen`.
 
 Smoke (random, `save_states/cp0.fc0`, 2026-07-18): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
 

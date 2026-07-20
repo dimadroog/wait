@@ -15,22 +15,20 @@ from project_paths import mission_dir
 OBS_SHAPE = (4, 84, 84)
 DEFAULT_MAX_EPISODE_STEPS = 8_000
 
-# life_lost: terminated на первую потерю жизни (короткие эпизоды, reset storm).
-# game_over: died на каждую потерю жизни; terminated после N потерь (N = lives на старте).
-# Важно: в Rush'n Attack RAM lives на смерти часто →0 (анимация), затем respawn lives-1 —
-# поэтому game_over НЕ равен «lives==0», а считает события потери жизни.
+# life_lost: terminated на первую потерю жизни.
+# game_over: died на каждую потерю; terminated после N потерь (N = lives на старте).
+# Сырой lives==0 часто анимация смерти, не GO — считаем confirmed dips.
 DEATH_MODE_LIFE_LOST = "life_lost"
 DEATH_MODE_GAME_OVER = "game_over"
 DEATH_MODES = frozenset({DEATH_MODE_LIFE_LOST, DEATH_MODE_GAME_OVER})
 
 TERMINATE_REASON_DEATH = "death"
 TERMINATE_REASON_TITLE = "title_screen"
-DEFAULT_TITLE_END_CONFIRM_STEPS = 8
-# Confirm > max lives flicker on room change (Rush'n Attack: streak ≤3 env-step).
 DEFAULT_DEATH_CONFIRM_STEPS = 1
 
 
-def _parse_room_id(value: Any) -> int:
+def parse_hex_or_int(value: Any) -> int:
+    """Parse int or hex string ('0x00') from bridge/YAML."""
     if isinstance(value, int):
         return int(value)
     text = str(value).strip().lower()
@@ -39,14 +37,18 @@ def _parse_room_id(value: Any) -> int:
     return int(text, 0) if text else 0
 
 
-def parse_title_end_rooms(rooms: Sequence[Any] | None) -> frozenset[int]:
-    if not rooms:
+def parse_int_set(values: Sequence[Any] | None) -> frozenset[int]:
+    if not values:
         return frozenset()
-    return frozenset(_parse_room_id(r) for r in rooms)
+    return frozenset(parse_hex_or_int(v) for v in values)
 
 
 class BaseNesEnv(gym.Env):
-    """reset/step через FceuxBridge; награды — в CheckpointRewardWrapper."""
+    """reset/step через FceuxBridge; награды — в CheckpointRewardWrapper.
+
+    Игро-специфичный конец эпизода (title/attract и т.п.) — через hooks
+    в subclass плагина (`games/<game>/env/`), не через константы игры в ядре.
+    """
 
     metadata = {"render_modes": []}
 
@@ -67,8 +69,6 @@ class BaseNesEnv(gym.Env):
         fm2_template: str | Path | None = None,
         death_mode: str = DEATH_MODE_LIFE_LOST,
         death_confirm_steps: int = DEFAULT_DEATH_CONFIRM_STEPS,
-        title_end_rooms: Sequence[Any] | None = None,
-        title_end_confirm_steps: int = DEFAULT_TITLE_END_CONFIRM_STEPS,
     ) -> None:
         super().__init__()
         self.game_id = game_id
@@ -82,8 +82,6 @@ class BaseNesEnv(gym.Env):
             raise ValueError(f"death_mode must be one of {sorted(DEATH_MODES)}, got {death_mode!r}")
         self.death_mode = mode
         self.death_confirm_steps = max(1, int(death_confirm_steps))
-        self.title_end_rooms = parse_title_end_rooms(title_end_rooms)
-        self.title_end_confirm_steps = max(1, int(title_end_confirm_steps))
         self.save_state = save_state or self._default_save_state()
         self.frame_skip = frame_skip
         self.max_episode_steps = max_episode_steps
@@ -101,7 +99,6 @@ class BaseNesEnv(gym.Env):
         self._episode_start_lives: int | None = None
         self._prev_lives: int | None = None
         self._death_count = 0
-        self._title_end_streak = 0
         self._pending_lives_from: int | None = None
         self._pending_death_streak = 0
 
@@ -148,15 +145,12 @@ class BaseNesEnv(gym.Env):
 
     def _ram_int(self, ram: dict[str, Any], key: str, default: int = -1) -> int:
         try:
-            return _parse_room_id(ram.get(key, default))
+            return parse_hex_or_int(ram.get(key, default))
         except (TypeError, ValueError):
             return default
 
     def _death_occurred(self, ram: dict[str, Any]) -> bool:
-        """True, если подтверждена потеря жизни (dip lives ≥ death_confirm_steps).
-
-        Короткий flicker (например 6→5→6 на смене комнаты) не считается смертью.
-        """
+        """True, если подтверждена потеря жизни (dip ≥ death_confirm_steps)."""
         lives = int(ram.get("lives", 0))
         if not self._valid_lives(lives):
             return False
@@ -190,33 +184,31 @@ class BaseNesEnv(gym.Env):
         return False
 
     def _terminate_on_death(self, died: bool, ram: dict[str, Any]) -> bool:
-        """Решает, заканчивать ли эпизод при потере жизни."""
+        """Заканчивать ли эпизод при потере жизни."""
         if not died:
             return False
         if self.death_mode == DEATH_MODE_LIFE_LOST:
             return True
         self._death_count += 1
-        # Бюджет = lives после первого валидного чтения (не полагаться на lives==0 в RAM).
         budget = max(int(self._episode_start_lives or 1), 1)
         return self._death_count >= budget
 
-    def _title_screen_match(self, ram: dict[str, Any]) -> bool:
-        """Title secondary: lives<1 in a configured title room (after ≥1 death)."""
-        if not self.title_end_rooms or self._death_count < 1:
-            return False
-        lives = int(ram.get("lives", 0))
-        if lives >= 1:
-            return False
-        room = self._ram_int(ram, "room")
-        return room in self.title_end_rooms
+    def _on_episode_reset(self) -> None:
+        """Hook: сброс игро-специфичного состояния (плагин)."""
 
-    def _terminate_on_title(self, ram: dict[str, Any]) -> bool:
-        """Стоп, если title-сигнатура держится confirm_steps подряд."""
-        if self._title_screen_match(ram):
-            self._title_end_streak += 1
-        else:
-            self._title_end_streak = 0
-        return self._title_end_streak >= self.title_end_confirm_steps
+    def _on_ram(self, ram: dict[str, Any]) -> None:
+        """Hook: каждый step после чтения RAM (плагин)."""
+
+    def _secondary_terminate(self, ram: dict[str, Any]) -> bool:
+        """Hook: доп. конец эпизода (title/attract и т.п.). Default: нет."""
+        return False
+
+    def _should_defer_truncate(self, ram: dict[str, Any]) -> bool:
+        """Hook: отложить truncated на max_steps. Default: нет."""
+        return False
+
+    def _secondary_terminate_reason(self) -> str:
+        return TERMINATE_REASON_TITLE
 
     def reset(
         self,
@@ -231,7 +223,6 @@ class BaseNesEnv(gym.Env):
         bridge = self._ensure_bridge()
         bridge_response = bridge.reset_to_state(state)
         if not self.turbo:
-            # bridge.lua стартует в nothrottle; TURBO on после reset избыточен и гоняет IPC
             bridge.turbo(False)
 
         self._frames.clear()
@@ -239,8 +230,8 @@ class BaseNesEnv(gym.Env):
         self._episode_start_lives = None
         self._prev_lives = None
         self._death_count = 0
-        self._title_end_streak = 0
         self._clear_pending_death()
+        self._on_episode_reset()
 
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
@@ -254,7 +245,6 @@ class BaseNesEnv(gym.Env):
             ram = bridge.get_ram()
         lives = int(ram.get("lives", 0))
         if self._valid_lives(lives) and lives > self.lives_min:
-            # lives==0 на reset — часто «ещё не gameplay»; ждём первое lives≥1 в step.
             self._episode_start_lives = lives
             self._prev_lives = lives
 
@@ -290,8 +280,8 @@ class BaseNesEnv(gym.Env):
         self._episode_start_lives = None
         self._prev_lives = None
         self._death_count = 0
-        self._title_end_streak = 0
         self._clear_pending_death()
+        self._on_episode_reset()
 
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
@@ -348,11 +338,13 @@ class BaseNesEnv(gym.Env):
 
         died = self._death_occurred(ram)
         self._step_count += 1
+        self._on_ram(ram)
         terminated_death = self._terminate_on_death(died, ram)
-        terminated_title = False if terminated_death else self._terminate_on_title(ram)
-        terminated = terminated_death or terminated_title
+        terminated_secondary = False if terminated_death else self._secondary_terminate(ram)
+        terminated = terminated_death or terminated_secondary
         truncated = self._step_count >= self.max_episode_steps
-        # _prev_lives обновляется внутри _death_occurred (pending confirm).
+        if truncated and not terminated and self._should_defer_truncate(ram):
+            truncated = False
 
         info: dict[str, Any] = {
             "ram": ram,
@@ -366,8 +358,8 @@ class BaseNesEnv(gym.Env):
         }
         if terminated_death:
             info["terminate_reason"] = TERMINATE_REASON_DEATH
-        elif terminated_title:
-            info["terminate_reason"] = TERMINATE_REASON_TITLE
+        elif terminated_secondary:
+            info["terminate_reason"] = self._secondary_terminate_reason()
         return self._obs_stack(), 0.0, terminated, truncated, info
 
     def close(self) -> None:

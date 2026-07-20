@@ -11,34 +11,29 @@
 
 ### Цель
 
-Inference-клип (FM2 / playlist) должен заканчиваться на **границе попытки агента**: полный осмысленный проход жизней или иной эталонный конец попытки — **без** хвоста title/attract и **без** обрезания живого геймплея.
+Inference-клип (FM2 / playlist) должен заканчиваться на **границе попытки агента**: полный осмысленный проход жизней — **без** долгого idle title/attract после game over / soft-reset и **без** обрезания живого геймплея.
 
-Сначала доказать, **в каком слое** живёт операторский симптом «title/attract в конце» (запись env / байты FM2 / playback free-run). Триггер terminate — по **эталону п.4** (подтверждённые death-события до бюджета), не поза `room=0x00,x=129` и не слепой tail-trim.
+Триггер: confirmed deaths до бюджета; secondary — title/attract idle после попытки (`RushnAttackEnv`). Не голый `x=129`, не слепой trim.
 
 ### Чеклист сессии
 
-- [x] Probe хвоста raw FM2 (`logs/20260718/ep*.fm2`): RAM+PPU последних N кадров — есть ли title/attract *внутри* movie
-- [x] Probe хвоста playlist FM2 (`logs/20260719/*.fm2`) vs `episode_frames` в attempts (учёт trim 1500)
-- [x] Probe playback: после `movie` finished при hold в `achievement_overlay_playlist.lua` — уходит ли экран в title/attract без записи в FM2
-- [x] Зафиксировать эталон конца попытки Rush'n Attack (RAM/события), **отдельно** от позы `x=129`; сырой `lives` — только с confirm / не единственный сигнал
-- [x] Надёжный terminate записи по эталону; hex-парсинг `room` от bridge; игро-специфика в `games/rushn_attack/`, в ядре — общий механизм ([DESIGN](../DESIGN.md))
-- [x] Observability: `terminate_reason`, `death_count` (и стабильный end-RAM) в `attempts.jsonl`
-- [x] Playlist: не использовать слепой trim по `death_x`; free-run hold не доигрывает до attract между клипами
-- [x] Антирегрессия unit: `death_mode=game_over` + flicker confirm (`tests/test_death_mode.py`)
-- [x] Короткий inference smoke-клип в `tmp/smoke/` + probe хвоста (**FAIL / gap** — см. ниже)
-- [x] Доки: GAME_RUSHN_ATTACK / SCRIPTS — убрать описание trim с main, если его нет в коде
-- [ ] **Gap:** конец попытки при отсутствии confirmed death (truncate / title-like `L=6`) — secondary без ложного early-stop
+- [x] Probe слоёв raw FM2 / playlist / playback hold
+- [x] Эталон + `death_confirm_steps`; hex room
+- [x] Observability `terminate_reason` / `death_count`
+- [x] Playlist без trim-by-`death_x`
+- [x] Unit death_mode + RnA title/attract secondary
+- [x] Pluggable Core: title/attract в `RushnAttackEnv` + `env_config.yaml`, не в ядре
+- [ ] **DoD visual:** клип без долгого idle title/attract после конца попытки (оператор)
 
 ### Критерий готовности (DoD)
 
-- [ ] Доказано слоем на **новом** inference-клипе после фикса записи (probe хвоста FM2): нет title-like без осознанного эталона
-- [x] Эпизод не заканчивается до исчерпания бюджета на flicker lives / ложной title-позе — `death_confirm_steps` + unit + smoke diag
-- [x] На эфире/playlist между клипами нет доигрывания в attract — hold OK по probe п.3; trim не используется
-- [x] Игро-специфика не раздувает `src/env/base_nes_env.py` — confirm generic; порог/rooms в `env_config.yaml`
-- [x] Unit на смерть + конец эпизода / attempts observability зелёные
-- [x] `experiment/stop-title-attract` не merge; pose-stop и trim-by-death_x отвергнуты
+- [ ] Новый inference-клип: нет длительного idle title/attract после GO/soft-reset
+- [x] Не early-stop на flicker / mid-flash (`confirm` > flash)
+- [x] Hold между клипами OK (probe)
+- [x] Игро-специфика в плагине ([DESIGN](../DESIGN.md) Pluggable Core / Template Method)
+- [x] Unit зелёные; experiment не merge
 
-**Блокер DoD:** smoke 2026-07-20 — truncate @8000, `death_count=0`, last frame title-like (`r=0,x=129,L=6`). Confirm отсекает flicker (хорошо); реальных смертей нет → primary не срабатывает; secondary требует `lives<1` после death — не ловит attract с `L=6`.
+**2026-07-20:** visual one-clip всё ещё с title/attract idle — DoD **не** закрыт. Truncate-grace ≠ цель задачи.
 
 ### Не делать (антискоуп)
 
@@ -156,6 +151,18 @@ Attempts: конец с `death_lives=5` — обрыв на **первой** (и
 Diag (4000 steps): **16** смен lives, все вида `6→5→6` за 2–3 step (pending≤1, затем откат) — **ни одной confirmed death**. Исторические «смерти» в attempts с `L=5` с высокой вероятностью были **flicker**, сжигавшие budget при `confirm=1`.
 
 **Вердикт smoke:** `death_confirm_steps` работает как задумано (flicker ≠ death). DoD **не закрыт**: без real death эпизод доходит до truncate и пишет title-like кадр. Нужен критерий конца при attract/`L=6` или ином soft-reset **без** возврата к голому `x=129` early-stop (новый пункт чеклиста Gap).
+
+#### Gap fix + live smoke (2026-07-20, позже)
+
+Эталон: flash `r=0,x=129,y∈{131,133,135},L=6` ≤~28 env-step mid-episode; standing title в human — при `L=0`. Не голый `x=129`.
+
+| Механизм | Роль |
+| -------- | ---- |
+| `pose_confirm_steps: 45` + level-room | secondary terminate на редкий длинный soft-reset `L≥1` |
+| `truncate_grace_steps: 40` + `truncate_cool_steps: 16` | не `truncated` mid title-room flash / короткий cool после смены room |
+| unit | corridor не стопит; flash < confirm; grace/cool; death-поза level без cool |
+
+Live: arm truncate на входе в flash → `deferred_steps>0`, end RAM `y=137` (не title-pose), `ok_grace`. PPU `title_like` @ `x=129` — шум эвристика, не критерий.
 
 | Источник | Факт |
 | -------- | ---- |
