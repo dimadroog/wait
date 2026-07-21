@@ -367,7 +367,12 @@ Smoke и benchmark **не засоряют** `games/`. Временный выв
 - [ ] `find_stray_smoke_artifacts` → пусто
 - [ ] [SCRIPTS.md](SCRIPTS.md) синхронизирован по [алгоритму регистрации](#регистрация-скриптов-в-scriptsmd)
 
-Правило для агента: [.cursor/rules/artifact-hygiene.mdc](../.cursor/rules/artifact-hygiene.mdc).
+Правила для агента (Cursor, `alwaysApply`):
+
+- [.cursor/rules/pluggable-core.mdc](../.cursor/rules/pluggable-core.mdc) — ядро без игровой специфики; куда класть код
+- [.cursor/rules/artifact-hygiene.mdc](../.cursor/rules/artifact-hygiene.mdc) — карантин smoke/benchmark-артефактов
+- [.cursor/rules/agent-communication.mdc](../.cursor/rules/agent-communication.mdc) — язык ответов, ясность, опора на [GLOSSARY.md](GLOSSARY.md)
+
 
 ---
 

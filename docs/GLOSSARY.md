@@ -1,167 +1,198 @@
 # GLOSSARY — термины проекта
 
 > Единый словарь для [ML_CONCEPT.md](ML_CONCEPT.md), [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md), [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).  
-> Перекрёстные ссылки `#term` работают внутри этого файла (Preview).
+> Перекрёстные ссылки вида `#term` работают внутри этого файла (режим Preview).  
+> Стиль статей: полные предложения; аббревиатура раскрывается при первом появлении в статье.
 
 ---
 
 ### Achievement (inference)
 
-Номинация попытки после [inference](#inference) (🏆 или 💀): правила в `config/achievements.yaml`, теги в `tags[]`, FM2-плейлист `{idx}_{slug}_{seq}.fm2`. Pipeline — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота). Пул кандидатов — [retention window](#retention-window); длина replay на стриме — [airtime](#airtime) (это разные понятия).
+**Achievement** (достижение / номинация) — метка, которую система вешает на попытку модели после [inference](#inference): например трофей или «смерть» (в конфиге — эмодзи 🏆 / 💀). Правила отбора задаются в `config/achievements.yaml`; выбранные попытки попадают в теги `tags[]` и затем в плейлист роликов в формате [FM2](#fm2) с именами вида `{idx}_{slug}_{seq}.fm2`.
+
+Пул кандидатов для номинаций — это [retention window](#retention-window) (календарный день логов). Длина воспроизведения плейлиста на эфире — это [airtime](#airtime); с окном отбора попыток это **разные** понятия. Подробности форматов — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
 
 ### Airtime
 
-Длительность эфира = сумма длительностей клипов плейлиста при replay в realtime (~60 NES FPS): `Σ (fm2_frames + hold) / 60` (`hold` ≈ `show_until_frame`, дефолт 180; `fm2_frames ≈ episode_frames × frame_skip`). Хелпер: `achievements.airtime.measure_playlist_airtime` → поле `airtime` в `playlist.json`. Целевой эфир задаётся оператором (`--target-airtime`, дефолт **1 час**), не путать с [retention window](#retention-window). Сбор и pad — [TASK_PLAYLIST_AIRTIME](tasks/archive/TASK_PLAYLIST_AIRTIME.md); архитектура replay — [STREAMING_CONCEPT.md §5](STREAMING_CONCEPT.md#5-архитектура-эфира).
+**Airtime** (эфирное время) — сколько реальных секунд займёт проигрывание плейлиста на стриме, если клипы идут подряд в realtime эмулятора (около 60 кадров [NES](#nes) в секунду). Считается как сумма длительностей клипов: для каждого клипа примерно `(число_кадров_FM2 + hold) / 60`, где `hold` — пауза показа кадра конца (по умолчанию связано с `show_until_frame`, часто 180 кадров), а число кадров FM2 связано с длиной эпизода и [frame skip](#frame-skip).
+
+В коде длину считает `achievements.airtime.measure_playlist_airtime`; результат пишется в поле `airtime` файла `playlist.json`. Оператор задаёт желаемую длину эфира флагом `--target-airtime` (по умолчанию **один час**). Не путать с [retention window](#retention-window): окно retention отвечает на вопрос «из каких попыток за день выбирать клипы», airtime — «как долго их крутить на эфире». История решения — [TASK_PLAYLIST_AIRTIME](tasks/archive/TASK_PLAYLIST_AIRTIME.md); архитектура воспроизведения — [STREAMING_CONCEPT.md §5](STREAMING_CONCEPT.md#5-архитектура-эфира).
 
 ### AI
 
-**Artificial Intelligence** — в проекте: нейросеть ([PPO](#ppo)), которая играет в [NES](#nes) через [inference](#inference).
+**Artificial Intelligence** (искусственный интеллект) — в этом проекте имеется в виду обученная нейросеть на алгоритме [PPO](#ppo), которая играет в игры [NES](#nes) в режиме [inference](#inference) (без обновления весов во время матча).
+
+### Behavioral cloning
+
+**Behavioral cloning** (клонирование поведения, обучение по демонстрациям) — короткий этап **до** основного обучения с подкреплением. Политику (часть сети, которая выбирает кнопку) учат **подражать человеку**: на парах «[наблюдение](#obs) → действие» из [эталона](#etalon) минимизируют ошибку угадывания той же кнопки, что жал человек.
+
+Это не замена [дообучению](#doobuchenie) и не сам цикл [PPO](#ppo). Цель — дать модели более осмысленный старт (в том числе атака и уклонение, если они есть в демонстрациях), после чего уже идёт обычное обучение с наградой.
+
+Данные лежат в `reference/demos_for_bc/seg_*.npz` и должны содержать **настоящие** кадры (`obs_stub: false`). Файлы-заглушки из `segment_playthrough` (нулевые картинки) модуль клонирования пропускает. Кадры пишутся скриптом `scripts/record_demos.py`. Код: `src/train/bc_pretrain.py`; вызывается из `train_ppo`, если заданы ненулевые [эпохи клонирования](#эпохи-клонирования) (`--bc-epochs`; по умолчанию `0` — шаг выключен).
 
 ### Поколение модели (`genN`)
 
-Файл весов [PPO](#ppo): `models/genN.zip` в каталоге миссии (поколение 0, 1, …). Не путать с [CP](#cp) (игровой прогресс) и с [save state](#save-state) эмулятора.
+**Поколение модели** — сохранённый файл весов [PPO](#ppo) вида `models/genN.zip` в каталоге миссии (`gen0`, `gen1`, …). Номер поколения — версия обученной политики, а не прогресс внутри игры.
+
+Не путать с игровым [CP](#cp) (контрольная точка маршрута) и с [save state](#save-state) эмулятора (снимок состояния FCEUX).
 
 ### CP
 
-**Checkpoint (игровой)** — узел прогресса CP0…CPn в `config/routes.yaml` миссии; первое достижение даёт награду в [RL](#rl).
+**Checkpoint** (контрольная точка, кратко **CP**) — узел прогресса миссии с номерами CP0, CP1, … CPn в файле `config/routes.yaml`. Когда агент впервые достигает условий точки (комната, координаты и т.п.), среда даёт награду в обучении с подкреплением ([RL](#rl)). Это ориентиры маршрута для обучения, а не save state эмулятора и не файл `genN.zip`.
 
 ### env
 
-**Environment** — среда Gymnasium; общий каркас `BaseNesEnv` в `src/env/`, игровая фабрика `make_env()` в `games/<game_id>/env/`.
+**Environment** (среда, кратко **env**) — программный мир, в котором агент делает шаги по контракту библиотеки Gymnasium: сброс, действие, наблюдение, награда, конец эпизода. Общий каркас для игр NES — класс `BaseNesEnv` в `src/env/`; конкретная игра подключается фабрикой `make_env()` из пакета `games/<game_id>/env/`.
 
 ### env-step
 
-Один вызов `env.step(action)` — шаг среды: действие агента, новый [obs](#obs), награда, флаги `terminated`/`truncated`. Счётчик `total_timesteps` в [SB3](#sb3) — сумма env-steps по **всем** параллельным [env](#env) (`n_envs`). Не путать с кадром [NES](#nes): при [frame skip](#frame-skip) 4 один env-step ≈ 4 кадра эмулятора. В [MEASUREMENTS.md](MEASUREMENTS.md) throughput пишут как **env-steps/s** (часто «wall» или «steady»).
+**Env-step** (шаг среды) — один вызов `env.step(action)`: агент отправил действие, среда вернула новое [наблюдение](#obs), награду и флаги окончания (`terminated` / `truncated`). Счётчик `total_timesteps` в [Stable-Baselines3](#sb3) суммирует такие шаги по **всем** параллельным средам (`n_envs`).
+
+Не путать с одним кадром [NES](#nes): при [frame skip](#frame-skip) равном 4 один шаг среды соответствует примерно четырём кадрам эмулятора. В [MEASUREMENTS.md](MEASUREMENTS.md) скорость обучения часто пишут как число env-step в секунду (варианты «wall» и «steady» — см. [wall-clock](#wall-clock)).
 
 ### FCEUX
 
-Эмулятор NES: portable **2.6.6 win64** в `fceux/portable/fceux64.exe`; Lua проекта в `fceux/lua/`. Единый runtime для [эталона](#etalon), train и [inference](#inference). Окно для OBS Game Capture на эфире.
+**FCEUX** — эмулятор [NES](#nes), который проект использует как единый движок для записи [эталона](#etalon), обучения и [inference](#inference). В репозитории лежит portable-сборка **2.6.6 win64**: исполняемый файл `fceux/portable/fceux64.exe`, скрипты Lua проекта — в `fceux/lua/`. На эфире окно эмулятора захватывается программой OBS (см. второе значение [obs](#obs)).
 
 ### FM2
 
-Формат FCEUX Movie #2 — frame-perfect запись нажатий. В pipeline: [эталон](#etalon) (`reference/*.fm2`) и экспорт из [inference](#inference) (`scripts/export_fm2.py`).
+**FM2** (FCEUX Movie #2) — текстовый формат «фильма» эмулятора: покадровая запись нажатий кнопок. В проекте так хранят человеческий [эталон](#etalon) (`reference/*.fm2`) и экспортируют попытки модели после [inference](#inference) (`scripts/export_fm2.py`) для просмотра и плейлиста.
 
 ### FPS
 
-**Frames Per Second** — кадры в секунду; эфир: 30 FPS, эмулятор [NES](#nes): 60 FPS. В [train log](#train-log-rollout-table) поле `fps` — другое: [env-steps](#env-step)/[wall-clock](#wall-clock) при обучении, не кадры видео.
+**Frames Per Second** (кадры в секунду) — частота кадров. На эфире обычно ориентируются на 30 FPS видео; сам эмулятор [NES](#nes) работает около 60 FPS.
+
+В [журнале обучения](#train-log-rollout-table) поле с именем `fps` означает **другое**: сколько [шагов среды](#env-step) успели выполнить за [wall-clock](#wall-clock) с начала сессии обучения. Это не частота кадров картинки на экране.
 
 ### Frame skip
 
-Обработка каждого 4-го кадра NES → 15 decision/sec при 60 [FPS](#fps) эмулятора.
+**Frame skip** (пропуск кадров) — решение агента применяется не на каждом кадре эмулятора, а например на каждом четвёртом. При 60 [FPS](#fps) эмулятора и skip = 4 получается около 15 решений агента в секунду; один [env-step](#env-step) «держит» выбранные кнопки на несколько кадров подряд. Так ускоряют обучение и уменьшают число решений, которые должна выучить сеть.
 
 ### Harness
 
-**Harness** (обвязка эксперимента) — одноразовый или bench-only код для **изолированной** проверки гипотезы **вне** production-пайплайна: минимальный Lua + Python (или pytest `requires_fceux`), без playlist, overlay, staging продакшн-скриптов. Цель — чистота эксперимента (как N6, M-proto, B-proto, **F-proto**): сначала контракт [FCEUX](#fceux), потом внедрение.
+**Harness** (обвязка эксперимента) — небольшой одноразовый или стендовый код, чтобы **изолированно** проверить гипотезу **вне** боевого пайплайна (без плейлиста, оверлея и продакшн-скриптов). Обычно это минимальная связка Lua + Python или тест pytest с пометкой `requires_fceux`. Смысл — сначала убедиться в контракте с [FCEUX](#fceux), потом встраивать решение в основной код. Исторические примеры в задачах: N6, M-proto, B-proto, F-proto.
 
 | Аспект | Правило |
 | ------ | ------- |
-| Где | `tmp/bench/<session>/` через `artifact_quarantine_dir("bench", …)` |
-| Артефакты | JSON результатов, скриншоты PPU; не `games/…/logs/`, не `models/` |
-| Жизненный цикл | после фиксации вердикта в [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md) — harness-скрипт удалить, JSON оставить |
-| Gate | [PPU](#ppu) на GUI оператором; headless probe — вспомогательный, не закрывает issue (P22) |
-| Не путать с | `play_inference_fm2.py`, `run_inference.py`, `smoke_*.py` (регрессия/production) |
+| Где писать вывод | `tmp/bench/<session>/` через `artifact_quarantine_dir("bench", …)` |
+| Какие артефакты | JSON с результатами, при необходимости скриншоты [PPU](#ppu); не складывать в `games/…/logs/` и не в `models/` |
+| Жизненный цикл | после зафиксированного вердикта в [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md) одноразовый скрипт обвязки удаляют, JSON можно оставить |
+| Критерий приёмки | картинку на [PPU](#ppu) смотрит оператор в окне эмулятора; headless-probe только вспомогательный и сам по себе issue не закрывает |
+| Не путать с | штатными `play_inference_fm2.py`, `run_inference.py`, `smoke_*.py` (регрессия и production) |
 
-После закрытия [ISSUE_INFERENCE](tasks/archive/ISSUE_INFERENCE.md) / **[3.6](tasks/archive/TASK_FIRST_CAMPAIGN.md#36-inference-replay-fm2-gameplay-capture-f-proto)** одноразовые N6/F0 harnesses удалены. Регрессия embed: `movie_playback_probe.lua` + `probe_movie_playback` / `_ppu` в `tests/test_fm2_playback_fceux.py`.
+После закрытия [ISSUE_INFERENCE](tasks/archive/ISSUE_INFERENCE.md) и пункта **[3.6](tasks/archive/TASK_FIRST_CAMPAIGN.md#36-inference-replay-fm2-gameplay-capture-f-proto)** одноразовые обвязки N6/F0 удалены. Регрессия вшитого save state в фильм проверяется через `movie_playback_probe.lua` и тесты `probe_movie_playback` / `_ppu` в `tests/test_fm2_playback_fceux.py`.
 
 ### Inference
 
-Режим `model.predict()`: модель играет **без** обновления весов (`run_inference.py`). Попытки → плейлист; эфир — replay плейлиста ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)). Отбор кандидатов в номинации — по [retention window](#retention-window); целевая длина эфира — [airtime](#airtime).
+**Inference** (вывод / прогон модели) — режим, в котором уже обученная сеть только **играет**: вызывается `model.predict()`, веса **не** обновляются. Скрипт входа — `run_inference.py`. Каждая попытка пишется в логи дня; из удачных собирают плейлист, на эфире плейлист воспроизводят (см. [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)).
+
+Какие попытки считать кандидатами в номинации — решает [retention window](#retention-window). Какой длины должен быть эфир — [airtime](#airtime).
 
 ### IPC
 
-**Inter-Process Communication** — обмен Python ↔ Lua в [FCEUX](#fceux) (`fceux/lua/bridge.lua`).
+**Inter-Process Communication** (межпроцессное взаимодействие) — обмен командами и данными между процессом Python и скриптом Lua внутри [FCEUX](#fceux). В проекте мост реализован через `fceux/lua/bridge.lua` (и связанные файлы сессии в `tmp/bridge/`).
 
 ### M1
 
-**Mission 1** — первая миссия пилота; см. [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).
+**Mission 1** (миссия 1, кратко **M1**) — первая миссия пилотной игры; описание целей, наград и приёмки — в [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).
 
 ### Manifest
 
-`config/playthrough_manifest.yaml` в каталоге миссии — каталог сегментов [эталона](#etalon), frames, save states.
+**Manifest** (манифест прохождения) — файл `config/playthrough_manifest.yaml` в каталоге миссии. В нём перечислены [сегменты](#seg) [эталона](#etalon): идентификаторы, диапазоны кадров, связанные save states и пути к файлам демонстраций. Это каталог «как разрезан эталон», а не сама запись нажатий.
 
 ### ML
 
-**Machine Learning** — машинное обучение; раздел [ML_CONCEPT.md](ML_CONCEPT.md).
+**Machine Learning** (машинное обучение) — общее название подхода проекта: агент учится играть по данным и награде. Концепция и пайплайн описаны в [ML_CONCEPT.md](ML_CONCEPT.md).
 
 ### NES
 
-**Nintendo Entertainment System** — 8-битная консоль; целевая платформа проекта.
+**Nintendo Entertainment System** (игровая приставка 8-го поколения, в быту часто «Dendy» / Famicom) — целевая платформа проекта. Игры запускаются в эмуляторе [FCEUX](#fceux).
 
 ### NG
 
-**Ninja Gaiden** ([NES](#nes)) — в бэклоге; слишком сложен для старта pipeline.
+**Ninja Gaiden** — игра для [NES](#nes) в бэклоге проекта. Для старта пайплайна она слишком сложна; пилот — Rush'n Attack.
 
 ### NVENC
 
-**NVIDIA Encoder** — аппаратное кодирование видео на GTX 650 в OBS (см. [obs](#obs)).
+**NVIDIA Encoder** — аппаратный кодировщик видео на видеокарте. В конфигурации стрима на машине с GTX 650 кодирование в OBS (см. второе значение [obs](#obs)) опирается на NVENC, чтобы не грузить центральный процессор.
 
 ### obs
 
-Два значения в проекте:
+В текстах проекта слово **obs** означает два разных понятия — смотрите контекст:
 
-1. **Observation** (ML) — наблюдение среды: стек из 4 кадров 84×84 в градациях серого, форма `(4, 84, 84)`, нормализованный вход CNN; кадры из [FCEUX](#fceux) через bridge (`obs_*.raw` / decode). Не путать с [RAM](#ram).
-2. **Open Broadcaster Software** (стрим) — захват окна [FCEUX](#fceux) (playlist replay), кодирование ([NVENC](#nvenc)), стрим на Twitch.
-
-
+1. **Observation** (наблюдение для обучения) — то, что «видит» нейросеть: стек из четырёх кадров размера 84×84 в градациях серого, форма `(4, 84, 84)`. Кадры снимаются из [FCEUX](#fceux) через мост (`obs_*.raw` и декодирование). Не путать с сырыми адресами [RAM](#ram).
+2. **Open Broadcaster Software** (программа для стрима) — захват окна [FCEUX](#fceux) при воспроизведении плейлиста, кодирование ([NVENC](#nvenc)) и отправка на Twitch.
 
 ### Orphan (process)
 
-**Orphan** — процесс без живого родителя (train/worker). В проекте: зависший `fceux64.exe` (`bridge.lua` или сессия `tmp/bridge/`) и зависший `python` (`benchmark_train.py`, `train_ppo.py`, `stress_e2e_gate.py`, …) после краша, Ctrl+C или обрыва [SB3](#sb3) `SubprocVecEnv`. Снимается `kill_orphan_fceux_bridge()` в `cleanup_bridge_sessions()` (`src/train/env_factory.py`).
+**Orphan process** (осиротевший процесс) — процесс эмулятора или Python, у которого уже нет живого родителя (сессия обучения или воркер упали, оборвали по Ctrl+C, оборвался `SubprocVecEnv` в [Stable-Baselines3](#sb3)). Типичные примеры: зависший `fceux64.exe` с `bridge.lua` или сессией в `tmp/bridge/`, зависший `python` от `train_ppo.py`, `benchmark_train.py`, `stress_e2e_gate.py` и т.п.
+
+Их снимает `kill_orphan_fceux_bridge()` внутри `cleanup_bridge_sessions()` в `src/train/env_factory.py`.
 
 ### PPO
 
-**Proximal Policy Optimization** — алгоритм RL; реализация в [SB3](#sb3).
+**Proximal Policy Optimization** — алгоритм обучения с подкреплением ([RL](#rl)): политика обновляется так, чтобы не делать слишком резких скачков относительно предыдущей версии. В проекте используется реализация из библиотеки [Stable-Baselines3](#sb3).
 
 ### PPU
 
-**Picture Processing Unit** — чип отрисовки [NES](#nes); в проекте: **картинка на экране** [FCEUX](#fceux) (кадр 256×240), то, что видит оператор на эфире. Не путать с [RAM](#ram) (адреса `room`, `x`, `hp` через Lua) и с [obs](#obs) (стек 84×84 для CNN). Visual probe и критерий playback — по **PPU** (title vs gameplay); RAM-probe может не совпадать с экраном (RAM↔PPU desync, см. [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md)). Снимок в probe: `gui.gdscreenshot` в Lua.
+**Picture Processing Unit** — микросхема [NES](#nes), отвечающая за картинку. В проекте под «PPU» почти всегда имеют в виду **то, что видно в окне** [FCEUX](#fceux) (кадр 256×240): title-экран, геймплей, attract и т.д. Это то, что видит оператор и зритель эфира.
+
+Не путать с [RAM](#ram) (числовые адреса вроде комнаты и координат через Lua) и с [obs](#obs) в смысле наблюдения для сети (маленький стек 84×84). Проверки «на экране title или уже игра» делают по PPU; показания RAM иногда расходятся с картинкой (рассинхрон RAM↔PPU, см. [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md)). Снимок в probe: `gui.gdscreenshot` в Lua.
 
 ### RAM
 
-**Память NES** — адреса в картридже (`room`, `x`, `y`, `hp`…); читается через Lua в [FCEUX](#fceux). Не путать с ОЗУ ПК, с [PPU](#ppu) (экран) и с [obs](#obs) (пиксели для ML).
+**RAM** здесь — не оперативная память вашего компьютера, а **память игровой приставки** ([NES](#nes)): байты состояния картриджа (`room`, `x`, `y`, `hp`, `lives` и др.). Их читает Lua внутри [FCEUX](#fceux) и отдаёт в Python для наград, конца эпизода и логов.
+
+Не путать с картинкой на [PPU](#ppu) и с пиксельным [наблюдением](#obs) для нейросети.
 
 ### Retention window
 
-Пул inference-attempts для тегов achievements (`top_k`, `deja_vu`, `new_record` и т.п.): **весь календарный день** с полуночи **UTC+3** (Europe/Moscow wall date). Не sliding «N часов» и **не** длина эфира — см. [airtime](#airtime). Логи дня: `logs/YYYYMMDD/` ([ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных), [SCRIPTS.md](SCRIPTS.md#inference)).
+**Retention window** (окно удержания попыток) — из каких попыток [inference](#inference) система имеет право выбирать кандидатов в [achievements](#achievement-inference) (`top_k`, `deja_vu`, `new_record` и т.п.). В проекте это **весь календарный день** с полуночи по часовому поясу **UTC+3** (дата «стены» Europe/Moscow), а не скользящие «последние N часов» и не длина эфира.
+
+Длина эфира — отдельно, см. [airtime](#airtime). Логи дня лежат в `logs/YYYYMMDD/` ([ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных), [SCRIPTS.md](SCRIPTS.md#inference)).
 
 ### RL
 
-**Reinforcement Learning** — обучение с подкреплением: агент получает числовую награду за действия в среде.
+**Reinforcement Learning** (обучение с подкреплением) — способ обучения, при котором агент пробует действия в [среде](#env) и получает числовую **награду** (плюс за прогресс, минус за смерть и т.д.). Основной алгоритм в проекте — [PPO](#ppo). Отличается от [behavioral cloning](#behavioral-cloning), где учат копировать человека без награды за исход.
 
 ### rollout
 
-Один цикл обучения [PPO](#ppo) в [SB3](#sb3): (1) параллельный сбор `n_steps` шагов в каждом из `n_envs` [env](#env) → `n_envs × n_steps` [env-steps](#env-step); (2) обновление весов по собранному буферу (`n_epochs` проходов по batch). В [train log](#train-log-rollout-table) новая строка таблицы = завершённый rollout; `iterations` — их счётчик. Gate [5.0] = **2 rollout'а** при `n_steps=128`, `n_envs=8`, `timesteps=2048` (2×1024 env-steps).
+**Rollout** (сбор траекторий) — один полный цикл в обучении [PPO](#ppo) через [Stable-Baselines3](#sb3). Сначала параллельно во всех [средах](#env) набирают по `n_steps` шагов (итого `n_envs × n_steps` [env-step](#env-step)). Затем по этому буферу несколько раз (`n_epochs`) обновляют веса политики.
+
+В [журнале обучения](#train-log-rollout-table) каждая новая строка таблицы соответствует завершённому rollout; счётчик `iterations` — сколько таких циклов уже прошло. Пример из приёмки gate: два rollout при `n_steps=128`, `n_envs=8`, `timesteps=2048` дают 2×1024 шагов среды.
 
 ### ROM
 
-**Read-Only Memory** — образ картриджа в `games/<game_id>/rom/`; в `.gitignore`, не показывать получение на эфире.
+**Read-Only Memory** в быту геймеров — **образ картриджа** (файл игры) в каталоге `games/<game_id>/rom/`. Файлы в `.gitignore`; на эфире не показывают, откуда образ взят.
 
 ### Save state
 
-Снимок состояния **эмулятора** [FCEUX](#fceux) (`save_states/cpN.fc*` в каталоге миссии); стартовая позиция эпизода при `env.reset()`.
+**Save state** (сохранение состояния эмулятора) — снимок полной памяти и регистров [FCEUX](#fceux) в файл вида `save_states/cpN.fc*` в каталоге миссии. При `env.reset()` обучение или прогон обычно стартуют с такого снимка (например с начала миссии или с границы сегмента), а не с холодного включения приставки.
+
+Не путать с [поколением модели](#поколение-модели-genn) (`genN.zip`) и с игровым [CP](#cp) в `routes.yaml`.
 
 ### seg
 
-**Сегмент** — фрагмент [эталона](#etalon) (`seg_001`…); BC-demo в `reference/demos_for_bc/*.npz`, границы в [manifest](#manifest).
+**Сегмент** (кратко **seg**, имена `seg_001`, `seg_002`, …) — фрагмент [эталона](#etalon) между контрольными точками или по диапазону кадров. Границы и пути описаны в [манифесте](#manifest). Для [behavioral cloning](#behavioral-cloning) из сегмента собирают файл `reference/demos_for_bc/<id>.npz` с кадрами и действиями человека.
 
 ### SB3
 
-**Stable-Baselines3** — библиотека RL на PyTorch; в проекте: [PPO](#ppo), `SubprocVecEnv` / `DummyVecEnv`, callbacks (чекпоинты, progress %). Код: `src/train/train_ppo.py`, пакет `stable-baselines3` в `.venv/`.
+**Stable-Baselines3** (кратко **SB3**) — библиотека обучения с подкреплением на PyTorch. В проекте через неё запускают [PPO](#ppo), параллельные среды (`SubprocVecEnv` / `DummyVecEnv`) и колбэки (сохранение чекпоинтов, процент прогресса). Точка входа обучения: `src/train/train_ppo.py`; пакет ставится в `.venv/`.
 
 ### Train log (rollout table)
 
-Вывод в консоль после каждого [rollout'а](#rollout) при `model.learn()` ([`train_ppo.py`](../src/train/train_ppo.py)). Два потока:
+**Train log** (журнал обучения, таблица rollout) — то, что печатается в консоль после каждого [rollout](#rollout) во время `model.learn()` в [`train_ppo.py`](../src/train/train_ppo.py). Есть два потока вывода:
 
 | Поток | Откуда | Когда |
 | ----- | ------ | ----- |
-| Таблица [SB3](#sb3) | `verbose=1` + `TrainProgressPctCallback` (`src/train/progress_callback.py`) | всегда при learn (progress: `--no-progress-pct` выключает только `progress_pct` / `target_timesteps`) |
-| Строка `rollout_metrics:` | `RolloutMetricsCallback` (`src/train/rollout_metrics.py`) | при `--rollout-metrics` (JSONL → `tmp/bench/<session>/rollouts.jsonl`) |
+| Таблица [Stable-Baselines3](#sb3) | `verbose=1` и `TrainProgressPctCallback` (`src/train/progress_callback.py`) | всегда при `learn` (флаг `--no-progress-pct` отключает только поля `progress_pct` / `target_timesteps`) |
+| Строка `rollout_metrics:` | `RolloutMetricsCallback` (`src/train/rollout_metrics.py`) | только если включён `--rollout-metrics` (параллельно пишется JSONL в `tmp/bench/<session>/rollouts.jsonl`) |
 
-Сводка JSONL: [`parse_train_rollouts.py`](SCRIPTS.md#parse_train_rolloutspy). Прогоны dual train+measure: [MEASUREMENTS.md § R6](MEASUREMENTS.md#r6-dual-trainmeasure).
+Сводку JSONL разбирает [`parse_train_rollouts.py`](SCRIPTS.md#parse_train_rolloutspy). Сценарии «обучение + замер» — [MEASUREMENTS.md § R6](MEASUREMENTS.md#r6-dual-trainmeasure).
 
-**Важно:** кумулятивный SB3 `fps` ≠ per-rollout `rate`. Для H2 / деградации fps смотреть **`rate` / `wall_rollout_s`** (и `wall_late/early` в parse), не только `fps` в таблице SB3.
+**Важно:** кумулятивное поле `fps` в таблице Stable-Baselines3 — это **не** то же самое, что `rate` за один rollout. Чтобы ловить деградацию скорости по ходу сессии, смотрите **`rate` и `wall_rollout_s`** (и сравнение `wall_late` / `wall_early` в parse), а не только `fps` в таблице.
 
-**Пример** (`n_envs=6`, `n_steps=128`, `--rollout-metrics`; один завершённый rollout):
+**Пример** (`n_envs=6`, `n_steps=128`, включён `--rollout-metrics`; один завершённый rollout):
 
 ```
 rollout_metrics: #2 wall=95.1s steps=768 rate=8.079 avail_ram_mb=9262.2
@@ -181,45 +212,63 @@ rollout_metrics: #2 wall=95.1s steps=768 rate=8.079 avail_ram_mb=9262.2
 
 | Поле | Источник | Значение |
 | ---- | -------- | -------- |
-| **rollout/** | SB3 | метрики эпизодов за последний сбор |
-| `ep_len_mean` | SB3 | средняя длина эпизода в [env-steps](#env-step). При `death_mode=life_lost` часто **≈2** (reset storm); default Rush'n Attack — `game_over` ([MEASUREMENTS.md](MEASUREMENTS.md) § H3). |
-| `ep_rew_mean` | SB3 | средняя суммарная награда за эпизод за последний [rollout](#rollout). |
-| **time/** | SB3 | время и прогресс с начала `learn()` |
-| `fps` | SB3 | **не** [FPS](#fps) видео. Кумулятив: все [env-steps](#env-step) / [wall-clock](#wall-clock) **с начала сессии**. Сглаживает просадки отдельного rollout'а. |
-| `iterations` | SB3 | число завершённых [rollout'ов](#rollout). |
-| `time_elapsed` | SB3 | [wall-clock](#wall-clock) (с) с момента старта `learn()`. Δ между соседними строками ≈ длительность rollout'а (+ PPO update в том же интервале SB3). |
-| `total_timesteps` | SB3 | всего [env-steps](#env-step) (`num_timesteps`). За один [rollout](#rollout): `n_envs × n_steps` (напр. 6×128 = **768**). |
-| `progress_pct` | callback | `100 × total_timesteps / target_timesteps`; выкл. `--no-progress-pct`. |
-| `target_timesteps` | callback | цель из CLI `--timesteps` или sidecar `.train.json` при `--resume`. |
-| **`rollout_metrics:`** | callback | одна строка на rollout при `--rollout-metrics` |
-| `wall` (`wall_rollout_s`) | metrics | [wall-clock](#wall-clock) (с) **только этого** rollout'а (сбор + до `on_rollout_end`). |
-| `steps` (`delta_timesteps`) | metrics | [env-steps](#env-step) за этот rollout (обычно `n_envs × n_steps`). |
-| `rate` (`env_steps_per_s`) | metrics | `delta_timesteps / wall_rollout_s` — **per-rollout** throughput (для деградации / [MEASUREMENTS § R6](MEASUREMENTS.md#r6-dual-trainmeasure)). |
-| `avail_ram_mb` (`avail_phys_mb`) | metrics | свободная физ. RAM (MB, Windows); в JSONL также `total_phys_mb`, `memory_load_pct`. |
+| **rollout/** | Stable-Baselines3 | метрики эпизодов за последний сбор опыта |
+| `ep_len_mean` | Stable-Baselines3 | средняя длина эпизода в [env-step](#env-step). При режиме смерти `life_lost` часто получается ≈2 (частые сбросы); у Rush'n Attack по умолчанию режим `game_over` (см. [MEASUREMENTS.md](MEASUREMENTS.md), раздел H3) |
+| `ep_rew_mean` | Stable-Baselines3 | средняя суммарная награда за эпизод за последний [rollout](#rollout) |
+| **time/** | Stable-Baselines3 | время и прогресс с начала `learn()` |
+| `fps` | Stable-Baselines3 | **не** [FPS](#fps) видео. Кумулятив: все [env-step](#env-step), делённые на [wall-clock](#wall-clock) **с начала сессии**. Сглаживает просадки отдельного rollout |
+| `iterations` | Stable-Baselines3 | сколько [rollout](#rollout) уже завершено |
+| `time_elapsed` | Stable-Baselines3 | [wall-clock](#wall-clock) в секундах с старта `learn()`. Разница между соседними строками ≈ длительность rollout плюс обновление PPO в том же интервале |
+| `total_timesteps` | Stable-Baselines3 | всего [env-step](#env-step) (`num_timesteps`). За один rollout обычно `n_envs × n_steps` (например 6×128 = 768) |
+| `progress_pct` | callback | `100 × total_timesteps / target_timesteps`; отключается `--no-progress-pct` |
+| `target_timesteps` | callback | цель из CLI `--timesteps` или из sidecar-файла `.train.json` при `--resume` |
+| **`rollout_metrics:`** | callback | одна строка на каждый rollout при `--rollout-metrics` |
+| `wall` (`wall_rollout_s`) | metrics | [wall-clock](#wall-clock) в секундах **только этого** rollout (сбор опыта до `on_rollout_end`) |
+| `steps` (`delta_timesteps`) | metrics | сколько [env-step](#env-step) набрано в этом rollout (обычно `n_envs × n_steps`) |
+| `rate` (`env_steps_per_s`) | metrics | `delta_timesteps / wall_rollout_s` — скорость **за этот** rollout; удобно смотреть деградацию ([MEASUREMENTS § R6](MEASUREMENTS.md#r6-dual-trainmeasure)) |
+| `avail_ram_mb` (`avail_phys_mb`) | metrics | свободная физическая память Windows в мегабайтах; в JSONL также есть `total_phys_mb`, `memory_load_pct` |
 
-**JSONL** (`tmp/bench/<session>/rollouts.jsonl`): те же поля плюс `ts`, `rollout`, `num_timesteps`, `elapsed_s`. Сводка `parse_train_rollouts.py`: `rate_last5_mean`, `wall_late/early` (late/early mean wall при ≥10 rollout; `degraded` если ≥2.0).
-
+Файл JSONL (`tmp/bench/<session>/rollouts.jsonl`) содержит те же поля плюс метку времени, номер rollout, `num_timesteps`, `elapsed_s`. Скрипт `parse_train_rollouts.py` считает, среди прочего, среднее `rate` по последним пяти rollout и отношение среднего wall «поздно / рано» (при достаточном числе rollout помечает `degraded`, если отношение ≥ 2.0).
 
 ### TAS
 
-**Tool-Assisted Speedrun** — frame-perfect скрипт человека; **не** формат проекта (у нас [RL](#rl) + [inference](#inference)).
+**Tool-Assisted Speedrun** — прохождение, собранное человеком покадрово с инструментами (часто ради рекорда времени). Это **не** формат и не цель пайплайна проекта: у нас [обучение с подкреплением](#rl) и [прогон модели](#inference). Покадровая запись нажатий у нас хранится как [FM2](#fm2), но смысл другой — эталон и клипы агента, а не гонка WR.
 
 ### wall-clock
 
-**Wall-clock** (wall time, «настенные часы») — реальное прошедшее время на машине, в отличие от симулированного времени игры или суммарного CPU по потокам. В проекте: `time_elapsed` (кумулятив) и `wall` / `wall_rollout_s` (за один [rollout](#rollout)) в [train log](#train-log-rollout-table) (с); **wall env-steps/s** = `total_env_steps / wall_seconds` ([MEASUREMENTS.md](MEASUREMENTS.md)). **Steady** — тот же расчёт без первого [rollout'а](#rollout) (cold start FCEUX). Синоним в текстах: **wall-секунда**.
+**Wall-clock** (время настенных часов, wall time) — сколько реально прошло времени на компьютере по часам, а не «сколько кадров сыграла игра» и не сумма загрузки всех ядер процессора. В журнале обучения это `time_elapsed` (накопительно с начала `learn`) и `wall` / `wall_rollout_s` (длительность одного [rollout](#rollout)).
+
+Скорость «wall env-steps/s» = число шагов среды, делённое на wall-секунды ([MEASUREMENTS.md](MEASUREMENTS.md)). **Steady** — тот же расчёт, но без первого rollout (на нём обычно холодный старт нескольких окон [FCEUX](#fceux)). В текстах иногда пишут «wall-секунда» в том же смысле.
 
 ### WR
 
-**World Record** — рекорд скоростного прохождения; **не** цель проекта.
+**World Record** (мировой рекорд скоростного прохождения) — **не** цель этого проекта. Ориентир — устойчивое обучение и показ попыток модели, а не побитие рекордов спидрана.
 
 ### x_bucket
 
-Дискретизация координаты `death_x` (ширина ≈32 px) для кластера смертей и триггера `death_cluster`.
+**x_bucket** — грубая «корзина» по горизонтальной координате смерти (`death_x`), обычно шириной около 32 пикселей. Нужна, чтобы группировать смерти в одном месте экрана и срабатывать на правило `death_cluster` (много смертей в одной зоне → сигнал к дообучению на сегменте).
 
 ### Дообучение
 
-Продолжение обучения: `PPO.load(checkpoint)` + дополнительные timesteps, часто на проблемном сегменте с профилем `hot_zone`.
+**Дообучение** — продолжение уже начатого [PPO](#ppo): загружают веса (`PPO.load` из `genN.zip` или чекпоинта) и крутят ещё timesteps, часто стартуя с save state проблемного [сегмента](#seg) и временно включая профиль награды `hot_zone`.
+
+Не путать с [behavioral cloning](#behavioral-cloning): клонирование — supervised-подражание демо **до** (или вместо «совсем с нуля») основного цикла с наградой; дообучение — именно продолжение PPO с сохранённых весов.
+
+### Эпохи клонирования
+
+**Эпохи клонирования** — сколько раз подряд прогнать весь набор демонстраций при [behavioral cloning](#behavioral-cloning) перед вызовом `PPO.learn()`. Задаётся флагом `--bc-epochs` у `train_ppo` / `train_local.sh`: целое число ≥ 1 включает шаг; **0** (значение по умолчанию) — шаг не выполняется.
+
+Не путать с `n_epochs` у [PPO](#ppo) / [Stable-Baselines3](#sb3): там это число проходов по **буферу одного [rollout](#rollout)** при обновлении политики, а не по демо человека.
+
+Если `--bc-epochs > 0`, нет `--no-bc` и есть `seg_*.npz` с реальными кадрами, `bc_pretrain` несколько эпох минимизирует CrossEntropy по выходам актора, затем стартует обычный PPO. При `--resume` с уже сохранённой модели ветка клонирования пропускается.
 
 ### Эталон
 
-Полное прохождение миссии автором: [FM2](#fm2) + `reference/human_playthrough.jsonl` + `save_states/` + `reference/demos_for_bc/`; для [seg](#seg) и [дообучения](#doobuchenie).
+**Эталон** — человеческое прохождение миссии, от которого отталкиваются нарезка сегментов, save states и демонстрации. Обычно это набор:
+
+- запись нажатий в [FM2](#fm2);
+- покадровый журнал `reference/human_playthrough.jsonl`;
+- снимки эмулятора в `save_states/`;
+- (после записи) файлы в `reference/demos_for_bc/` для [behavioral cloning](#behavioral-cloning).
+
+Эталон нужен для [сегментов](#seg), тёплого старта политики и как ориентир при [дообучении](#doobuchenie) на трудных местах. У пилота Rush'n Attack спокойное полное прохождение хранится как `reference/clear.fm2` — это не обязательно спидран.
