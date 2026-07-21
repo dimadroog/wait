@@ -37,7 +37,7 @@
 | Компонент               | Описание                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | Алгоритм                | PPO (stable-baselines3)                                      |
-| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи `logs/YYYYMMDD/attempts.jsonl` + `inference_inputs.jsonl`; FM2, achievements ([retention window](GLOSSARY.md#retention-window) = день UTC+3; [airtime](GLOSSARY.md#airtime) плейлиста — отдельно, дефолт 1 ч) |
+| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи attempts + inputs; FM2, achievements. **As-is:** `logs/YYYYMMDD/` + day-retention. **Цель:** [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/` ([TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md)); [airtime](GLOSSARY.md#airtime) — длина editorial, не час pad ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) |
 | Обучение                | **CPU локально**; запуск **вручную** по `train_task.json`                           |
 | Хостинг                 | **Только текущий ПК**                                                       |
 | Эталон       | FM2 + полное прохождение миссии + manifest + ≥3 seg |
@@ -107,13 +107,13 @@ flowchart TB
     subgraph finetune [Дообучение по триггеру]
         Trigger["rules: N deaths / no progress"]
         Task[train_task.json]
-        Attempts[YYYYMMDD/attempts.jsonl]
+        Attempts["attempts.jsonl (gen pool / as-is day)"]
         Trigger --> Task
         Task --> LocalPPO
         Attempts --> Trigger
     end
 
-    ModelZip --> Infer[→ плейлист: STREAMING_CONCEPT §5]
+        ModelZip --> Infer[→ editorial / live: STREAMING_CONCEPT]
 ```
 
 
@@ -125,14 +125,14 @@ flowchart TB
 ```
 v0: PPO на CPU
         ↓
-Inference + лог `logs/YYYYMMDD/attempts.jsonl` ([retention window](GLOSSARY.md#retention-window))
+Inference + лог attempts (as-is: `logs/YYYYMMDD/`; цель: `logs/genN/`)
         ↓
 Триггер → train_task.json + seg
         ↓
-PPO → v1
+PPO → genN+1
 ```
 
-Плейлист эфира из attempts ([airtime](GLOSSARY.md#airtime)) — [STREAMING_CONCEPT.md §5](STREAMING_CONCEPT.md#5-архитектура-эфира).
+Эфир (editorial + live) — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md); миграция пула — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md).
 
 ---
 
@@ -251,7 +251,7 @@ reward -= step_penalty
 - **FM2** — запись inputs (frame-perfect); файл в `reference/` каталога миссии
 - Lua-лог кадра → `reference/human_playthrough.jsonl`
 - **Save states** на границах CP (CP0..CPn) → `save_states/cpN.fc`*
-- Сложные места выявляются после inference из `logs/YYYYMMDD/attempts.jsonl` ([retention window](GLOSSARY.md#retention-window) текущего дня)
+- Сложные места выявляются после inference из attempts ([пул поколения](GLOSSARY.md#пул-поколения) — цель; as-is ещё `logs/YYYYMMDD/`)
 - Видео без actions — слабый сигнал; нужен FM2 или лог кнопок
 
 
@@ -285,7 +285,7 @@ Lua-скрипт в FCEUX (`emu.registerafter`, каждый кадр):
 | Сценарий                        | Действие                                                       |
 | ------------------------------- | -------------------------------------------------------------- |
 | `env.reset()` для train         | Hot `LOAD` из Lua-кэша (`CACHE` при cold start); без перезапуска FCEUX |
-| Inference, смерть | Лог `death_x`, `death_room` в `logs/YYYYMMDD/attempts.jsonl`   |
+| Inference, смерть | Лог `death_x`, `death_room` в attempts.jsonl (пул gen / as-is день) |
 | Дообучение на seg       | Load save state начала seg + `hot_zone` |
 
 
@@ -400,24 +400,26 @@ save models/genN+1.zip
 
 
 
-### `logs/YYYYMMDD/attempts.jsonl`
+### Логи inference (`attempts.jsonl` / `inference_inputs.jsonl`)
 
-Одна строка JSON на inference-попытку: прогресс CP, смерть, reward, `tags[]`.  
-Путь, [retention window](GLOSSARY.md#retention-window) (календарный день UTC+3), схема полей, CLI — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Overlay-поля — [STREAMING_CONCEPT.md §9](STREAMING_CONCEPT.md#9-метрики-и-лог-эфира).
+Одна строка JSON на попытку: прогресс CP, смерть, reward, `tags[]`; inputs — покадровый `(frame, action)` для FM2.
 
-### `logs/YYYYMMDD/inference_inputs.jsonl`
+| | Путь | Пул номинаций |
+| --- | --- | --- |
+| **As-is** | `logs/YYYYMMDD/` | day-retention UTC+3 ([устаревший термин](GLOSSARY.md#retention-window-устарело)) |
+| **Цель** | `logs/genN/` | [пул поколения](GLOSSARY.md#пул-поколения) |
 
-Покадровый `(frame, action)` для экспорта FM2. Путь и retention window — как у `attempts.jsonl` ([SCRIPTS.md](SCRIPTS.md#inference)).
+Схема полей и CLI as-is — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Overlay / board — [STREAMING_CONCEPT.md §7](STREAMING_CONCEPT.md#7-слои-информации-на-экране) и §10. Миграция — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md).
 
 ### FM2 из inference
 
-Клипы модели для просмотра / эфира (не эталон `reference/`). Self-contained FM2 + CLI — [SCRIPTS.md § FM2](SCRIPTS.md#fm2-из-inference-без-reference).
+Клипы модели для просмотра / editorial (не эталон `reference/`). Self-contained FM2 + CLI — [SCRIPTS.md § FM2](SCRIPTS.md#fm2-из-inference-без-reference).
 
-### Achievements и плейлист
+### Achievements и editorial
 
-Идея: после inference — теги 🏆/💀 по правилам YAML (пул = [retention window](GLOSSARY.md#retention-window)) → плейлист FM2 по номинациям → replay на эфире длительностью [airtime](GLOSSARY.md#airtime) (дефолт 1 ч realtime; не путать с retention).
+Идея: после inference — теги 🏆/💀 по правилам YAML (целевой пул = поколение) → короткий editorial FM2 → hybrid-эфир ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)); live — отдельно.
 
-Компоненты и CLI — [SCRIPTS.md § Achievements](SCRIPTS.md#achievements-и-плейлист).  
+Компоненты и CLI as-is — [SCRIPTS.md § Achievements](SCRIPTS.md#achievements-и-плейлист).  
 Номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
 
 ### `tasks/train_task.json`
@@ -564,7 +566,7 @@ env = make_env("<game_id>", "<mission_id>")
 
 ### Phase 4 — ML complete (gate перед стримом)
 
-См. [критерии приёмки §12](#12-критерии-приёмки-ml). После выполнения — переход к **этапу B** ([STREAMING_CONCEPT.md §10](STREAMING_CONCEPT.md#10-roadmap)).
+См. [критерии приёмки §12](#12-критерии-приёмки-ml). После выполнения — переход к **этапу B** ([STREAMING_CONCEPT.md §11](STREAMING_CONCEPT.md#11-roadmap)).
 
 
 ---
@@ -575,7 +577,7 @@ env = make_env("<game_id>", "<mission_id>")
 
 Проверка **pipeline платформы** на пилоте. Чеклист и пороги (CP и т.д.) — [GAME_RUSHN_ATTACK.md §6](GAME_RUSHN_ATTACK.md#6-приёмка-пилота).
 
-**Gate этапа A → B.** Стрим-критерии ([STREAMING_CONCEPT.md §11](STREAMING_CONCEPT.md#11-критерии-приёмки-стрим)) — только на **этапе B**, не блокируют приёмку ML.
+**Gate этапа A → B.** Стрим-критерии ([STREAMING_CONCEPT.md §12](STREAMING_CONCEPT.md#12-критерии-приёмки-стрим)) — только на **этапе B**, не блокируют приёмку ML.
 
 
 ---

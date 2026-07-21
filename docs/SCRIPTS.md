@@ -498,7 +498,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 <a id="run_inferencepy"></a>
 
 Локальный PPO inference. Логи: `games/.../logs/YYYYMMDD/` (`attempts.jsonl`, `inference_inputs.jsonl`). Default save state: `save_states/inference_cp0.fc0`.  
-[Retention window](GLOSSARY.md#retention-window) — пул attempts за календарный день (UTC+3); не путать с [airtime](GLOSSARY.md#airtime) плейлиста (длина эфира, дефолт 1 ч). Подробнее — ML_CONCEPT §8.
+[Retention window](GLOSSARY.md#retention-window) (**as-is**, устаревает → [пул поколения](GLOSSARY.md#пул-поколения)) — пул attempts за календарный день (UTC+3); не путать с [airtime](GLOSSARY.md#airtime) editorial-пакета. Целевая модель эфира — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md); миграция — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md). Подробнее — ML_CONCEPT §8.
 
 ```bash
 # Фиксированное число эпизодов + плейлист
@@ -579,7 +579,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 <a id="achievements-и-плейлист"></a>
 
 Attempts (+ опц. inputs) → `NN_slug_MMM.fm2`, `.overlay.json`, `playlist.json` (поле `airtime`), `playlist.play.cmd`.  
-Кандидаты — из [retention window](GLOSSARY.md#retention-window); целевая длина replay — [airtime](GLOSSARY.md#airtime). Обычный сбор под N часов — через `run_inference --target-airtime` (см. выше); этот скрипт — пересборка / pad из уже накопленного дня.
+Кандидаты — из [retention window](GLOSSARY.md#retention-window) (**as-is**; цель — [пул поколения](GLOSSARY.md#пул-поколения)); длина editorial — [airtime](GLOSSARY.md#airtime). Исторический сбор «под N часов» — через `run_inference --target-airtime` (не режиссёрский дефолт hybrid); этот скрипт — пересборка / pad из уже накопленного пула.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/build_playlist.py

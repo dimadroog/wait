@@ -276,41 +276,35 @@ heuristics:
 
 ## 5. Achievements (номинации пилота)
 
-Идея и pipeline (evaluator, playlist, overlay) — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных).  
-Правила пилота сейчас в `config/achievements.yaml` (общий файл; содержание — про эту игру).
+Идея и pipeline (evaluator, editorial playlist, overlay) — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); режиссура эфира — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).  
+Правила пилота: `config/achievements.yaml` (общий файл; содержание — про эту игру). Перестройка YAML под слои ниже — [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md); пул логов — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md).
 
-Пул для `top_k` / `deja_vu` / `new_record` — [retention window](GLOSSARY.md#retention-window) (календарный день UTC+3), **не** длина эфира. Длительность replay плейлиста — [airtime](GLOSSARY.md#airtime) (дефолт 1 ч).
+**Целевой пул** для `top_k` / `deja_vu` / рекордов — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/`), не календарный день.  
+**Editorial** — короткий пакет клипов (ориентир 8–15 мин [airtime](GLOSSARY.md#airtime)), не час с pad. CLI as-is ещё дневной/`--target-airtime` — [SCRIPTS.md § Inference](SCRIPTS.md#inference).
 
-**CLI (сборка плейлиста под эфир)** — подробности [SCRIPTS.md § Inference](SCRIPTS.md#inference):
+### Целевые слои (драматургия)
 
-```bash
-# Номинации дня → плейлист ≥ N часов airtime (pad после broadcast_order)
-./scripts/inference_local.sh --stochastic --target-airtime 1h --episodes 5
+| Слой | Смысл | Примеры (целевые slug) |
+| ---- | ----- | ---------------------- |
+| Сюжетные | каркас editorial / board | `mission_clear`, `new_frontier`, `wall` (кластер смертей на границе), `breakthrough`, дельта vs `genN−1` |
+| Честность | доверие к обучению | `regression`, откат поколения |
+| Второстепенные | B-roll, не наполнители слота | быстрая смерть, узкие death-gag |
 
-# Smoke-target 2–3 мин (проверка pipeline без часа эфира)
-./scripts/inference_local.sh --stochastic --target-airtime 2m --episodes 8 --max-steps 80 --play
+### As-is в `config/achievements.yaml` (до задач)
 
-# Только пересборка / pad из уже накопленного logs/YYYYMMDD/
-./.venv/Scripts/python.exe scripts/build_playlist.py --pad-to-airtime 2m
-./.venv/Scripts/python.exe scripts/eval_achievements.py
-```
-
-| Idx | slug | Overlay (RU) | Тип | Условие |
-| --- | ---- | ------------ | --- | ------- |
+| Idx | slug | Overlay (RU) | Тип | Условие (сейчас) |
+| --- | ---- | ------------ | --- | ---------------- |
 | 01 | `mission_clear` | Клир миссии | 🏆 | `mission_clear == true` |
-| 02 | `episode_reward` | Жадина | 🏆 | top‑K по `episode_reward` за retention window |
+| 02 | `episode_reward` | Жадина | 🏆 | top‑K по `episode_reward` за day-pool |
 | 03 | `fastest_death` | Мгновенный респawn | 💀 | `died` и `episode_frames ≤ 3` |
 | 04 | `many_achievements` | Тур CP | 🏆 | `len(achieved_checkpoints) ≥ 4` |
 | 05 | `deep_run` | Почти финиш | 🏆 | `max_checkpoint ≥ 4` и не `mission_clear` |
-| 06 | `deja_vu` | Déjà vu | 💀 | `(death_room, death_x_bucket)` ≥ 3 за retention window |
+| 06 | `deja_vu` | Déjà vu | 💀 | `(death_room, death_x_bucket)` ≥ 3 за day-pool |
 | 07 | `ladder_ouch` | Лестница съела | 💀 | `died` и `death_room == "0x08"` |
 | 08 | `new_record` | Личный рекорд | 🏆 | новый max `max_checkpoint` для `model_version` |
 
-`death_x_bucket = death_x // 16`.
-
-**Сортировка внутри блока:** 02 — `episode_reward` ↓; 03 — `episode_frames` ↑; остальные — `timestamp` ↓.
-
-**Порядок блоков на эфире:** `01 → 08 → 04 → 05 → 02 → 07 → 06 → 03`.
+`death_x_bucket = death_x // 16`.  
+Порядок блоков as-is: `01 → 08 → 04 → 05 → 02 → 07 → 06 → 03` — для часового плейлиста; в hybrid editorial порядок и набор сокращаются под сигнальные клипы.
 
 ---
 
@@ -333,10 +327,10 @@ heuristics:
 
 | Этап | Содержание |
 | ---- | ---------- |
-| Пилот / сезон 1 | M1 |
-| Сезон 1b | M2–M6 (миссия за блок стримов) |
+| Пилот / сезон 1 | M1; единица эфира — [эпизод поколения](GLOSSARY.md#эпизод-поколения) |
+| Сезон 1b | M2–M6 (миссия = сезон; внутри — поколения / frontier report) |
 
-Захват: FCEUX → OBS 720p — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
+Формат: hybrid editorial + live + board — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Захват: FCEUX → OBS 720p.
 
 ---
 

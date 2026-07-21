@@ -15,7 +15,7 @@
 | **[DESIGN.md](DESIGN.md)** | Pluggable Core, слоты, дерево репо / git A–B–C, гигиена · [регистрация скриптов](DESIGN.md#регистрация-скриптов-в-scriptsmd) |
 | **[ML_CONCEPT.md](ML_CONCEPT.md)** | Ядро ML: PPO, среда, награды, эталон, train pipeline · [GLOSSARY.md](GLOSSARY.md) · [скрипты](SCRIPTS.md) |
 | **[GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md)** | Пилот: Rush'n Attack — действия, CP, rewards, achievements, приёмка |
-| **[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)** | Twitch, OBS, сюжет эпизода, метрики для зрителя · [GLOSSARY.md](GLOSSARY.md) |
+| **[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)** | Twitch hybrid: editorial + live + board; прогресс по `genN` · [GLOSSARY.md](GLOSSARY.md) |
 | **[SCRIPTS.md](SCRIPTS.md)** | Каталог CLI: назначение и флаги entry point'ов (без замеров / журналов) |
 | **[tasks/TASK_BLANK.md](tasks/TASK_BLANK.md)** | Каркас задач: open в `tasks/`, done → `tasks/archive/` (без `ISSUE_*`) |
 
@@ -31,14 +31,14 @@
 | Этап | Фокус | Документ | Статус |
 | ---- | ----- | -------- | ------ |
 | **A — ML** | FCEUX bridge, env, train, локальный inference, дообучение | [ML_CONCEPT.md §11](ML_CONCEPT.md#11-roadmap-ml-фазы) | **текущий** |
-| **B — Стрим** | OBS, Twitch, overlay, тестовый эфир | [STREAMING_CONCEPT.md §10–11](STREAMING_CONCEPT.md#10-roadmap) | после gate |
+| **B — Стрим** | OBS, Twitch, hybrid editorial/live, board + Lua HUD | [STREAMING_CONCEPT.md §11–12](STREAMING_CONCEPT.md#11-roadmap) | после gate |
 
 **Gate (A → B):** [ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml) + чеклист пилота [GAME_RUSHN_ATTACK.md §6](GAME_RUSHN_ATTACK.md#6-приёмка-пилота).
 
-До gate: **не** ставить OBS, **не** настраивать Twitch, **не** готовить overlay.  
-На этапе A: `run_inference` и `attempts.jsonl` — сбор попыток модели; плейлист эфира — этап B.
+До gate: **не** ставить OBS, **не** настраивать Twitch, **не** готовить board/overlay под эфир.  
+На этапе A: `run_inference` и `attempts.jsonl` — сбор попыток модели; hybrid-эфир — этап B.
 
-[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) — спецификация этапа B; реализация отложена.
+[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) — спецификация этапа B; реализация: [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md), [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md).
 
 <a id="состав-проекта"></a>
 
@@ -63,7 +63,7 @@
 
 | Ресурс | Состав | Стрим | ML |
 | ------ | ------ | ----- | -- |
-| CPU | Intel **i7-3770** @ 3.40 GHz (4C/8T) | FCEUX playlist | PPO на CPU |
+| CPU | Intel **i7-3770** @ 3.40 GHz (4C/8T) | FCEUX editorial / live | PPO на CPU |
 | RAM | 2×8 GB Kingston DDR3-1600 (16 GB) | — | 4–8 parallel env |
 | GPU | **GTX 650** 1 GB | OBS NVENC | PyTorch CPU-only |
 | SSD | Kingston SA400S37 480 GB | — | модели, логи, demos |
