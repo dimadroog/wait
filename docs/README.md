@@ -19,7 +19,8 @@
 | **[SCRIPTS.md](SCRIPTS.md)** | Каталог CLI: назначение и флаги entry point'ов (без замеров / журналов) |
 | **[tasks/TASK_BLANK.md](tasks/TASK_BLANK.md)** | Каркас задач: open в `tasks/`, done → `tasks/archive/` (без `ISSUE_*`) |
 
-Термины — [GLOSSARY.md](GLOSSARY.md) (единый словарь, алфавитный порядок).
+Термины — [GLOSSARY.md](GLOSSARY.md) (единый словарь, алфавитный порядок).  
+Правила AI-агента (Cursor, подхватываются автоматически): [pluggable-core](../.cursor/rules/pluggable-core.mdc) · [agent-communication](../.cursor/rules/agent-communication.mdc) · [artifact-hygiene](../.cursor/rules/artifact-hygiene.mdc).
 
 ---
 
