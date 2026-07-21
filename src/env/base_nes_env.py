@@ -17,14 +17,14 @@ DEFAULT_MAX_EPISODE_STEPS = 8_000
 
 # life_lost: terminated на первую потерю жизни.
 # game_over: died на каждую потерю; terminated после N потерь (N = lives на старте).
-# Сырой lives==0 часто анимация смерти, не GO — считаем confirmed dips.
+# Сырой lives==0 часто анимация смерти, не game over — считаем confirmed dips.
 DEATH_MODE_LIFE_LOST = "life_lost"
 DEATH_MODE_GAME_OVER = "game_over"
 DEATH_MODES = frozenset({DEATH_MODE_LIFE_LOST, DEATH_MODE_GAME_OVER})
 
 TERMINATE_REASON_DEATH = "death"
 TERMINATE_REASON_TITLE = "title_screen"
-TERMINATE_REASON_GO = "game_over_screen"
+TERMINATE_REASON_GAME_OVER = "game_over_screen"
 DEFAULT_DEATH_CONFIRM_STEPS = 1
 
 

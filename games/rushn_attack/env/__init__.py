@@ -6,7 +6,7 @@ from typing import Any, Sequence
 import gymnasium as gym
 
 from env.base_nes_env import (
-    TERMINATE_REASON_GO,
+    TERMINATE_REASON_GAME_OVER,
     TERMINATE_REASON_TITLE,
     BaseNesEnv,
     parse_hex_or_int,
@@ -23,7 +23,7 @@ def _load_env_config() -> dict[str, Any]:
 
 
 class RushnAttackEnv(BaseNesEnv):
-    """RnA: secondary terminate на GO-freeze / title / attract; не mid-flash."""
+    """RnA: secondary terminate на game-over-freeze / title / attract; не mid-flash."""
 
     def __init__(
         self,
@@ -37,7 +37,7 @@ class RushnAttackEnv(BaseNesEnv):
         title_min_attempt_steps: int = 120,
         title_pose_truncate_grace: int = 0,
         title_pose_truncate_cool: int = 0,
-        go_freeze_confirm_steps: int = 32,
+        game_over_freeze_confirm_steps: int = 32,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -52,8 +52,8 @@ class RushnAttackEnv(BaseNesEnv):
         self.title_min_attempt_steps = max(0, int(title_min_attempt_steps))
         self.title_pose_truncate_grace = max(0, int(title_pose_truncate_grace))
         self.title_pose_truncate_cool = max(0, int(title_pose_truncate_cool))
-        # 0 = выкл; эталон GO: freeze r=0,x=129,y∉title_ys ≥32 env-step.
-        self.go_freeze_confirm_steps = max(0, int(go_freeze_confirm_steps))
+        # 0 = выкл; эталон game over: freeze r=0,x=129,y∉title_ys ≥32 env-step.
+        self.game_over_freeze_confirm_steps = max(0, int(game_over_freeze_confirm_steps))
         self._on_episode_reset()
 
     def _on_episode_reset(self) -> None:
@@ -61,8 +61,8 @@ class RushnAttackEnv(BaseNesEnv):
         self._title_end_streak = 0
         self._title_pose_streak = 0
         self._title_pose_trunc_cool = 0
-        self._go_freeze_streak = 0
-        self._go_freeze_key: tuple[int, int] | None = None
+        self._game_over_freeze_streak = 0
+        self._game_over_freeze_key: tuple[int, int] | None = None
         self._last_secondary_reason = TERMINATE_REASON_TITLE
 
     def _on_ram(self, ram: dict[str, Any]) -> None:
@@ -114,9 +114,9 @@ class RushnAttackEnv(BaseNesEnv):
             return False
         return self._title_pose_coords_match(ram)
 
-    def _go_freeze_match(self, ram: dict[str, Any]) -> bool:
-        """GO-экран: freeze на title_x вне title_ys (y не фиксирован — эталон 95/41)."""
-        if self.go_freeze_confirm_steps <= 0:
+    def _game_over_freeze_match(self, ram: dict[str, Any]) -> bool:
+        """Экран game over: freeze на title_x вне title_ys (y не фиксирован — эталон 95/41)."""
+        if self.game_over_freeze_confirm_steps <= 0:
             return False
         if not self._attempt_progressed():
             return False
@@ -136,20 +136,20 @@ class RushnAttackEnv(BaseNesEnv):
         return True
 
     def _secondary_terminate(self, ram: dict[str, Any]) -> bool:
-        # GO-freeze раньше title/attract standing — иначе в клип попадает GO→title.
-        if self._go_freeze_match(ram):
+        # game-over-freeze раньше title/attract standing — иначе в клип попадает game over→title.
+        if self._game_over_freeze_match(ram):
             key = (self._ram_int(ram, "x"), self._ram_int(ram, "y"))
-            if key == self._go_freeze_key:
-                self._go_freeze_streak += 1
+            if key == self._game_over_freeze_key:
+                self._game_over_freeze_streak += 1
             else:
-                self._go_freeze_key = key
-                self._go_freeze_streak = 1
-            if self._go_freeze_streak >= self.go_freeze_confirm_steps:
-                self._last_secondary_reason = TERMINATE_REASON_GO
+                self._game_over_freeze_key = key
+                self._game_over_freeze_streak = 1
+            if self._game_over_freeze_streak >= self.game_over_freeze_confirm_steps:
+                self._last_secondary_reason = TERMINATE_REASON_GAME_OVER
                 return True
         else:
-            self._go_freeze_streak = 0
-            self._go_freeze_key = None
+            self._game_over_freeze_streak = 0
+            self._game_over_freeze_key = None
 
         if self._attract_pose_match(ram):
             self._title_pose_streak += 1
@@ -230,8 +230,13 @@ def make_env(
         kwargs["title_level_room_min"] = parse_hex_or_int(title_end["level_room_min"])
     if "title_min_attempt_steps" not in kwargs and title_end.get("min_attempt_steps") is not None:
         kwargs["title_min_attempt_steps"] = int(title_end["min_attempt_steps"])
-    if "go_freeze_confirm_steps" not in kwargs and title_end.get("go_freeze_confirm_steps") is not None:
-        kwargs["go_freeze_confirm_steps"] = int(title_end["go_freeze_confirm_steps"])
+    if (
+        "game_over_freeze_confirm_steps" not in kwargs
+        and title_end.get("game_over_freeze_confirm_steps") is not None
+    ):
+        kwargs["game_over_freeze_confirm_steps"] = int(
+            title_end["game_over_freeze_confirm_steps"]
+        )
     env = RushnAttackEnv(
         game_id=game_id,
         mission_id=mission_id,
