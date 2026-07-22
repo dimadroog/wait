@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
@@ -19,7 +20,7 @@ from achievements.airtime import (  # noqa: E402
     measure_playlist_airtime,
     overlay_hold_frames,
 )
-from fceux_launch import fceux_sound_off  # noqa: E402
+from fceux_launch import ensure_fceux_sound_on, fceux_sound_off  # noqa: E402
 from fm2_export import (  # noqa: E402
     episode_fm2_guid,
     fm2_has_embedded_savestate,
@@ -133,7 +134,13 @@ def _run_fceux_movie_clip(
     if sys.platform == "win32" and noicon:
         popen_flags = subprocess.CREATE_NO_WINDOW
 
-    with fceux_sound_off(fceux.parent):
+    # Звук нужен для throttle в GUI; mute только для headless (-noicon).
+    if noicon:
+        sound_ctx = fceux_sound_off(fceux.parent)
+    else:
+        ensure_fceux_sound_on(fceux.parent)
+        sound_ctx = nullcontext()
+    with sound_ctx:
         proc = subprocess.Popen(cmd, cwd=str(staging), env=env, creationflags=popen_flags)
         _wait_fceux(proc, done_flag=None, timeout=timeout)
 
@@ -337,7 +344,13 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
         popen_flags = subprocess.CREATE_NO_WINDOW
 
     print(f"Launching one FCEUX for {len(clips)} clip(s), timeout={timeout:.0f}s", flush=True)
-    with fceux_sound_off(fceux.parent):
+    # Звук нужен для throttle в GUI; mute только для headless (-noicon).
+    if args.noicon:
+        sound_ctx = fceux_sound_off(fceux.parent)
+    else:
+        ensure_fceux_sound_on(fceux.parent)
+        sound_ctx = nullcontext()
+    with sound_ctx:
         proc = subprocess.Popen(cmd, cwd=str(staging), env=env, creationflags=popen_flags)
         _wait_fceux(proc, done_flag=done_flag, timeout=timeout)
 

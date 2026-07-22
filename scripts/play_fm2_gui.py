@@ -16,7 +16,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
-from fceux_launch import fceux_sound_off  # noqa: E402
+from fceux_launch import ensure_fceux_sound_on  # noqa: E402
 from fm2_export import (  # noqa: E402
     episode_fm2_guid,
     fm2_has_embedded_savestate,
@@ -114,16 +114,17 @@ def main() -> None:
     print(f"  expect: gameplay (мост) с первых кадров, не title «1 PLAYER»", flush=True)
 
     env = os.environ.copy()
-    with fceux_sound_off(fceux.parent):
-        proc = subprocess.Popen(cmd, cwd=str(staging), env=env)
-        try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=10)
-            print(f"Stopped after {timeout:.0f}s (movie may still be playing)", flush=True)
-        else:
-            print(f"FCEUX exit code {proc.returncode}", flush=True)
+    # Включаем sound: без него FCEUX часто теряет throttle (replay «в turbo»).
+    ensure_fceux_sound_on(fceux.parent)
+    proc = subprocess.Popen(cmd, cwd=str(staging), env=env)
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=10)
+        print(f"Stopped after {timeout:.0f}s (movie may still be playing)", flush=True)
+    else:
+        print(f"FCEUX exit code {proc.returncode}", flush=True)
 
     # дать ОС отпустить cwd перед возможным cleanup
     time.sleep(0.2)
