@@ -59,7 +59,12 @@ def load_demo_dataset(
     demo_paths: list[Path] | None = None,
     require_real_obs: bool = True,
 ) -> tuple[np.ndarray, np.ndarray] | None:
-    """Собирает (obs, actions) из npz; actions пересчитываются из human jsonl."""
+    """Собирает (obs, actions) из npz.
+
+    По умолчанию actions пересчитываются из human jsonl по frame_start/end.
+    Если в meta стоит ``prefer_embedded_actions: true`` и в npz есть массив
+    ``actions`` — берутся встроенные метки (для отфильтрованных ablation-демо).
+    """
     demos_dir = demos_for_bc_dir(mission)
     paths = demo_paths or sorted(demos_dir.glob("seg_*.npz"))
     if not paths:
@@ -78,12 +83,21 @@ def load_demo_dataset(
             print(f"skip {path.name}: obs_stub (пересоберите demos с реальными obs)")
             continue
 
+        obs = np.asarray(segment_npz["obs"], dtype=np.float32)
+        if segment_meta.get("prefer_embedded_actions") and "actions" in segment_npz.files:
+            actions = np.asarray(segment_npz["actions"], dtype=np.int64)
+            n = min(int(actions.shape[0]), int(obs.shape[0]))
+            if n == 0:
+                continue
+            obs_parts.append(obs[:n])
+            act_parts.append(actions[:n])
+            continue
+
         seg_id = segment_meta.get("segment_id") or path.stem
         seg = seg_by_id.get(seg_id, {})
         frame_start = int(segment_meta.get("frame_start") or seg.get("frame_start", 0))
         frame_end = int(segment_meta.get("frame_end") or seg.get("frame_end", 0))
         actions = _load_human_actions(mission, frame_start, frame_end)
-        obs = np.asarray(segment_npz["obs"], dtype=np.float32)
         n = min(len(actions), obs.shape[0])
         if n == 0:
             continue

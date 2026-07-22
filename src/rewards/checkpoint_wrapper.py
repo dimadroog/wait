@@ -14,12 +14,22 @@ def _norm_room(room: str) -> str:
     return str(room).strip().upper()
 
 
-def trigger_matches(trigger: dict[str, Any], ram: dict[str, Any]) -> bool:
+def trigger_matches(
+    trigger: dict[str, Any],
+    ram: dict[str, Any],
+    *,
+    achieved: set[int] | None = None,
+) -> bool:
     if "flag" in trigger:
         flag = trigger["flag"]
         if flag == "mission_complete":
             return bool(ram.get("mission_complete"))
         return False
+
+    req = trigger.get("requires_checkpoint")
+    if req is not None:
+        if not achieved or int(req) not in achieved:
+            return False
 
     room = trigger.get("room")
     if room is not None and _norm_room(ram.get("room", "")) != _norm_room(room):
@@ -147,7 +157,7 @@ class CheckpointRewardWrapper(gym.Wrapper):
             trigger = cp.get("trigger") or {}
             if "flag" in trigger:
                 continue
-            if trigger_matches(trigger, ram):
+            if trigger_matches(trigger, ram, achieved=self._achieved):
                 self._achieved.add(cp_id)
         return max(self._achieved) if self._achieved else -1
 

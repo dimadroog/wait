@@ -281,7 +281,17 @@ def train(args: argparse.Namespace) -> Path:
         if args.rollout_gc:
             callbacks.append(RolloutGcCallback())
         if not args.no_progress_pct:
-            callbacks.append(TrainProgressPctCallback(target_timesteps))
+            # При reset_num_timesteps (не resume) счётчик идёт с 0 по remaining —
+            # progress_pct должен закрывать этот бюджет, а не абсолютный CLI target.
+            if resuming:
+                progress_start = int(model.num_timesteps)
+                progress_target = target_timesteps
+            else:
+                progress_start = 0
+                progress_target = remaining
+            callbacks.append(
+                TrainProgressPctCallback(progress_target, start_timesteps=progress_start)
+            )
         metrics_path: Path | None = None
         if args.rollout_metrics:
             if args.rollout_metrics_path:

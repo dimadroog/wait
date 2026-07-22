@@ -52,7 +52,7 @@
 
 ### CP
 
-**Checkpoint** (контрольная точка, кратко **CP**) — узел прогресса миссии с номерами CP0, CP1, … CPn в файле `config/routes.yaml`. Когда агент впервые достигает условий точки (комната, координаты и т.п.), среда даёт награду в обучении с подкреплением ([RL](#rl)). Это ориентиры маршрута для обучения, а не save state эмулятора и не файл `genN.zip`.
+**Checkpoint** (контрольная точка, кратко **CP**) — узел прогресса миссии с номерами CP0, CP1, … CPn в файле `config/routes.yaml`. Когда агент впервые достигает условий точки (комната, координаты и т.п.), среда даёт награду в обучении с подкреплением ([RL](#rl)). Это ориентиры маршрута для обучения, а не save state эмулятора и не файл `genN.zip`. Опционально в `trigger` можно указать `requires_checkpoint: <id>` — точка не засчитается, пока не взят указанный CP (общий механизм ядра, без привязки к конкретной игре).
 
 ### env
 
@@ -244,8 +244,8 @@ rollout_metrics: #2 wall=95.1s steps=768 rate=8.079 avail_ram_mb=9262.2
 | `iterations` | Stable-Baselines3 | сколько [rollout](#rollout) уже завершено |
 | `time_elapsed` | Stable-Baselines3 | [wall-clock](#wall-clock) в секундах с старта `learn()`. Разница между соседними строками ≈ длительность rollout плюс обновление PPO в том же интервале |
 | `total_timesteps` | Stable-Baselines3 | всего [env-step](#env-step) (`num_timesteps`). За один rollout обычно `n_envs × n_steps` (например 6×128 = 768) |
-| `progress_pct` | callback | `100 × total_timesteps / target_timesteps`; отключается `--no-progress-pct` |
-| `target_timesteps` | callback | цель из CLI `--timesteps` или из sidecar-файла `.train.json` при `--resume` |
+| `progress_pct` | callback | доля **текущего** бюджета `learn`: `100 × (total_timesteps − start) / (target − start)`. При новом PPO / `--model-in` счётчик сбрасывается — `target` = `remaining` (добор), шкала 0→100% за этот прогон. При `--resume` — `start` = уже накопленные шаги, `target` = абсолютная цель. Отключается `--no-progress-pct` |
+| `target_timesteps` | callback | знаменатель для `progress_pct`: при resume — цель CLI/sidecar; при сбросе счётчика — бюджет `remaining` текущего прогона (не путать с полем `target_timesteps` в `.train.json`, там по-прежнему абсолютная цель CLI) |
 | **`rollout_metrics:`** | callback | одна строка на каждый rollout при `--rollout-metrics` |
 | `wall` (`wall_rollout_s`) | metrics | [wall-clock](#wall-clock) в секундах **только этого** rollout (сбор опыта до `on_rollout_end`) |
 | `steps` (`delta_timesteps`) | metrics | сколько [env-step](#env-step) набрано в этом rollout (обычно `n_envs × n_steps`) |

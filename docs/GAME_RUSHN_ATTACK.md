@@ -126,20 +126,25 @@ milestone_bonus: 50
 
 После дообучения — вернуть `default`.
 
-### Черновик CP миссии 1
+### Чекпоинты миссии 1 (канон)
 
-**4–6 узлов**, уточняются после эталона / RAM-разведки (`ram_map.md`).
+Канон в `config/routes.yaml` (после ablation H3):
+
+- Нет платного старта на `room 0x00` (CP0 `start` убран) — reset не даёт бесплатный checkpoint-бонус за стояние.
+- `late_mission` (id 4): `room 0x00` + `min_y: 60` и **`requires_checkpoint: 3`** — late только после `mid_mission`, иначе фарм CP на стартовой комнате.
+- Снимок «до H3» для истории: `config/routes.pre_h3.yaml` (не боевой путь).
 
 ```
-CP0: старт миссии
-CP1: первый значимый экран
-CP2: лестница / вертикальный участок
-CP3: backtrack или сложная зона (если есть)
-CP4: pre-boss / финальный коридор
-CP5: mission clear
+CP1: first_screen (0x0C)
+CP2: ladder (0x08)
+CP3: mid_mission (0x12)
+CP4: late_mission (0x00, min_y≥60, требует CP3)
+CP5: mission_clear (flag)
 ```
 
 Точные `room_id` и `(x,y)` — в `games/rushn_attack/missions/m1/ram_map.md`.
+
+**Рекомендация gen1:** тёплый `gen0` + BC ≥ 1…5 эпох + PPO на этих routes; смотреть `noop_frac` (скрипт `summarize_inference_actions`) и залипание `ep_rew` / `ep_len` в train ([TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md)).
 
 ---
 
@@ -210,26 +215,28 @@ segments:
     save_state: save_states/cp2.fc*
 ```
 
-### `config/routes.yaml` (фрагмент)
+### `config/routes.yaml` (фрагмент, канон H3)
 
 ```yaml
 game: rushn_attack
-mission: 1
-
+mission: '1'
 checkpoints:
-  - id: 0
-    name: start
-    trigger: { room: 0x01 }
   - id: 1
     name: first_screen
-    trigger: { room: 0x03 }
+    trigger: { room: '0x0C' }
   - id: 2
     name: ladder
-    trigger: { room: 0x05 }
+    trigger: { room: '0x08' }
   - id: 3
     name: mid_mission
-    trigger: { room: 0x07 }
+    trigger: { room: '0x12' }
   - id: 4
+    name: late_mission
+    trigger:
+      room: '0x00'
+      min_y: 60
+      requires_checkpoint: 3
+  - id: 5
     name: mission_clear
     trigger: { flag: mission_complete }
 
@@ -239,14 +246,7 @@ rewards:
     death_penalty: 40
     mission_clear_bonus: 1000
     step_penalty: 0.005
-
-heuristics:
-  mission_complete:
-    min_progress_cp: 4
-    room: 0x07
-    x: 129
-    min_y: 60
-    max_y: 72
+    kill_bonus: 0
 ```
 
 ### `tasks/train_task.json` (пример)

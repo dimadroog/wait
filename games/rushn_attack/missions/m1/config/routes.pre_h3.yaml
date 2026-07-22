@@ -1,6 +1,10 @@
 game: rushn_attack
 mission: '1'
 checkpoints:
+- id: 0
+  name: start
+  trigger:
+    room: '0x00'
 - id: 1
   name: first_screen
   trigger:
@@ -18,7 +22,6 @@ checkpoints:
   trigger:
     room: '0x00'
     min_y: 60
-    requires_checkpoint: 3
 - id: 5
   name: mission_clear
   trigger:

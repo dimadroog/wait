@@ -27,6 +27,7 @@
 | Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
 | Benchmark bridge / e2e train | [`benchmark_bridge.py`](#benchmark_bridgepy), [`benchmark_train.py`](#benchmark_trainpy) |
 | Разбор `rollouts.jsonl` | [`parse_train_rollouts.py`](#parse_train_rolloutspy) |
+| Доля пустых действий inference | [`summarize_inference_actions.py`](#summarize_inference_actionspy) |
 
 ---
 
@@ -57,6 +58,7 @@
 | [`smoke_env.py`](#smoke_envpy) | Smoke Gymnasium env |
 | [`stress_e2e_gate.py`](#stress_e2e_gatepy) | Длительный IPC/gate stress |
 | [`stress_parallel_reset.py`](#stress_parallel_resetpy) | Короткий parallel reset stress (устаревший относительно gate) |
+| [`summarize_inference_actions.py`](#summarize_inference_actionspy) | `noop_frac` / гистограмма из `inference_inputs.jsonl` |
 | [`test_parallel_env.py`](#test_parallel_envpy) | Parallel vec step + reset |
 | [`train_fps_round_prep.py`](#train_fps_round_preppy) | Prep `models/gen0` для fps-раунда |
 | [`train_local.sh`](#train_localsh) | Фасад: preflight → `train_ppo` (`--n-envs 6`) |
@@ -443,6 +445,23 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 | ---- | -------- |
 | `--jsonl` | путь к `rollouts.jsonl` (обязательный) |
 | `--json` | только JSON в stdout |
+
+---
+
+### `summarize_inference_actions.py`
+
+Доля пустых `action` (`noop_frac`), гистограмма кнопок; опционально стык с `attempts.jsonl` (`max_checkpoint`). Ядро без игровых room/CP.
+
+```bash
+./.venv/Scripts/python.exe scripts/summarize_inference_actions.py games/rushn_attack/missions/m1/logs/20260722
+./.venv/Scripts/python.exe scripts/summarize_inference_actions.py path/to/inference_inputs.jsonl --json -
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `path` | `inference_inputs.jsonl` или каталог дня логов |
+| `--attempts` | явный `attempts.jsonl` (иначе соседний файл, если есть) |
+| `--json [OUT]` | JSON в stdout (`-`) или в файл |
 
 ---
 
