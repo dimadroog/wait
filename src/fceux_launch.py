@@ -127,6 +127,23 @@ def ensure_fceux_sound_off(fceux_dir: Path) -> None:
         fceux_cfg_path.write_text(patched, encoding="utf-8")
 
 
+def ensure_fceux_sound_on(fceux_dir: Path) -> None:
+    """Включить sound в fceux.cfg (GUI replay / throttle; идемпотентно)."""
+    fceux_cfg_path = fceux_dir / "fceux.cfg"
+    if not fceux_cfg_path.is_file():
+        return
+    with _fceux_cfg_lock(fceux_dir):
+        original = fceux_cfg_path.read_text(encoding="utf-8", errors="replace")
+        if re.search(r'"sound"\s+[1-9]\d*\b', original):
+            return
+        patched = (
+            re.sub(r'"sound"\s+\d+', '"sound" 1', original, count=1)
+            if '"sound"' in original
+            else original.rstrip() + '\n"sound" 1\n'
+        )
+        fceux_cfg_path.write_text(patched, encoding="utf-8")
+
+
 @contextmanager
 def fceux_sound_off(fceux_dir: Path):
     """Headless: sound=0 в fceux.cfg (parallel-safe, без restore)."""

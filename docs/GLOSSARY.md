@@ -1,6 +1,7 @@
 # GLOSSARY — термины проекта
 
 > Единый словарь для [ML_CONCEPT.md](ML_CONCEPT.md), [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md), [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).  
+> Разбор консоли обучения (когда останавливать прогон) — [TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md).  
 > Перекрёстные ссылки вида `#term` работают внутри этого файла (режим Preview).  
 > Стиль статей: полные предложения; аббревиатура раскрывается при первом появлении в статье.
 
@@ -76,7 +77,7 @@
 
 **Frames Per Second** (кадры в секунду) — частота кадров. На эфире обычно ориентируются на 30 FPS видео; сам эмулятор [NES](#nes) работает около 60 FPS.
 
-В [журнале обучения](#train-log-rollout-table) поле с именем `fps` означает **другое**: сколько [шагов среды](#env-step) успели выполнить за [wall-clock](#wall-clock) с начала сессии обучения. Это не частота кадров картинки на экране.
+В [журнале обучения](TRAIN_ANALYSIS.md) поле с именем `fps` означает **другое**: сколько [шагов среды](#env-step) успели выполнить за [wall-clock](#wall-clock) с начала сессии обучения. Это не частота кадров картинки на экране.
 
 ### Frame skip
 
@@ -179,7 +180,7 @@
 
 **Rollout** (сбор траекторий) — один полный цикл в обучении [PPO](#ppo) через [Stable-Baselines3](#sb3). Сначала параллельно во всех [средах](#env) набирают по `n_steps` шагов (итого `n_envs × n_steps` [env-step](#env-step)). Затем по этому буферу несколько раз (`n_epochs`) обновляют веса политики.
 
-В [журнале обучения](#train-log-rollout-table) каждая новая строка таблицы соответствует завершённому rollout; счётчик `iterations` — сколько таких циклов уже прошло. Пример из приёмки gate: два rollout при `n_steps=128`, `n_envs=8`, `timesteps=2048` дают 2×1024 шагов среды.
+В [журнале обучения](TRAIN_ANALYSIS.md) каждая новая строка таблицы соответствует завершённому rollout; счётчик `iterations` — сколько таких циклов уже прошло. Пример из приёмки gate: два rollout при `n_steps=128`, `n_envs=8`, `timesteps=2048` дают 2×1024 шагов среды.
 
 ### ROM
 
@@ -205,54 +206,13 @@
 
 ### Train log (rollout table)
 
-**Train log** (журнал обучения, таблица rollout) — то, что печатается в консоль после каждого [rollout](#rollout) во время `model.learn()` в [`train_ppo.py`](../src/train/train_ppo.py). Есть два потока вывода:
+<a id="train-log-rollout-table"></a>
 
-| Поток | Откуда | Когда |
-| ----- | ------ | ----- |
-| Таблица [Stable-Baselines3](#sb3) | `verbose=1` и `TrainProgressPctCallback` (`src/train/progress_callback.py`) | всегда при `learn` (флаг `--no-progress-pct` отключает только поля `progress_pct` / `target_timesteps`) |
-| Строка `rollout_metrics:` | `RolloutMetricsCallback` (`src/train/rollout_metrics.py`) | только если включён `--rollout-metrics` (параллельно пишется JSONL в `tmp/bench/<session>/rollouts.jsonl`) |
+**Train log** (журнал обучения) — таблица в консоли после каждого [rollout](#rollout) при `train_ppo` / `train_local.sh`.
 
-Сводку JSONL разбирает [`parse_train_rollouts.py`](SCRIPTS.md#parse_train_rolloutspy). Сценарии «обучение + замер» — [MEASUREMENTS.md § R6](MEASUREMENTS.md#r6-dual-trainmeasure).
+Как читать поля, какую динамику ждать и когда **останавливать** прогон: **[TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md)**.
 
-**Важно:** кумулятивное поле `fps` в таблице Stable-Baselines3 — это **не** то же самое, что `rate` за один rollout. Чтобы ловить деградацию скорости по ходу сессии, смотрите **`rate` и `wall_rollout_s`** (и сравнение `wall_late` / `wall_early` в parse), а не только `fps` в таблице.
-
-**Пример** (`n_envs=6`, `n_steps=128`, включён `--rollout-metrics`; один завершённый rollout):
-
-```
-rollout_metrics: #2 wall=95.1s steps=768 rate=8.079 avail_ram_mb=9262.2
----------------------------------
-| rollout/           |          |
-|    ep_len_mean     | 2        |
-|    ep_rew_mean     | -40      |
-| time/              |          |
-|    fps             | 4        |
-|    iterations      | 2        |
-|    time_elapsed    | 412      |
-|    total_timesteps | 1536     |
-|    progress_pct    | 1.5      |
-|    target_timesteps| 100000   |
----------------------------------
-```
-
-| Поле | Источник | Значение |
-| ---- | -------- | -------- |
-| **rollout/** | Stable-Baselines3 | метрики эпизодов за последний сбор опыта |
-| `ep_len_mean` | Stable-Baselines3 | средняя длина эпизода в [env-step](#env-step). При режиме смерти `life_lost` часто получается ≈2 (частые сбросы); у Rush'n Attack по умолчанию режим `game_over` (см. [MEASUREMENTS.md](MEASUREMENTS.md), раздел H3) |
-| `ep_rew_mean` | Stable-Baselines3 | средняя суммарная награда за эпизод за последний [rollout](#rollout) |
-| **time/** | Stable-Baselines3 | время и прогресс с начала `learn()` |
-| `fps` | Stable-Baselines3 | **не** [FPS](#fps) видео. Кумулятив: все [env-step](#env-step), делённые на [wall-clock](#wall-clock) **с начала сессии**. Сглаживает просадки отдельного rollout |
-| `iterations` | Stable-Baselines3 | сколько [rollout](#rollout) уже завершено |
-| `time_elapsed` | Stable-Baselines3 | [wall-clock](#wall-clock) в секундах с старта `learn()`. Разница между соседними строками ≈ длительность rollout плюс обновление PPO в том же интервале |
-| `total_timesteps` | Stable-Baselines3 | всего [env-step](#env-step) (`num_timesteps`). За один rollout обычно `n_envs × n_steps` (например 6×128 = 768) |
-| `progress_pct` | callback | доля **текущего** бюджета `learn`: `100 × (total_timesteps − start) / (target − start)`. При новом PPO / `--model-in` счётчик сбрасывается — `target` = `remaining` (добор), шкала 0→100% за этот прогон. При `--resume` — `start` = уже накопленные шаги, `target` = абсолютная цель. Отключается `--no-progress-pct` |
-| `target_timesteps` | callback | знаменатель для `progress_pct`: при resume — цель CLI/sidecar; при сбросе счётчика — бюджет `remaining` текущего прогона (не путать с полем `target_timesteps` в `.train.json`, там по-прежнему абсолютная цель CLI) |
-| **`rollout_metrics:`** | callback | одна строка на каждый rollout при `--rollout-metrics` |
-| `wall` (`wall_rollout_s`) | metrics | [wall-clock](#wall-clock) в секундах **только этого** rollout (сбор опыта до `on_rollout_end`) |
-| `steps` (`delta_timesteps`) | metrics | сколько [env-step](#env-step) набрано в этом rollout (обычно `n_envs × n_steps`) |
-| `rate` (`env_steps_per_s`) | metrics | `delta_timesteps / wall_rollout_s` — скорость **за этот** rollout; удобно смотреть деградацию ([MEASUREMENTS § R6](MEASUREMENTS.md#r6-dual-trainmeasure)) |
-| `avail_ram_mb` (`avail_phys_mb`) | metrics | свободная физическая память Windows в мегабайтах; в JSONL также есть `total_phys_mb`, `memory_load_pct` |
-
-Файл JSONL (`tmp/bench/<session>/rollouts.jsonl`) содержит те же поля плюс метку времени, номер rollout, `num_timesteps`, `elapsed_s`. Скрипт `parse_train_rollouts.py` считает, среди прочего, среднее `rate` по последним пяти rollout и отношение среднего wall «поздно / рано» (при достаточном числе rollout помечает `degraded`, если отношение ≥ 2.0).
+Кратко: два потока — таблица [Stable-Baselines3](#sb3) (всегда при `learn`) и опционально строка `rollout_metrics:` (`--rollout-metrics`). Поле `fps` в таблице — не [FPS](#fps) видео, а кумулятивные [env-step](#env-step) / [wall-clock](#wall-clock); для просадки скорости смотрите `rate` / `wall` в [TRAIN_ANALYSIS](TRAIN_ANALYSIS.md) и [MEASUREMENTS § R6](MEASUREMENTS.md#r6-dual-trainmeasure).
 
 ### TAS
 
@@ -260,7 +220,7 @@ rollout_metrics: #2 wall=95.1s steps=768 rate=8.079 avail_ram_mb=9262.2
 
 ### wall-clock
 
-**Wall-clock** (время настенных часов, wall time) — сколько реально прошло времени на компьютере по часам, а не «сколько кадров сыграла игра» и не сумма загрузки всех ядер процессора. В журнале обучения это `time_elapsed` (накопительно с начала `learn`) и `wall` / `wall_rollout_s` (длительность одного [rollout](#rollout)).
+**Wall-clock** (время настенных часов, wall time) — сколько реально прошло времени на компьютере по часам, а не «сколько кадров сыграла игра» и не сумма загрузки всех ядер процессора. В журнале обучения это `time_elapsed` (накопительно с начала `learn`) и `wall` / `wall_rollout_s` (длительность одного [rollout](#rollout)); подробнее — [TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md).
 
 Скорость «wall env-steps/s» = число шагов среды, делённое на wall-секунды ([MEASUREMENTS.md](MEASUREMENTS.md)). **Steady** — тот же расчёт, но без первого rollout (на нём обычно холодный старт нескольких окон [FCEUX](#fceux)). В текстах иногда пишут «wall-секунда» в том же смысле.
 
