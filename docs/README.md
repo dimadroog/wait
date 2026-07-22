@@ -17,6 +17,7 @@
 | **[GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md)** | Пилот: Rush'n Attack — действия, CP, rewards, achievements, приёмка |
 | **[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)** | Twitch hybrid: editorial + live + board; прогресс по `genN` · [GLOSSARY.md](GLOSSARY.md) |
 | **[SCRIPTS.md](SCRIPTS.md)** | Каталог CLI: назначение и флаги entry point'ов (без замеров / журналов) |
+| **[TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md)** | Как читать консоль обучения: динамика полей, когда останавливать прогон |
 | **[tasks/TASK_BLANK.md](tasks/TASK_BLANK.md)** | Каркас задач: open в `tasks/`, done → `tasks/archive/` (без `ISSUE_*`) |
 
 Термины — [GLOSSARY.md](GLOSSARY.md) (единый словарь, алфавитный порядок).  

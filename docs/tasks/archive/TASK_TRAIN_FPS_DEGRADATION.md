@@ -191,7 +191,7 @@
 | -------- | ---------- |
 | [MEASUREMENTS.md](../../MEASUREMENTS.md) | Сводные метрики; § деградация fps |
 | [SCRIPTS.md](../../SCRIPTS.md) | Команды benchmark / train / stress |
-| [GLOSSARY.md](../../GLOSSARY.md) § [Train log](../../GLOSSARY.md#train-log-rollout-table) | SB3 + `rollout_metrics:` (R6.docs) |
+| [GLOSSARY.md](../../GLOSSARY.md) → [TRAIN_ANALYSIS.md](../../TRAIN_ANALYSIS.md) | SB3 + `rollout_metrics:` (бывш. § Train log) |
 | [ISSUE_FALL.md](ISSUE_FALL.md) | Инцидент gate, stress-диагностика, план R0–R5 |
 
 ---
@@ -359,14 +359,14 @@ Prep (один раз перед раундом):
 - [x] **R6.2** long resume `m1_v0_n6` → **100116**, 103 rollout, wall_late/early **0.28**, SB3 late **4** (`tmp/bench/fps_r6_20260717/`)
 - [x] **R6.3** (опц.) **отложено** — short n=8 хуже n=6; long n=8 не окупается
 - [x] **R6.4** `parse_train_rollouts` + запись в [MEASUREMENTS.md](../../MEASUREMENTS.md) § R6 (2026-07-18)
-- [x] **R6.docs** [GLOSSARY § Train log](../../GLOSSARY.md#train-log-rollout-table) — SB3 + `rollout_metrics:` + JSONL (2026-07-18)
+- [x] **R6.docs** [TRAIN_ANALYSIS.md](../../TRAIN_ANALYSIS.md) (вынесено из GLOSSARY § Train log) — SB3 + `rollout_metrics:` + JSONL
 - [x] **R6.✓** default **`n_envs=6`**; следующий код-цикл: **P1 H3** (длиннее эпизоды), затем P2/P3 по ROI
 
 ### Docs — GLOSSARY Train log
 
 **Статус:** **done** (2026-07-18).
 
-[GLOSSARY.md](../../GLOSSARY.md) § **Train log (rollout table)** (якорь `#train-log-rollout-table`, ~стр. 143–176) описывает только устаревший «Периодический вывод» SB3 (`verbose=1` + `progress_pct` / `target_timesteps`). После R6 в консоли при `--rollout-metrics` есть **два** потока; глоссарий должен разбирать оба.
+Разбор консоли обучения перенесён в [TRAIN_ANALYSIS.md](../../TRAIN_ANALYSIS.md). В [GLOSSARY.md](../../GLOSSARY.md) § Train log остаётся краткий указатель (якорь `#train-log-rollout-table`).
 
 | Поток | Откуда | Когда | Что документировать |
 | ----- | ------ | ----- | ------------------- |
