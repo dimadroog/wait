@@ -1,4 +1,4 @@
-"""Unit tests for BaseNesEnv death_mode + RushnAttackEnv title/attract end."""
+"""Unit tests for BaseNesEnv death_mode + RushnAttackEnv game-over-freeze exit."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -11,7 +11,6 @@ from env.base_nes_env import (
     DEATH_MODE_LIFE_LOST,
     TERMINATE_REASON_DEATH,
     TERMINATE_REASON_GAME_OVER,
-    TERMINATE_REASON_TITLE,
     BaseNesEnv,
 )
 from env.loader import import_game_env
@@ -54,10 +53,8 @@ def _make_rna(
     start_lives: int = 3,
     death_confirm_steps: int = 1,
     title_end_rooms: tuple[int, ...] | None = (0x00,),
-    title_end_confirm_steps: int = 8,
     title_pose_x: int | None = None,
     title_pose_ys: tuple[int, ...] | None = None,
-    title_pose_confirm_steps: int = 32,
     title_level_room_min: int | None = 0x08,
     title_min_attempt_steps: int = 120,
     title_pose_truncate_grace: int = 40,
@@ -76,10 +73,8 @@ def _make_rna(
             death_mode=death_mode,
             death_confirm_steps=death_confirm_steps,
             title_end_rooms=title_end_rooms,
-            title_end_confirm_steps=title_end_confirm_steps,
             title_pose_x=title_pose_x,
             title_pose_ys=title_pose_ys,
-            title_pose_confirm_steps=title_pose_confirm_steps,
             title_level_room_min=title_level_room_min,
             title_min_attempt_steps=title_min_attempt_steps,
             title_pose_truncate_grace=title_pose_truncate_grace,
@@ -171,7 +166,6 @@ def test_level_death_lives_zero_does_not_title_stop() -> None:
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=3,
         title_end_rooms=(0x00,),
-        title_end_confirm_steps=3,
     )
     _step_with_lives(env, 0, room=0x06)
     for _ in range(5):
@@ -180,49 +174,48 @@ def test_level_death_lives_zero_does_not_title_stop() -> None:
         assert info.get("terminate_reason") is None
 
 
-def test_title_screen_stops_after_confirm_streak() -> None:
+def test_title_screen_does_not_stop_after_confirm_streak() -> None:
+    """Title L=0 больше не режет эпизод (выход только game-over-freeze)."""
     env = _make_rna(
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=3,
         title_end_rooms=(0x00,),
-        title_end_confirm_steps=3,
+        game_over_freeze_confirm_steps=0,
     )
     _step_with_lives(env, 0, room=0x06)
     _step_with_lives(env, 2, room=0x06)
-    for _ in range(2):
+    for _ in range(5):
         _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room=0x00)
         assert terminated is False
-    _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room=0x00)
-    assert terminated is True
-    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
+        assert info.get("terminate_reason") is None
 
 
-def test_title_stop_after_level_without_death_count() -> None:
-    """Soft-reset/game over title L=0 после level — стоп без counted death."""
+def test_title_l0_after_level_does_not_stop() -> None:
+    """Soft-reset title L=0 после level — не terminated без GO-freeze."""
     env = _make_rna(
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=6,
         title_end_rooms=(0x00,),
-        title_end_confirm_steps=2,
+        game_over_freeze_confirm_steps=0,
     )
     _step_ram(env, lives=6, room=0x08, x=40, y=40)
     env._prev_lives = 0
     _step_ram(env, lives=0, room=0x00, x=129, y=133)
     _obs, _r, terminated, _trunc, info = _step_ram(env, lives=0, room=0x00, x=129, y=133)
-    assert terminated is True
-    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
+    assert terminated is False
+    assert info.get("terminate_reason") is None
     assert info["death_count"] == 0
 
 
 def test_title_stop_requires_prior_progress() -> None:
-    """Без progress title L=0 не стопит (старт)."""
+    """Без progress title L=0 не стопит (старт) — и с progress тоже не стопит."""
     env = _make_rna(
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=3,
         title_end_rooms=(0x00,),
-        title_end_confirm_steps=2,
         title_min_attempt_steps=10_000,
         title_level_room_min=0x08,
+        game_over_freeze_confirm_steps=0,
     )
     env._prev_lives = 0
     for _ in range(4):
@@ -230,6 +223,25 @@ def test_title_stop_requires_prior_progress() -> None:
         assert info["died"] is False
         assert info["death_count"] == 0
         assert terminated is False
+
+
+def test_rna_death_budget_does_not_terminate() -> None:
+    """RnA: N смертей не ended — ждём game-over-freeze."""
+    env = _make_rna(
+        death_mode=DEATH_MODE_GAME_OVER,
+        start_lives=3,
+        title_end_rooms=(0x00,),
+        game_over_freeze_confirm_steps=0,
+    )
+    _step_with_lives(env, 0, room=0x06)
+    _step_with_lives(env, 2, room=0x06)
+    _step_with_lives(env, 0, room=0x06)
+    _step_with_lives(env, 1, room=0x06)
+    _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room=0x06)
+    assert info["died"] is True
+    assert info["death_count"] == 3
+    assert terminated is False
+    assert info.get("terminate_reason") is None
 
 
 def test_game_over_budget_sets_terminate_reason_death() -> None:
@@ -276,37 +288,38 @@ def test_confirmed_death_requires_streak() -> None:
     assert terminated is False
 
 
-def test_title_stop_accepts_hex_room_string() -> None:
+def test_title_hex_room_string_does_not_stop() -> None:
+    """Hex room \"0x00\" парсится, но title L=0 не режет эпизод."""
     env = _make_rna(
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=3,
         title_end_rooms=(0x00,),
-        title_end_confirm_steps=2,
+        game_over_freeze_confirm_steps=0,
     )
     _step_with_lives(env, 0, room=0x06)
     _step_with_lives(env, 2, room=0x06)
     _step_with_lives(env, 0, room="0x00")
     _obs, _r, terminated, _trunc, info = _step_with_lives(env, 0, room="0x00")
-    assert terminated is True
-    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
+    assert terminated is False
+    assert info.get("terminate_reason") is None
 
 
-def _pose_env(*, confirm: int = 32) -> RushnAttackEnv:
+def _pose_env() -> RushnAttackEnv:
     return _make_rna(
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=6,
         death_confirm_steps=4,
         title_end_rooms=(0x00,),
-        title_end_confirm_steps=8,
         title_pose_x=129,
         title_pose_ys=(131, 133, 135),
-        title_pose_confirm_steps=confirm,
         title_level_room_min=0x08,
+        game_over_freeze_confirm_steps=0,
     )
 
 
+
 def test_corridor_pose_x129_y59_does_not_title_stop() -> None:
-    env = _pose_env(confirm=5)
+    env = _pose_env()
     _step_ram(env, lives=6, room=0x08, x=40, y=40)
     for _ in range(10):
         _obs, _r, terminated, _trunc, info = _step_ram(
@@ -323,7 +336,6 @@ def test_attract_pose_before_attempt_progress_does_not_stop() -> None:
         title_end_rooms=(0x00,),
         title_pose_x=129,
         title_pose_ys=(133,),
-        title_pose_confirm_steps=5,
         title_level_room_min=0x08,
         title_min_attempt_steps=10_000,
     )
@@ -335,34 +347,30 @@ def test_attract_pose_before_attempt_progress_does_not_stop() -> None:
         assert info["death_count"] == 0
 
 
-def test_attract_pose_after_min_steps_stops_without_level() -> None:
-    """gen0 в room=0: secondary должен сработать после min_attempt_steps."""
+def test_attract_pose_after_min_steps_does_not_stop() -> None:
+    """Attract standing после min_attempt_steps больше не режет эпизод."""
     env = _make_rna(
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=6,
         title_end_rooms=(0x00,),
         title_pose_x=129,
         title_pose_ys=(133,),
-        title_pose_confirm_steps=3,
         title_level_room_min=0x08,
         title_min_attempt_steps=5,
+        game_over_freeze_confirm_steps=0,
     )
     for _ in range(4):
         _step_ram(env, lives=6, room=0x00, x=10, y=59)
-    for _ in range(2):
+    for _ in range(5):
         _obs, _r, terminated, _trunc, info = _step_ram(
             env, lives=6, room=0x00, x=129, y=133
         )
         assert terminated is False
-    _obs, _r, terminated, _trunc, info = _step_ram(
-        env, lives=6, room=0x00, x=129, y=133
-    )
-    assert terminated is True
-    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
+        assert info.get("terminate_reason") is None
 
 
 def test_attract_pose_flash_below_confirm_does_not_stop() -> None:
-    env = _pose_env(confirm=32)
+    env = _pose_env()
     _step_ram(env, lives=6, room=0x08, x=40, y=40)
     for _ in range(28):
         _obs, _r, terminated, _trunc, info = _step_ram(
@@ -375,21 +383,17 @@ def test_attract_pose_flash_below_confirm_does_not_stop() -> None:
     assert terminated is False
 
 
-def test_attract_pose_confirmed_stops_with_lives() -> None:
-    """Idle attract standing после level → title terminate (режет хвост после game over/soft-reset)."""
-    env = _pose_env(confirm=5)
+def test_attract_pose_confirmed_does_not_stop() -> None:
+    """Idle attract standing после level — не terminated (только GO-freeze)."""
+    env = _pose_env()
     _step_ram(env, lives=6, room=0x08, x=40, y=40)
-    for _ in range(4):
+    for _ in range(10):
         _obs, _r, terminated, _trunc, info = _step_ram(
             env, lives=6, room=0x00, x=129, y=133
         )
         assert terminated is False
-    _obs, _r, terminated, _trunc, info = _step_ram(
-        env, lives=6, room=0x00, x=129, y=133
-    )
-    assert terminated is True
-    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
-    assert info["death_count"] == 0
+        assert info.get("terminate_reason") is None
+        assert info["death_count"] == 0
 
 
 def test_truncate_deferred_during_title_pose_flash() -> None:
@@ -399,7 +403,6 @@ def test_truncate_deferred_during_title_pose_flash() -> None:
         title_end_rooms=(0x00,),
         title_pose_x=129,
         title_pose_ys=(131, 133, 135),
-        title_pose_confirm_steps=45,
         title_pose_truncate_grace=40,
         title_pose_truncate_cool=3,
         max_episode_steps=5,
@@ -427,7 +430,6 @@ def test_truncate_force_after_grace_even_in_pose() -> None:
         title_end_rooms=(0x00,),
         title_pose_x=129,
         title_pose_ys=(133,),
-        title_pose_confirm_steps=999,
         title_pose_truncate_grace=2,
         title_pose_truncate_cool=16,
         max_episode_steps=3,
@@ -464,10 +466,8 @@ def _game_over_freeze_env(*, confirm: int = 32) -> RushnAttackEnv:
         start_lives=6,
         death_confirm_steps=4,
         title_end_rooms=(0x00,),
-        title_end_confirm_steps=99,
         title_pose_x=129,
         title_pose_ys=(131, 133, 135),
-        title_pose_confirm_steps=99,
         title_level_room_min=0x08,
         title_min_attempt_steps=120,
         game_over_freeze_confirm_steps=confirm,
@@ -529,22 +529,20 @@ def test_game_over_freeze_y_change_resets_streak() -> None:
 
 
 def test_game_over_freeze_title_ys_not_match() -> None:
-    """title standing идёт по attract-пути, не game_over_screen."""
+    """title standing не является game-over-freeze и не режет эпизод."""
     env = _make_rna(
         death_mode=DEATH_MODE_GAME_OVER,
         start_lives=6,
         title_end_rooms=(0x00,),
         title_pose_x=129,
         title_pose_ys=(133,),
-        title_pose_confirm_steps=3,
         title_level_room_min=0x08,
         game_over_freeze_confirm_steps=3,
     )
     _step_ram(env, lives=6, room=0x08, x=40, y=40)
-    for _ in range(2):
-        _step_ram(env, lives=6, room=0x00, x=129, y=133)
-    _obs, _r, terminated, _trunc, info = _step_ram(
-        env, lives=6, room=0x00, x=129, y=133
-    )
-    assert terminated is True
-    assert info["terminate_reason"] == TERMINATE_REASON_TITLE
+    for _ in range(5):
+        _obs, _r, terminated, _trunc, info = _step_ram(
+            env, lives=6, room=0x00, x=129, y=133
+        )
+        assert terminated is False
+        assert info.get("terminate_reason") is None

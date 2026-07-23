@@ -56,11 +56,12 @@ env = make_env("rushn_attack", "m1")
 ### Пространство действий (M1)
 
 ```
-noop | left | right | down | up | right+up | left+up | A | B
+noop | left | right | down | up | right+up | left+up | A | B | start
 ```
 
 - **B** — атака ножом.
 - **A** — использование оружия, когда доступно.
+- **start** — кнопка Start (меню / title); в Discrete action space для будущих политик.
 - Диагонали — основа геймплея; прыжки: `up`, `right+up`, `left+up`.
 
 Список в `games/rushn_attack/env_config.yaml`.
@@ -69,21 +70,20 @@ noop | left | right | down | up | right+up | left+up | A | B
 
 | Режим | Поведение | Когда |
 | ----- | --------- | ----- |
-| `life_lost` | `terminated` на **первую** потерю жизни | A/B / старый reset-storm baseline |
-| `game_over` (**default**) | `died` на каждую потерю жизни (−`death_penalty`); `terminated` после **N** смертей, N = lives на старте эпизода | train / inference env |
+| `life_lost` | в **ядре** `BaseNesEnv`: `terminated` на первую потерю жизни; у **Rush'n Attack** death не режет эпизод | A/B / другие игры |
+| `game_over` (**default**) | `died` на каждую потерю (−`death_penalty`); **выход эпизода RnA — только game-over-freeze** (не бюджет N смертей) | train / inference |
 
-В RAM `lives` на смерти часто кратковременно **0** (анимация), затем respawn с lives−1 — поэтому `game_over` считает **события** потери жизни, а не `lives==0`. CLI: `--death-mode` у `train_ppo` / `smoke_env`.
+В RAM `lives` на смерти часто кратковременно **0** (анимация), затем respawn с lives−1 — поэтому счётчик смертей смотрит **события**, а не `lives==0`. На экране GAME OVER `lives` часто остаётся **6** — поэтому канон конца попытки не `lives`, а freeze (см. [TASK_STOP_TITLE_ATTRACT](tasks/archive/TASK_STOP_TITLE_ATTRACT.md)).
 
-Dip `lives` на смене комнаты (streak ≤3) не считается смертью: в `env_config.yaml` задаётся `death_confirm_steps: 4` (общий confirm — в `BaseNesEnv`).
+Конец попытки у Rush'n Attack (`episode_end_title` → `RushnAttackEnv`) — **единственный критерий: game-over-freeze**:
 
-Дополнительно (`episode_end_title` → `RushnAttackEnv`, secondary после попытки):
-- **game-over-freeze** `L≥1`: room + `title_x` + **`y ∉ title_ys`**, тот же `(x,y)` ≥ `game_over_freeze_confirm_steps` (default 32) — стоп на GAME OVER до title/attract;
-- **title** `lives<1` + room (в т.ч. soft-reset/game over без counted death, если уже был level-room);
-- **attract standing** `L≥1`: room + `title_x` + `title_ys` (не коридор `y≈59/67`), `pose_confirm_steps` > mid-flash (~28);
+- room + `title_x` + **`y ∉ title_ys`**, тот же `(x,y)` ≥ `game_over_freeze_confirm_steps` (default 32), `L≥1`, после начала попытки (`min_attempt_steps` / level-room / ≥1 death);
+- title / attract standing **не** заканчивают эпизод;
 - опционально `truncate_grace` / `truncate_cool` после `max_episode_steps`.  
-`info.terminate_reason`: `death` | `game_over_screen` | `title_screen`.
 
-Smoke (random, `save_states/cp0.fc0`, 2026-07-18): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
+`info.terminate_reason` при конце по freeze: `game_over_screen` (в ядре для других игр также возможен `death`; у RnA death не режет).
+
+Smoke (random, `save_states/cp0.fc0`, 2026-07-18, исторический): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
 
 ---
 

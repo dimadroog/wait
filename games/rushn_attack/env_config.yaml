@@ -11,35 +11,31 @@ actions:
   - left+up
   - A
   - B
+  - start
 
 lives:
   min: 0
   max: 9
 
-# H3: эпизод до game over (все жизни), не до первой смерти — меньше reset storm.
-# A/B со старым поведением: --death-mode life_lost
+# H3: штрафы за каждую потерю жизни; выход эпизода RnA — только game-over-freeze
+# (не бюджет N смертей). A/B со старым life_lost: --death-mode life_lost
+# (ядро BaseNesEnv; RnA всё равно не terminated на death —
+# см. RushnAttackEnv._terminate_on_death).
 death_mode: game_over
 # Игнорировать dip lives на смене комнаты (streak ≤3); confirm должен быть больше.
 death_confirm_steps: 4
 
-# Secondary конец эпизода после попытки:
-# попытка = min_attempt_steps ИЛИ level-room ИЛИ ≥1 death
-# (иначе gen0 в room=0x00 никогда не включает secondary).
-# - game-over-freeze: room + title_x + y∉title_ys, тот же (x,y) ≥ game_over_freeze_confirm_steps
-#   (эталон game_over_to_attract*: y=95|41; max mid-game freeze ≤31 NES ≈ ≪32 env-step);
-# - lives<1 + title room;
-# - attract standing: title room + title_x + title_ys, confirm > mid-flash (~28);
-# - truncate_grace/cool опционально.
+# Конец попытки (train + inference): durable GAME OVER freeze.
+# Поля title_* — якоря для отличия GO от title standing (y∉title_ys).
 episode_end_title:
   rooms: ["0x00"]
-  confirm_steps: 8
   title_x: 129
   title_ys: [131, 133, 135]
-  # Mid-flash до ~28; 24 режет первый устойчивый title-like, не ждёт «idle≫flash».
-  pose_confirm_steps: 24
-  # Стоп на экране GAME OVER до title/attract (см. docs/tasks/archive/TASK_STOP_TITLE_ATTRACT.md).
+  # Стоп на экране GAME OVER до title/attract (TASK_STOP_TITLE_ATTRACT).
   game_over_freeze_confirm_steps: 32
+  # Гейт «попытка началась» для freeze (не стопить чистый power-on intro).
   min_attempt_steps: 120
+  level_room_min: "0x08"
+  # Truncate grace у max_episode_steps.
   truncate_grace_steps: 40
   truncate_cool_steps: 16
-  level_room_min: "0x08"

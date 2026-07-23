@@ -27,6 +27,22 @@ TERMINATE_REASON_TITLE = "title_screen"
 TERMINATE_REASON_GAME_OVER = "game_over_screen"
 DEFAULT_DEATH_CONFIRM_STEPS = 1
 
+# Ключи ответа bridge, которые не являются полями RAM.
+_BRIDGE_NON_RAM_KEYS = frozenset(
+    {
+        "obs_file",
+        "format",
+        "w",
+        "h",
+        "ok",
+        "error",
+        "cmd",
+        "key",
+        "on",
+        "seq",
+    }
+)
+
 
 def parse_hex_or_int(value: Any) -> int:
     """Parse int or hex string ('0x00') from bridge/YAML."""
@@ -47,8 +63,8 @@ def parse_int_set(values: Sequence[Any] | None) -> frozenset[int]:
 class BaseNesEnv(gym.Env):
     """reset/step через FceuxBridge; награды — в CheckpointRewardWrapper.
 
-    Игро-специфичный конец эпизода (title/attract и т.п.) — через hooks
-    в subclass плагина (`games/<game>/env/`), не через константы игры в ядре.
+    Игро-специфичный конец эпизода — через hooks в subclass плагина
+    (`games/<game>/env/`), не через константы игры в ядре.
     """
 
     metadata = {"render_modes": []}
@@ -201,7 +217,7 @@ class BaseNesEnv(gym.Env):
         """Hook: каждый step после чтения RAM (плагин)."""
 
     def _secondary_terminate(self, ram: dict[str, Any]) -> bool:
-        """Hook: доп. конец эпизода (title/attract и т.п.). Default: нет."""
+        """Hook: конец эпизода по игро-специфичному критерию. Default: нет."""
         return False
 
     def _should_defer_truncate(self, ram: dict[str, Any]) -> bool:
@@ -210,6 +226,21 @@ class BaseNesEnv(gym.Env):
 
     def _secondary_terminate_reason(self) -> str:
         return TERMINATE_REASON_TITLE
+
+    def _ram_from_bridge(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Собрать RAM из ответа bridge (включая доп. поля из ram_resolve)."""
+        ram = {
+            k: data[k]
+            for k in ("room", "x", "y", "hp", "lives", "checkpoint", "frame")
+            if k in data
+        }
+        for key, value in data.items():
+            if key in ram or key in _BRIDGE_NON_RAM_KEYS:
+                continue
+            if key.startswith("obs"):
+                continue
+            ram[key] = value
+        return ram
 
     def reset(
         self,
@@ -237,11 +268,7 @@ class BaseNesEnv(gym.Env):
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
 
-        ram = {
-            k: bridge_response[k]
-            for k in ("room", "x", "y", "hp", "lives", "checkpoint", "frame")
-            if k in bridge_response
-        }
+        ram = self._ram_from_bridge(bridge_response)
         if not ram:
             ram = bridge.get_ram()
         lives = int(ram.get("lives", 0))
@@ -287,11 +314,7 @@ class BaseNesEnv(gym.Env):
         gray = bridge.decode_obs_from_response(bridge_response)
         self._push_obs(gray)
 
-        ram = {
-            k: bridge_response[k]
-            for k in ("room", "x", "y", "hp", "lives", "checkpoint", "frame")
-            if k in bridge_response
-        }
+        ram = self._ram_from_bridge(bridge_response)
         if not ram:
             ram = bridge.get_ram()
         lives = int(ram.get("lives", 0))
@@ -329,11 +352,7 @@ class BaseNesEnv(gym.Env):
         gray = bridge.decode_obs_from_response(step_data)
         self._push_obs(gray)
 
-        ram = {
-            k: step_data[k]
-            for k in ("room", "x", "y", "hp", "lives", "checkpoint", "frame")
-            if k in step_data
-        }
+        ram = self._ram_from_bridge(step_data)
         if not ram:
             ram = bridge.get_ram()
 

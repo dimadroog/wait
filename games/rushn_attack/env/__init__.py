@@ -1,4 +1,4 @@
-"""Rush'n Attack — Gymnasium env (game/rushn_attack/env/)."""
+"""Rush'n Attack — Gymnasium env (games/rushn_attack/env/)."""
 from __future__ import annotations
 
 from typing import Any, Sequence
@@ -7,7 +7,6 @@ import gymnasium as gym
 
 from env.base_nes_env import (
     TERMINATE_REASON_GAME_OVER,
-    TERMINATE_REASON_TITLE,
     BaseNesEnv,
     parse_hex_or_int,
     parse_int_set,
@@ -23,16 +22,14 @@ def _load_env_config() -> dict[str, Any]:
 
 
 class RushnAttackEnv(BaseNesEnv):
-    """RnA: secondary terminate на game-over-freeze / title / attract; не mid-flash."""
+    """RnA: единственный критерий конца попытки — game-over-freeze."""
 
     def __init__(
         self,
         *,
         title_end_rooms: Sequence[Any] | None = None,
-        title_end_confirm_steps: int = 8,
         title_pose_x: int | None = None,
         title_pose_ys: Sequence[Any] | None = None,
-        title_pose_confirm_steps: int = 32,
         title_level_room_min: int | None = 0x08,
         title_min_attempt_steps: int = 120,
         title_pose_truncate_grace: int = 0,
@@ -42,10 +39,8 @@ class RushnAttackEnv(BaseNesEnv):
     ) -> None:
         super().__init__(**kwargs)
         self.title_end_rooms = parse_int_set(title_end_rooms)
-        self.title_end_confirm_steps = max(1, int(title_end_confirm_steps))
         self.title_pose_x = None if title_pose_x is None else int(title_pose_x)
         self.title_pose_ys = frozenset(int(y) for y in (title_pose_ys or ()))
-        self.title_pose_confirm_steps = max(1, int(title_pose_confirm_steps))
         self.title_level_room_min = (
             None if title_level_room_min is None else int(title_level_room_min)
         )
@@ -58,12 +53,10 @@ class RushnAttackEnv(BaseNesEnv):
 
     def _on_episode_reset(self) -> None:
         self._seen_level_room = False
-        self._title_end_streak = 0
-        self._title_pose_streak = 0
         self._title_pose_trunc_cool = 0
         self._game_over_freeze_streak = 0
         self._game_over_freeze_key: tuple[int, int] | None = None
-        self._last_secondary_reason = TERMINATE_REASON_TITLE
+        self._last_secondary_reason = TERMINATE_REASON_GAME_OVER
 
     def _on_ram(self, ram: dict[str, Any]) -> None:
         if self.title_level_room_min is None:
@@ -75,14 +68,19 @@ class RushnAttackEnv(BaseNesEnv):
     def _attempt_progressed(self) -> bool:
         """Попытка началась: min steps, level-room, или ≥1 death.
 
-        Важно: gen0 часто остаётся в room=0x00 — гейт только по level_room
-        отключал secondary и оставлял title/attract idle в FM2.
+        Нужен гейт для game-over-freeze (не стопить intro до попытки).
         """
         if self._death_count >= 1:
             return True
         if self._seen_level_room:
             return True
         return self._step_count >= self.title_min_attempt_steps
+
+    def _terminate_on_death(self, died: bool, ram: dict[str, Any]) -> bool:
+        """Смерти дают штраф/счётчик, но не ended — выход только по game-over-freeze."""
+        if died:
+            self._death_count += 1
+        return False
 
     def _title_pose_xy_match(self, ram: dict[str, Any]) -> bool:
         if self.title_pose_x is None or not self.title_pose_ys:
@@ -98,21 +96,6 @@ class RushnAttackEnv(BaseNesEnv):
         if not self.title_end_rooms or not self._title_pose_xy_match(ram):
             return False
         return self._ram_int(ram, "room") in self.title_end_rooms
-
-    def _title_screen_match(self, ram: dict[str, Any]) -> bool:
-        """Title с lives<1 после попытки (не только после counted death)."""
-        if not self.title_end_rooms or not self._attempt_progressed():
-            return False
-        lives = int(ram.get("lives", 0))
-        if lives >= 1:
-            return False
-        return self._ram_int(ram, "room") in self.title_end_rooms
-
-    def _attract_pose_match(self, ram: dict[str, Any]) -> bool:
-        """Устойчивая attract/title standing @ L≥1 после level (не mid-flash)."""
-        if not self._attempt_progressed():
-            return False
-        return self._title_pose_coords_match(ram)
 
     def _game_over_freeze_match(self, ram: dict[str, Any]) -> bool:
         """Экран game over: freeze на title_x вне title_ys (y не фиксирован — эталон 95/41)."""
@@ -136,7 +119,9 @@ class RushnAttackEnv(BaseNesEnv):
         return True
 
     def _secondary_terminate(self, ram: dict[str, Any]) -> bool:
-        # game-over-freeze раньше title/attract standing — иначе в клип попадает game over→title.
+        """Конец попытки: durable game-over-freeze (TASK_STOP_TITLE_ATTRACT)."""
+        if self.game_over_freeze_confirm_steps <= 0:
+            return False
         if self._game_over_freeze_match(ram):
             key = (self._ram_int(ram, "x"), self._ram_int(ram, "y"))
             if key == self._game_over_freeze_key:
@@ -147,25 +132,9 @@ class RushnAttackEnv(BaseNesEnv):
             if self._game_over_freeze_streak >= self.game_over_freeze_confirm_steps:
                 self._last_secondary_reason = TERMINATE_REASON_GAME_OVER
                 return True
-        else:
-            self._game_over_freeze_streak = 0
-            self._game_over_freeze_key = None
-
-        if self._attract_pose_match(ram):
-            self._title_pose_streak += 1
-            if self._title_pose_streak >= self.title_pose_confirm_steps:
-                self._last_secondary_reason = TERMINATE_REASON_TITLE
-                return True
-        else:
-            self._title_pose_streak = 0
-
-        if self._title_screen_match(ram):
-            self._title_end_streak += 1
-        else:
-            self._title_end_streak = 0
-        if self._title_end_streak >= self.title_end_confirm_steps:
-            self._last_secondary_reason = TERMINATE_REASON_TITLE
-            return True
+            return False
+        self._game_over_freeze_streak = 0
+        self._game_over_freeze_key = None
         return False
 
     def _should_defer_truncate(self, ram: dict[str, Any]) -> bool:
@@ -214,14 +183,10 @@ def make_env(
     title_end = env_config.get("episode_end_title") or {}
     if "title_end_rooms" not in kwargs and title_end.get("rooms") is not None:
         kwargs["title_end_rooms"] = title_end.get("rooms")
-    if "title_end_confirm_steps" not in kwargs and title_end.get("confirm_steps") is not None:
-        kwargs["title_end_confirm_steps"] = int(title_end["confirm_steps"])
     if "title_pose_x" not in kwargs and title_end.get("title_x") is not None:
         kwargs["title_pose_x"] = int(title_end["title_x"])
     if "title_pose_ys" not in kwargs and title_end.get("title_ys") is not None:
         kwargs["title_pose_ys"] = title_end.get("title_ys")
-    if "title_pose_confirm_steps" not in kwargs and title_end.get("pose_confirm_steps") is not None:
-        kwargs["title_pose_confirm_steps"] = int(title_end["pose_confirm_steps"])
     if "title_pose_truncate_grace" not in kwargs and title_end.get("truncate_grace_steps") is not None:
         kwargs["title_pose_truncate_grace"] = int(title_end["truncate_grace_steps"])
     if "title_pose_truncate_cool" not in kwargs and title_end.get("truncate_cool_steps") is not None:
