@@ -215,10 +215,16 @@ Inference: 4 эпизода × до 200 шагов, stochastic; у всех `max
 
 ### Follow-through done (2026-07-22)
 
-- Канон маршрута миссии = H3 (нет CP0 `start` на `0x00`; `late_mission` с `requires_checkpoint: 3`).
+- Канон маршрута миссии = H3 (нет CP0 `start` на `0x00`; `late_mission` с `requires_checkpoint: 3`) — в `config/routes.yaml`; снимок до правки: `config/routes.pre_h3.yaml` (не боевой путь).
 - Ядро: `requires_checkpoint`, `prefer_embedded_actions`, CLI `summarize_inference_actions` (+ unit-тесты).
 - Артефакт H4: `reference/demos_for_bc_ablation/` (не дефолт BC).
-- Боевой gen1: `gen0` + BC≥1…5 + PPO на H3-routes; смотреть `noop_frac` и залипание `ep_rew`/`ep_len` ([TRAIN_ANALYSIS](../../TRAIN_ANALYSIS.md), [GAME §2](../../GAME_RUSHN_ATTACK.md#2-награды-и-чекпоинты-m1)).
+- **Рекомендация боевого gen1** (держать здесь, не в GAME): тёплый `gen0` + BC ≥ 1…5 эпох + PPO на H3-routes; смотреть `noop_frac` (`summarize_inference_actions`) и залипание `ep_rew` / `ep_len` в train ([TRAIN_ANALYSIS](../../TRAIN_ANALYSIS.md)).
+
+### Гигиена артефактов (2026-07-23)
+
+- Локальный каталог `games/rushn_attack/missions/m1/models/ablation/` (`h0`…`h5` zip + sidecar) **удалён** — не восстанавливать в git / models миссии.
+- Журнал прогонов, таблица `noop_frac`, copy/paste train-команды и выводы — **только в этом TASK** (ниже). Сырые train-логи при наличии: `tmp/bench/ablation_hN_train.log` (gitignore).
+- Из [GAME_RUSHN_ATTACK §2](../../GAME_RUSHN_ATTACK.md#2-награды-и-чекпоинты-m1) убран развёрнутый ablation/gen1-контекст; в GAME остаётся фактический канон routes + ссылка сюда.
 
 ### Критерий готовности (DoD)
 

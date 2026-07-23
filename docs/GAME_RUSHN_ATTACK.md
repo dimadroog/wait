@@ -128,11 +128,10 @@ milestone_bonus: 50
 
 ### Чекпоинты миссии 1 (канон)
 
-Канон в `config/routes.yaml` (после ablation H3):
+Канон в `config/routes.yaml`:
 
 - Нет платного старта на `room 0x00` (CP0 `start` убран) — reset не даёт бесплатный checkpoint-бонус за стояние.
 - `late_mission` (id 4): `room 0x00` + `min_y: 60` и **`requires_checkpoint: 3`** — late только после `mid_mission`, иначе фарм CP на стартовой комнате.
-- Снимок «до H3» для истории: `config/routes.pre_h3.yaml` (не боевой путь).
 
 ```
 CP1: first_screen (0x0C)
@@ -142,9 +141,8 @@ CP4: late_mission (0x00, min_y≥60, требует CP3)
 CP5: mission_clear (flag)
 ```
 
-Точные `room_id` и `(x,y)` — в `games/rushn_attack/missions/m1/ram_map.md`.
-
-**Рекомендация gen1:** тёплый `gen0` + BC ≥ 1…5 эпох + PPO на этих routes; смотреть `noop_frac` (скрипт `summarize_inference_actions`) и залипание `ep_rew` / `ep_len` в train ([TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md)).
+Точные `room_id` и `(x,y)` — в `games/rushn_attack/missions/m1/ram_map.md`.  
+История правки routes / gen1 ablation — [TASK_GEN1_POLICY_ABLATION](tasks/archive/TASK_GEN1_POLICY_ABLATION.md).
 
 ---
 
@@ -215,7 +213,7 @@ segments:
     save_state: save_states/cp2.fc*
 ```
 
-### `config/routes.yaml` (фрагмент, канон H3)
+### `config/routes.yaml` (фрагмент)
 
 ```yaml
 game: rushn_attack
