@@ -275,7 +275,7 @@ rewards:
 ## 5. Achievements (номинации пилота)
 
 Идея и pipeline (evaluator, editorial playlist, overlay) — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); режиссура эфира — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).  
-Правила пилота: `config/achievements.yaml` (общий файл; содержание — про эту игру). Пул логов — [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md). Hybrid editorial / board — [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md).
+Правила пилота: `config/achievements.yaml` (общий файл; содержание — про эту игру). Пул логов — [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md). Hybrid editorial / board — [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md).
 
 **Целевой пул** для `top_k` / `wall` / рекордов — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/`), не календарный день.  
 **Editorial** — короткий пакет (`build_playlist --editorial`, ориентир 8–15 мин [airtime](GLOSSARY.md#airtime)); см. [SCRIPTS.md](SCRIPTS.md#achievements-и-плейлист).

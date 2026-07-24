@@ -32,7 +32,7 @@
 
 ### Не делать (антискоуп)
 
-- OBS / Twitch / Browser Source board (это [TASK_HYBRID_BROADCAST](../TASK_HYBRID_BROADCAST.md))
+- OBS / Twitch / Browser Source board (это [TASK_HYBRID_BROADCAST](TASK_HYBRID_BROADCAST.md))
 - Полная перепись номинаций YAML под новые slug
 - Обучение PPO / смена reward
 - Обещания ETA железа / донат-CTA в UI

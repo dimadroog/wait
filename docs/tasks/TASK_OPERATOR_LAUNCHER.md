@@ -3,7 +3,7 @@
 **Статус:** open (постановка уточнена под hybrid)  
 **Приоритет:** medium  
 **Ветка:** `task/operator-launcher` — проработку этой задачи выполнять **только в этой ветке** (не в `main` и не в чужих task-ветках).  
-**Зависит от:** [TASK_HYBRID_BROADCAST](TASK_HYBRID_BROADCAST.md) (done — editorial / board / operator flow); [TASK_GEN_LOG_POOL](archive/TASK_GEN_LOG_POOL.md) (done — пул `logs/genN/`).  
+**Зависит от:** [TASK_HYBRID_BROADCAST](archive/TASK_HYBRID_BROADCAST.md) (done — editorial / board / operator flow); [TASK_GEN_LOG_POOL](archive/TASK_GEN_LOG_POOL.md) (done — пул `logs/genN/`).
 **Файлы (ориентир):** новый entry `scripts/operator_launcher.py` (или `src/operator/launcher.py` + тонкий фасад); CLI: `scripts/train_local.sh`, `src/train/train_ppo.py`, `scripts/inference_local.sh`, `src/stream/run_inference.py`, `scripts/build_playlist.py`, `scripts/hybrid_episode_prep.py`, `scripts/build_broadcast_board.py`, `scripts/play_inference_fm2.py`; доки — `docs/SCRIPTS.md`  
 **Контекст в чат:** этот файл + [SCRIPTS.md](../SCRIPTS.md) (inference / playlist / hybrid_episode_prep / board) + [STREAMING_CONCEPT.md](../STREAMING_CONCEPT.md) §5 (цикл эпизода) + [GLOSSARY.md](../GLOSSARY.md) (editorial, broadcast board, пул поколения)
 
@@ -53,7 +53,7 @@ v1 закрывает ритуал hybrid-эпизода: накопить [пу
 
 ### Чеклист сессии
 
-- [x] Дождаться usable [TASK_HYBRID_BROADCAST](TASK_HYBRID_BROADCAST.md) (editorial / board / пул `genN`)
+- [x] Дождаться usable [TASK_HYBRID_BROADCAST](archive/TASK_HYBRID_BROADCAST.md) (editorial / board / пул `genN`)
 - [x] Уточнить постановку под hybrid (режимы Pool / Episode / Air вместо «час pad» и Play по дням)
 - [ ] Зафиксировать argv-маппинг полей форм ↔ CLI (таблица в заметках или отдельный раздел при реализации)
 - [ ] Согласовать минимальный Train-набор (что на форме vs только CLI / `train_task.json`)
