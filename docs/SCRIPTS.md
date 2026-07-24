@@ -23,7 +23,8 @@
 | Demos с реальными obs (BC) | [`record_demos.py`](#record_demospy) |
 | Smoke после правок bridge/env | [`run_smoke.py`](#run_smokepy) |
 | Обучение PPO | [`train_local.sh`](#train_localsh) → [`train_ppo.py`](#train_ppopy) |
-| Inference + плейлист | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
+| Inference + editorial / эфир | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
+| Короткий editorial + board | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) |
 | Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
 | Benchmark bridge / e2e train | [`benchmark_bridge.py`](#benchmark_bridgepy), [`benchmark_train.py`](#benchmark_trainpy) |
 | Разбор `rollouts.jsonl` | [`parse_train_rollouts.py`](#parse_train_rolloutspy) |
@@ -38,11 +39,13 @@
 | [`bench_parallel_step.py`](#bench_parallel_steppy) | Быстрый замер latency parallel step (4 env, без CLI) |
 | [`benchmark_bridge.py`](#benchmark_bridgepy) | Benchmark IPC bridge → `tmp/bench/` |
 | [`benchmark_train.py`](#benchmark_trainpy) | E2E PPO benchmark → `tmp/bench/` |
+| [`build_broadcast_board.py`](#build_broadcast_boardpy) | JSON табло эфира (gen + дельта) |
 | [`build_inference_states.py`](#build_inference_statespy) | `save_states/inference_cp0.fc0` + блок `inference` в manifest |
-| [`build_playlist.py`](#build_playlistpy) | FM2-плейлист по номинациям |
+| [`build_playlist.py`](#build_playlistpy) | FM2-плейлист / короткий editorial |
 | [`build_playthrough.py`](#build_playthroughpy) | Эталон: jsonl, routes, save_states, demos_for_bc |
 | [`eval_achievements.py`](#eval_achievementspy) | `tags[]` в `attempts.jsonl` |
 | [`export_fm2.py`](#export_fm2py) | `inference_inputs.jsonl` → self-contained `.fm2` |
+| [`hybrid_episode_prep.py`](#hybrid_episode_preppy) | Editorial + board + шаги оператора |
 | [`inference_local.sh`](#inference_localsh) | Фасад: preflight → `run_inference` |
 | [`inference_preflight.py`](#inference_preflightpy) | Очистка перед inference / playback |
 | [`parse_train_rollouts.py`](#parse_train_rolloutspy) | Сводка `rollouts.jsonl` |
@@ -489,19 +492,12 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 Фасад: preflight → `run_inference`. Без аргументов — короткий прогон (`--episodes 5`, playlist). Свои флаги оболочки: `--play`, `--skip-preflight`, `--wipe-gen-logs`; остальное — в `run_inference`.
 
 ```bash
-# Короткий прогон (без target-airtime)
+# Короткий прогон (пул + плейлист по номинациям)
 ./scripts/inference_local.sh
 ./scripts/inference_local.sh --model gen0.zip --episodes 3 --play
 
-# Эфир ~1 ч realtime (дефолт при флаге без значения)
-./scripts/inference_local.sh --stochastic --target-airtime --episodes 5
-
-# Smoke-target 2–3 мин → playlist airtime ≥ target → опц. replay
-# Автотест: pytest tests/test_playlist_airtime_smoke.py -m slow
-./scripts/inference_local.sh --stochastic --target-airtime 2m --episodes 8 --max-steps 80 --play
-
-# С нуля по поколению (wipe) + тот же smoke
-./scripts/inference_local.sh --wipe-gen-logs --stochastic --target-airtime 3m --episodes 5
+# Hybrid: после накопления пула — короткий editorial + board
+./.venv/Scripts/python.exe scripts/hybrid_episode_prep.py --model gen0.zip
 ```
 
 | Флаг оболочки | Описание |
@@ -525,19 +521,15 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 ./.venv/Scripts/python.exe src/stream/run_inference.py \
   --model gen0.zip --episodes 5 --stochastic --build-playlist
 
-# Сбор под эфир N часов (стоп по airtime, pad; --episodes = размер батча)
+# Live на эфире (видимое окно FCEUX)
 ./.venv/Scripts/python.exe src/stream/run_inference.py \
-  --model gen0.zip --stochastic --target-airtime 1h --episodes 5
-
-# Smoke-target ~2 мин (короткие эпизоды → pad/hold набирают airtime)
-./.venv/Scripts/python.exe -u src/stream/run_inference.py \
-  --model gen0.zip --stochastic --target-airtime 2m --episodes 8 --max-steps 80
+  --model gen0.zip --show-window --episodes 3 --stochastic
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
 | `--model` | `.zip` или имя в `models/` (default `gen0.zip`) |
-| `--episodes` / `--max-steps` | default 5 / 8000; при `--target-airtime` — размер батча добора |
+| `--episodes` / `--max-steps` | default 5 / 8000 |
 | `--stochastic` | sampling (рекомендуется vs greedy) |
 | `--save-state` | reset state (default `inference_cp0.fc0`) |
 | `--save-episode-fm2` | писать FM2 эпизодов |
@@ -548,9 +540,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 | `--turbo` | force turbo on |
 | `--session` | id bridge (default `inference`) |
 | `--reward-profile` / `--model-version` | |
-| `--target-airtime` | целевой airtime (`1h` / `3m` / `120s`; флаг без значения = 1h); цикл + pad |
-| `--max-airtime-batches` | лимит батчей добора (default 200) |
-| `--wipe-gen-logs` | wipe `logs/<model_version>/` перед сбором (default: keep + учесть airtime) |
+| `--wipe-gen-logs` | wipe `logs/<model_version>/` перед сбором (default: keep) |
 | `--skip-preflight` | |
 | `--game` / `--mission` | |
 
@@ -601,27 +591,77 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 <a id="achievements-и-плейлист"></a>
 
 Attempts (+ опц. inputs) → `NN_slug_MMM.fm2`, `.overlay.json`, `playlist.json` (поле `airtime`), `playlist.play.cmd`.  
-Кандидаты — из [пула поколения](GLOSSARY.md#пул-поколения); длина editorial — [airtime](GLOSSARY.md#airtime). Исторический сбор «под N часов» — через `run_inference --target-airtime` (не режиссёрский дефолт hybrid); этот скрипт — пересборка / pad из уже накопленного пула.
+Кандидаты — из [пула поколения](GLOSSARY.md#пул-поколения); длина editorial — [airtime](GLOSSARY.md#airtime).  
+Режиссёрский сценарий hybrid: `--editorial` (порядок `editorial_order`, потолок ~12 мин / `max_clips`).
 
 ```bash
+# Короткий editorial (дефолт hybrid)
+./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip --editorial
+./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip --editorial --max-airtime 8m --max-clips 10
+
+# Полная пересборка по broadcast_order (без лимита editorial)
 ./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip
 ./.venv/Scripts/python.exe scripts/build_playlist.py --inputs logs/gen0/inference_inputs.jsonl
-
-# Добить pad-клипами до N (часы / минуты), не меняя порядок номинаций
-./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip --pad-to-airtime 1h
-./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip --pad-to-airtime 3m
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
+| `--editorial` | короткий пакет: `editorial_order` + лимиты |
+| `--max-airtime` | потолок airtime (`12m`, `8m`, …); с `--editorial` дефолт из YAML |
+| `--max-clips` / `--max-per-slug` | потолки числа клипов |
 | `--attempts` | attempts.jsonl |
 | `--inputs` | on-demand FM2 из inputs |
 | `--model` / `--model-version` | stem пула, если нет `--attempts` |
 | `--no-dedupe` | не пропускать дубликаты эпизодов |
-| `--pad-to-airtime` | pad до N (`1h`, `3m`, …) после блоков номинаций |
 | `--game` / `--mission` | |
 
-Выход в `logs/<model_version>/`: `.fm2` (embed savestate), `.overlay.json`, `playlist.json` (+ `airtime`, `model_version`), `.play.cmd`.
+Выход в `logs/<model_version>/`: `.fm2` (embed savestate), `.overlay.json`, `playlist.json` (+ `airtime`, `model_version`, при editorial — `kind`), `.play.cmd`.
+
+---
+
+### `build_broadcast_board.py`
+
+<a id="build_broadcast_boardpy"></a>
+
+Агрегаты `logs/genN/attempts.jsonl` (+ дельта vs `genN−1`) → `broadcast_board.json` для OBS Browser Source (`streaming/board/`).
+
+```bash
+./.venv/Scripts/python.exe scripts/build_broadcast_board.py --model gen1.zip --mode open
+./.venv/Scripts/python.exe scripts/build_broadcast_board.py --model gen1.zip --mode live --no-support-line
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--mode` | `open` / `editorial` / `live` / `close` / `frontier_report` |
+| `--model` / `--model-version` | stem пула |
+| `--support-line` / `--no-support-line` | скромная строка поддержки |
+| `--output` | один путь JSON (иначе pool + `streaming/board/`) |
+| `--game` / `--mission` | |
+
+Поля JSON: `model_version`, `frontier`, `eval.reach_cp`, `delta` (frontier / clear rate / wall), `mode`, опц. `support_line`. Без CTA «донать на GPU / ETA».
+
+---
+
+### `hybrid_episode_prep.py`
+
+<a id="hybrid_episode_preppy"></a>
+
+Один вызов: `--editorial` playlist + `broadcast_board.json` + печать операторского потока Board → editorial → Board → live → Board.
+
+```bash
+./.venv/Scripts/python.exe scripts/hybrid_episode_prep.py --model gen1.zip
+./.venv/Scripts/python.exe scripts/hybrid_episode_prep.py --model gen1.zip --max-airtime 8m --mode open
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--max-airtime` / `--max-clips` | лимиты editorial |
+| `--mode` | начальный mode board |
+| `--no-support-line` | без строки поддержки |
+| `--model` / `--model-version` | |
+| `--game` / `--mission` | |
+
+Board в браузере: `streaming/board/index.html` (читает соседний `broadcast_board.json`). Live: `run_inference --show-window`.
 
 ---
 

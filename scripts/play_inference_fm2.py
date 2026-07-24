@@ -29,7 +29,7 @@ from fm2_export import (  # noqa: E402
     remap_fm2_guid,
 )
 from fm2_playback import fceux_playmovie_argv  # noqa: E402
-from inference_states import gameplay_start_frame, resolve_inference_reset_state  # noqa: E402
+from inference_states import resolve_inference_reset_state  # noqa: E402
 from project_paths import (  # noqa: E402
     count_fm2_frames,
     mission_dir,
@@ -38,7 +38,6 @@ from project_paths import (  # noqa: E402
     resolve_fceux_binary,
     resolve_rom,
 )
-from ram_map_load import load_ram_addresses  # noqa: E402
 
 
 def _resolve_input_path(path: Path, game: str, mission: str) -> Path:
@@ -46,20 +45,6 @@ def _resolve_input_path(path: Path, game: str, mission: str) -> Path:
         return path.resolve()
     candidate = mission_dir(game, mission) / path
     return candidate.resolve() if candidate.is_file() else path.resolve()
-
-
-def _playback_ram_env(game: str, mission: str, env: dict[str, str]) -> None:
-    mdir = mission_dir(game, mission)
-    try:
-        addrs = load_ram_addresses(mdir)
-        env["WAIT_PLAYBACK_ROOM"] = str(addrs["room"])
-        if "lives" in addrs:
-            env["WAIT_PLAYBACK_LIVES"] = str(addrs["lives"])
-    except (FileNotFoundError, KeyError):
-        pass
-    gf = gameplay_start_frame(mdir)
-    if gf is not None:
-        env["WAIT_PLAYBACK_GAMEPLAY_START"] = str(gf)
 
 
 def _inference_reset_fc0(game: str, mission: str) -> Path:
@@ -185,7 +170,6 @@ def _play_single_fm2(args: argparse.Namespace, fm2: Path) -> None:
         env["WAIT_ACHIEVEMENT_OVERLAY"] = str(overlay_path.resolve())
     else:
         print(f"Warning: overlay not found: {overlay_path}", file=sys.stderr)
-    _playback_ram_env(args.game, args.mission, env)
 
     frames = count_fm2_frames(fm2)
     hold = overlay_hold_frames(overlay_path if overlay_path.is_file() else None)
@@ -301,21 +285,10 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
     staged_rom = _stage_rom(rom, staging, rom_base)
     queue_path.write_text("\n".join(queue_lines) + "\n", encoding="utf-8")
 
-    ram_cfg: dict[str, int] = {}
-    mdir = mission_dir(args.game, args.mission)
-    try:
-        addrs = load_ram_addresses(mdir)
-        ram_cfg["room"] = int(addrs["room"])
-        if "lives" in addrs:
-            ram_cfg["lives"] = int(addrs["lives"])
-    except (FileNotFoundError, KeyError, TypeError, ValueError):
-        pass
-
     config = {
         "done_flag": done_flag.name,
         "queue_path": queue_path.name,
         "block_label_frames": 120,
-        **ram_cfg,
     }
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -326,7 +299,6 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
     env = os.environ.copy()
     # Относительный путь: cwd = staging (abs -lua вне staging на win64 не грузится)
     env["WAIT_FCEUX_LUA_CONFIG"] = config_path.name
-    _playback_ram_env(args.game, args.mission, env)
 
     # realtime airtime (fm2 + hold) + запас
     timeout = max(args.timeout, airtime.seconds + 30.0 * len(clips))

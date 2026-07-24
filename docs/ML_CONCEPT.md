@@ -37,7 +37,7 @@
 | Компонент               | Описание                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | Алгоритм                | PPO (stable-baselines3)                                      |
-| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи attempts + inputs; FM2, achievements. Пул: [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/`; [airtime](GLOSSARY.md#airtime) — длина editorial, не час pad ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) |
+| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи attempts + inputs; FM2, achievements. Пул: [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/`; [airtime](GLOSSARY.md#airtime) — длина editorial ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) |
 | Обучение                | **CPU локально**; запуск **вручную** по `train_task.json`                           |
 | Хостинг                 | **Только текущий ПК**                                                       |
 | Эталон       | FM2 + полное прохождение миссии + manifest + ≥3 seg |

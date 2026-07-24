@@ -10,7 +10,10 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from achievements.airtime import measure_playlist_airtime, parse_airtime_hours  # noqa: E402
-from achievements.playlist import build_playlist  # noqa: E402
+from achievements.playlist import (  # noqa: E402
+    DEFAULT_EDITORIAL_MAX_AIRTIME,
+    build_playlist,
+)
 from jsonl_logs import gen_log_path, resolve_default_model_version  # noqa: E402
 from project_paths import mission_dir  # noqa: E402
 
@@ -29,9 +32,21 @@ def main() -> None:
     )
     parser.add_argument("--no-dedupe", action="store_true", help="не пропускать дубликаты эпизодов в плейлисте")
     parser.add_argument(
-        "--pad-to-airtime",
+        "--editorial",
+        action="store_true",
+        help="короткий editorial (editorial_order + лимиты)",
+    )
+    parser.add_argument(
+        "--max-airtime",
         default=None,
-        help="добить pad-клипами до N часов airtime (1h, 3m, …)",
+        help=f"потолок airtime пакета (12m, 8m, …); с --editorial дефолт {DEFAULT_EDITORIAL_MAX_AIRTIME}",
+    )
+    parser.add_argument("--max-clips", type=int, default=None, help="потолок числа клипов")
+    parser.add_argument(
+        "--max-per-slug",
+        type=int,
+        default=None,
+        help="макс. клипов на номинацию (editorial default 1)",
     )
     args = parser.parse_args()
 
@@ -54,9 +69,9 @@ def main() -> None:
     if not attempts.is_file():
         raise SystemExit(f"Attempts log not found: {attempts}")
 
-    pad_to_seconds = None
-    if args.pad_to_airtime is not None:
-        pad_to_seconds = parse_airtime_hours(args.pad_to_airtime) * 3600.0
+    max_air_s = None
+    if args.max_airtime is not None:
+        max_air_s = parse_airtime_hours(args.max_airtime) * 3600.0
 
     created, manifest_path, clip_count = build_playlist(
         attempts,
@@ -65,14 +80,18 @@ def main() -> None:
         game=args.game,
         mission=args.mission,
         dedupe=not args.no_dedupe,
-        pad_to_seconds=pad_to_seconds,
         model_version=version,
+        editorial=args.editorial,
+        max_airtime_seconds=max_air_s,
+        max_clips=args.max_clips,
+        max_per_slug=args.max_per_slug,
     )
     if manifest_path:
         print(f"Manifest: {manifest_path} ({clip_count} clips)")
         print(f"Launcher: {manifest_path.with_suffix('.play.cmd')}")
         air = measure_playlist_airtime(manifest_path)
-        print(f"Airtime: {air.seconds:.1f}s ({air.hours:.4f}h)")
+        kind = "editorial" if args.editorial else "playlist"
+        print(f"Airtime ({kind}): {air.seconds:.1f}s ({air.hours:.4f}h)")
     else:
         print("No clips matched nominations")
     print(f"Blocks: {len(created)} slug(s), {sum(len(v) for v in created.values())} clips under {logs}")

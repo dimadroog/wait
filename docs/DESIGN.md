@@ -112,6 +112,7 @@ wait/
 │       └── tasks/
 ├── src/
 ├── fceux/                   # portable + lua/profiles
+├── streaming/board/         # OBS Browser Source: index.html + broadcast_board.json
 ├── scripts/
 ├── requirements.txt
 ├── .venv/
@@ -119,7 +120,7 @@ wait/
 └── .gitignore
 ```
 
-`streaming/` (OBS) — этап B, класс A, когда появится. Пилот — [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).
+`streaming/board/` — каркас [broadcast board](GLOSSARY.md#broadcast-board) (этап B). Пилот — [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md); сборка JSON — `scripts/build_broadcast_board.py`.
 
 ### FCEUX: portable и режимы
 

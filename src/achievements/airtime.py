@@ -12,7 +12,6 @@ from project_paths import count_fm2_frames
 NES_FPS = 60.0
 DEFAULT_HOLD_FRAMES = 180  # show_until_frame / hold между клипами (как play_inference_fm2)
 DEFAULT_FRAME_SKIP = 4  # fm2_frames ≈ episode_frames × frame_skip
-DEFAULT_TARGET_AIRTIME_HOURS = 1.0
 
 
 @dataclass(frozen=True)

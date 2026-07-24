@@ -1,87 +1,111 @@
-# Номинации пилота Rush'n Attack — docs/GAME_RUSHN_ATTACK.md §5; идея pipeline — ML_CONCEPT §8
+# Номинации пилота Rush'n Attack — docs/GAME_RUSHN_ATTACK.md §5; pipeline — ML_CONCEPT §8
 # Пул кандидатов — поколение модели (logs/genN/), не календарный день.
+# Слои: story (каркас editorial/board), honesty (доверие), secondary (B-roll, не наполнители слота).
 
-# Порядок блоков на эфире (драматургия)
+# Полный порядок блоков (исторический / полный плейлист)
 broadcast_order:
   - mission_clear
-  - new_record
-  - many_achievements
-  - deep_run
+  - new_frontier
+  - wall
+  - breakthrough
+  - regression
   - episode_reward
   - ladder_ouch
-  - deja_vu
   - fastest_death
+
+# Короткий editorial (hybrid): сюжет → честность → немного secondary
+editorial_order:
+  - mission_clear
+  - new_frontier
+  - wall
+  - breakthrough
+  - regression
+  - ladder_ouch
+  - fastest_death
+
+# Лимиты editorial-пакета (без pad до часа)
+editorial:
+  max_airtime: 12m
+  max_clips: 12
+  max_per_slug: 1
 
 nominations:
   - idx: 1
     slug: mission_clear
     title: Клир миссии
-    label: Mission clear
+    label: Clear
     tier: gold
+    layer: story
     type: instant
     condition:
       mission_clear: true
 
   - idx: 2
-    slug: episode_reward
-    title: Жадина
-    label: Greedy
+    slug: new_frontier
+    title: Новая граница
+    label: Frontier
     tier: gold
-    type: top_k
-    field: episode_reward
-    k: 3
-    order: desc
+    layer: story
+    type: new_max_checkpoint
 
   - idx: 3
-    slug: fastest_death
-    title: Мгновенный респawn
-    label: Instant respawn
+    slug: wall
+    title: Стена
+    label: Wall
     tier: skull
-    type: instant
-    condition:
-      died: true
-      max_episode_frames: 3
+    layer: story
+    type: death_cluster
+    min_count: 3
 
   - idx: 4
-    slug: many_achievements
-    title: Тур CP
-    label: CP tour
-    tier: silver
-    type: instant
-    condition:
-      min_achieved_checkpoints: 4
-
-  - idx: 5
-    slug: deep_run
-    title: Почти финиш
-    label: Almost finish
+    slug: breakthrough
+    title: Прорыв
+    label: Breakthrough
     tier: gold
+    layer: story
     type: instant
     condition:
       min_max_checkpoint: 4
       mission_clear: false
 
+  - idx: 5
+    slug: regression
+    title: Откат
+    label: Regression
+    tier: silver
+    layer: honesty
+    type: regression
+    min_drop: 2
+
   - idx: 6
-    slug: deja_vu
-    title: Déjà vu
-    label: Deja vu
-    tier: skull
-    type: death_cluster
-    min_count: 3
+    slug: episode_reward
+    title: Жадина
+    label: Greedy
+    tier: gold
+    layer: secondary
+    type: top_k
+    field: episode_reward
+    k: 3
+    order: desc
 
   - idx: 7
     slug: ladder_ouch
     title: Лестница съела
-    label: Ladder death
+    label: Ladder
     tier: skull
+    layer: secondary
     type: instant
     condition:
       died: true
       death_room: "0x08"
 
   - idx: 8
-    slug: new_record
-    title: Личный рекорд
-    label: New record
-    tier: gold
-    type: new_max_checkpoint
+    slug: fastest_death
+    title: Мгновенный респawn
+    label: Instant
+    tier: skull
+    layer: secondary
+    type: instant
+    condition:
+      died: true
+      max_episode_frames: 3

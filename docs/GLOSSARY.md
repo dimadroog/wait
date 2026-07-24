@@ -17,7 +17,7 @@
 
 **Airtime** (эфирное время пакета клипов) — сколько реальных секунд займёт проигрывание editorial-плейлиста, если клипы идут подряд в realtime эмулятора (около 60 кадров [NES](#nes) в секунду). Считается как сумма длительностей клипов: для каждого клипа примерно `(число_кадров_FM2 + hold) / 60`, где `hold` — пауза показа кадра конца (по умолчанию связано с `show_until_frame`, часто 180 кадров), а число кадров FM2 связано с длиной эпизода и [frame skip](#frame-skip).
 
-В коде длину считает `achievements.airtime.measure_playlist_airtime`; результат пишется в поле `airtime` файла `playlist.json`. В целевой модели эфира ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) airtime — метрика **короткого editorial** (ориентир 8–15 мин), а не обязательство набить час плейлистом. Исторический флаг `--target-airtime` с дефолтом 1 ч и pad — наследие прежней схемы; снятие с режиссёрского дефолта — [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md). Не путать с [пулом поколения](#пул-поколения) (откуда брать попытки).
+В коде длину считает `achievements.airtime.measure_playlist_airtime`; результат пишется в поле `airtime` файла `playlist.json`. В модели эфира ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) airtime — метрика **короткого editorial** (ориентир 8–15 мин). Сбор: `build_playlist --editorial` / `hybrid_episode_prep` (потолок `--max-airtime` / YAML `editorial.max_airtime`). Не путать с [пулом поколения](#пул-поколения) (откуда брать попытки).
 
 ### Broadcast board
 
@@ -170,7 +170,7 @@
 
 <a id="retention-window"></a>
 
-**Retention window** (устаревшее) — прежняя рамка пула: календарный день с полуночи **UTC+3**, логи в `logs/YYYYMMDD/`, фильтр строк по `timestamp`. В коде и CLI **не используется**; замена — [пул поколения](#пул-поколения). История введения day-retention — [TASK_PLAYLIST_AIRTIME](tasks/archive/TASK_PLAYLIST_AIRTIME.md).
+**Retention window** (устаревшее) — прежняя рамка пула: календарный день с полуночи **UTC+3**, логи в `logs/YYYYMMDD/`, фильтр строк по `timestamp`. В коде и CLI **не используется**; замена — [пул поколения](#пул-поколения).
 
 ### RL
 

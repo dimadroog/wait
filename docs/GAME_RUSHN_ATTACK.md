@@ -275,34 +275,36 @@ rewards:
 ## 5. Achievements (номинации пилота)
 
 Идея и pipeline (evaluator, editorial playlist, overlay) — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); режиссура эфира — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).  
-Правила пилота: `config/achievements.yaml` (общий файл; содержание — про эту игру). Перестройка YAML под слои ниже — [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md); пул логов — [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md).
+Правила пилота: `config/achievements.yaml` (общий файл; содержание — про эту игру). Пул логов — [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md). Hybrid editorial / board — [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md).
 
-**Целевой пул** для `top_k` / `deja_vu` / рекордов — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/`), не календарный день.  
-**Editorial** — короткий пакет клипов (ориентир 8–15 мин [airtime](GLOSSARY.md#airtime)), не час с pad. CLI as-is ещё дневной/`--target-airtime` — [SCRIPTS.md § Inference](SCRIPTS.md#inference).
+**Целевой пул** для `top_k` / `wall` / рекордов — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/`), не календарный день.  
+**Editorial** — короткий пакет (`build_playlist --editorial`, ориентир 8–15 мин [airtime](GLOSSARY.md#airtime)); см. [SCRIPTS.md](SCRIPTS.md#achievements-и-плейлист).
 
-### Целевые слои (драматургия)
+### Слои (драматургия)
 
-| Слой | Смысл | Примеры (целевые slug) |
-| ---- | ----- | ---------------------- |
-| Сюжетные | каркас editorial / board | `mission_clear`, `new_frontier`, `wall` (кластер смертей на границе), `breakthrough`, дельта vs `genN−1` |
-| Честность | доверие к обучению | `regression`, откат поколения |
-| Второстепенные | B-roll, не наполнители слота | быстрая смерть, узкие death-gag |
+| Слой | Смысл | Slug в YAML |
+| ---- | ----- | ----------- |
+| Сюжетные | каркас editorial / board | `mission_clear`, `new_frontier`, `wall`, `breakthrough` |
+| Честность | доверие к обучению | `regression` |
+| Второстепенные | B-roll, не наполнители слота | `episode_reward`, `ladder_ouch`, `fastest_death` |
 
-### As-is в `config/achievements.yaml` (до задач)
+Порядок editorial: `editorial_order` в YAML (сюжет → честность → secondary). Полный `broadcast_order` — для не-editorial сборки.
 
-| Idx | slug | Overlay (RU) | Тип | Условие (сейчас) |
-| --- | ---- | ------------ | --- | ---------------- |
-| 01 | `mission_clear` | Клир миссии | 🏆 | `mission_clear == true` |
-| 02 | `episode_reward` | Жадина | 🏆 | top‑K по `episode_reward` за day-pool |
-| 03 | `fastest_death` | Мгновенный респawn | 💀 | `died` и `episode_frames ≤ 3` |
-| 04 | `many_achievements` | Тур CP | 🏆 | `len(achieved_checkpoints) ≥ 4` |
-| 05 | `deep_run` | Почти финиш | 🏆 | `max_checkpoint ≥ 4` и не `mission_clear` |
-| 06 | `deja_vu` | Déjà vu | 💀 | `(death_room, death_x_bucket)` ≥ 3 за day-pool |
-| 07 | `ladder_ouch` | Лестница съела | 💀 | `died` и `death_room == "0x08"` |
-| 08 | `new_record` | Личный рекорд | 🏆 | новый max `max_checkpoint` для `model_version` |
+### Номинации в `config/achievements.yaml`
+
+| Idx | slug | Overlay | Слой | Тип | Условие |
+| --- | ---- | ------- | ---- | --- | ------- |
+| 01 | `mission_clear` | Clear | story | instant | `mission_clear == true` |
+| 02 | `new_frontier` | Frontier | story | new_max_checkpoint | новый max `max_checkpoint` в пуле |
+| 03 | `wall` | Wall | story | death_cluster | `(death_room, death_x_bucket)` ≥ 3 |
+| 04 | `breakthrough` | Breakthrough | story | instant | `max_checkpoint ≥ 4` и не clear |
+| 05 | `regression` | Regression | honesty | regression | откат ≥ 2 CP от best в пуле |
+| 06 | `episode_reward` | Greedy | secondary | top_k | top‑K по `episode_reward` |
+| 07 | `ladder_ouch` | Ladder | secondary | instant | `died` и `death_room == "0x08"` |
+| 08 | `fastest_death` | Instant | secondary | instant | `died` и `episode_frames ≤ 3` |
 
 `death_x_bucket = death_x // 16`.  
-Порядок блоков as-is: `01 → 08 → 04 → 05 → 02 → 07 → 06 → 03` — для часового плейлиста; в hybrid editorial порядок и набор сокращаются под сигнальные клипы.
+Дельта `genN` vs `genN−1` (reach CP, frontier, стена) — в `broadcast_board.json` (`scripts/build_broadcast_board.py`), не как отдельный slug клипа.
 
 ---
 

@@ -63,29 +63,38 @@ def _death_key(record: dict[str, Any]) -> tuple[str, int] | None:
     return room, int(bucket)
 
 
+def _append_tag(record: dict[str, Any], slug: str) -> None:
+    tags = record.setdefault("tags", [])
+    if slug not in tags:
+        tags.append(slug)
+
+
 def evaluate_records(
     records: list[dict[str, Any]],
     config: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Вернуть копии записей с заполненным tags[]."""
     achievements_config = config or load_achievements_config()
-    noms = _nomination_by_slug(achievements_config)
     out = [dict(r) for r in records]
+    for record in out:
+        record["tags"] = []
+
+    noms = list(achievements_config.get("nominations") or [])
 
     # instant rules
     for record in out:
-        tags: list[str] = []
-        for nom in achievements_config.get("nominations") or []:
+        for nom in noms:
             if nom.get("type") != "instant":
                 continue
             if _matches_instant(record, nom.get("condition") or {}):
-                tags.append(nom["slug"])
-        record["tags"] = tags
+                _append_tag(record, nom["slug"])
 
-    # death_cluster (deja_vu)
-    deja_nom = noms.get("deja_vu")
-    if deja_nom:
-        min_count = int(deja_nom.get("min_count", 3))
+    # death_cluster (wall / …)
+    for nom in noms:
+        if nom.get("type") != "death_cluster":
+            continue
+        slug = str(nom["slug"])
+        min_count = int(nom.get("min_count", 3))
         counts: Counter[tuple[str, int]] = Counter()
         for record in out:
             key = _death_key(record)
@@ -93,11 +102,14 @@ def evaluate_records(
                 counts[key] += 1
         for record in out:
             key = _death_key(record)
-            if key and counts[key] >= min_count and "deja_vu" not in record["tags"]:
-                record["tags"].append("deja_vu")
+            if key and counts[key] >= min_count:
+                _append_tag(record, slug)
 
-    # new_record: новый max_checkpoint для model_version в пуле файла
-    if noms.get("new_record"):
+    # new_max_checkpoint (new_frontier / …)
+    for nom in noms:
+        if nom.get("type") != "new_max_checkpoint":
+            continue
+        slug = str(nom["slug"])
         best_by_model: dict[str, int] = defaultdict(lambda: -1)
         ordered = sorted(
             out,
@@ -108,20 +120,43 @@ def evaluate_records(
             mv = str(record.get("model_version", ""))
             cp = int(record.get("max_checkpoint", -1))
             if cp > best_by_model[mv]:
-                if best_by_model[mv] >= 0 and "new_record" not in record["tags"]:
-                    record["tags"].append("new_record")
+                if best_by_model[mv] >= 0:
+                    _append_tag(record, slug)
                 best_by_model[mv] = cp
 
-    # top_k episode_reward
-    top_nom = noms.get("episode_reward")
-    if top_nom:
-        k = int(top_nom.get("k", 3))
-        field = str(top_nom.get("field", "episode_reward"))
+    # regression: откат от текущего best max_checkpoint модели в пуле
+    for nom in noms:
+        if nom.get("type") != "regression":
+            continue
+        slug = str(nom["slug"])
+        min_drop = int(nom.get("min_drop", 2))
+        best_by_model: dict[str, int] = defaultdict(lambda: -1)
+        ordered = sorted(
+            out,
+            key=lambda r: _parse_ts(r.get("timestamp"))
+            or datetime.min.replace(tzinfo=timezone.utc),
+        )
+        for record in ordered:
+            mv = str(record.get("model_version", ""))
+            cp = int(record.get("max_checkpoint", -1))
+            best = best_by_model[mv]
+            if best >= 0 and (best - cp) >= min_drop:
+                _append_tag(record, slug)
+            if cp > best_by_model[mv]:
+                best_by_model[mv] = cp
+
+    # top_k по полю
+    for nom in noms:
+        if nom.get("type") != "top_k":
+            continue
+        slug = str(nom["slug"])
+        k = int(nom.get("k", 3))
+        field = str(nom.get("field", "episode_reward"))
         ranked = sorted(out, key=lambda r: float(r.get(field, 0)), reverse=True)
         top_ids = {id(r) for r in ranked[:k]}
         for record in out:
-            if id(record) in top_ids and "episode_reward" not in record["tags"]:
-                record["tags"].append("episode_reward")
+            if id(record) in top_ids:
+                _append_tag(record, slug)
 
     return out
 
@@ -157,7 +192,7 @@ def overlay_payload(
     config: dict[str, Any] | None = None,
     show_frames: int = 180,
 ) -> dict[str, Any]:
-    """JSON для tmp/bridge/inference/overlay.json."""
+    """JSON sidecar для Lua HUD (slim: gen, CP, тег, смерть)."""
     achievements_config = config or load_achievements_config()
     noms = _nomination_by_slug(achievements_config)
     achievements = []
@@ -173,12 +208,22 @@ def overlay_payload(
             }
         )
     achievements.sort(key=lambda a: a["idx"])
-    return {
+    primary = achievements[0] if achievements else None
+    payload: dict[str, Any] = {
+        "model_version": str(record.get("model_version") or ""),
         "achievements": achievements,
+        "tag": (primary or {}).get("label") or (primary or {}).get("slug") or "",
         "stats": {
             "max_cp": int(record.get("max_checkpoint", -1)),
-            "reward": float(record.get("episode_reward", 0)),
-            "steps": int(record.get("episode_frames", 0)),
         },
         "show_until_frame": show_frames,
     }
+    if record.get("died"):
+        death: dict[str, Any] = {}
+        if record.get("death_room") is not None:
+            death["room"] = str(record.get("death_room"))
+        if record.get("death_x") is not None:
+            death["x"] = int(record["death_x"])
+        if death:
+            payload["death"] = death
+    return payload
