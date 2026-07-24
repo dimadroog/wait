@@ -39,7 +39,7 @@
 До gate: **не** ставить OBS, **не** настраивать Twitch, **не** готовить board/overlay под эфир.  
 На этапе A: `run_inference` и `attempts.jsonl` — сбор попыток модели; hybrid-эфир — этап B.
 
-[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) — спецификация этапа B; реализация: [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md), [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md).
+[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) — спецификация этапа B; реализация: [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md) (done), [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md).
 
 <a id="состав-проекта"></a>
 

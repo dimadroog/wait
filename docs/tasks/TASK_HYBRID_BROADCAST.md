@@ -3,7 +3,7 @@
 **Статус:** open  
 **Приоритет:** high  
 **Ветка:** `task/hybrid-broadcast` — проработку этой задачи выполнять только в этой ветке.  
-**Зависит от:** [TASK_GEN_LOG_POOL](TASK_GEN_LOG_POOL.md) (пул `logs/genN/` для editorial); концепт — [STREAMING_CONCEPT.md](../STREAMING_CONCEPT.md)  
+**Зависит от:** [TASK_GEN_LOG_POOL](archive/TASK_GEN_LOG_POOL.md) (done — пул `logs/genN/` для editorial); концепт — [STREAMING_CONCEPT.md](../STREAMING_CONCEPT.md)  
 **Файлы:** `src/achievements/playlist.py`, `src/achievements/evaluator.py`, `src/stream/run_inference.py`, `scripts/build_playlist.py`, `scripts/play_inference_fm2.py`, `scripts/inference_local.sh`, `config/achievements.yaml`, `fceux/lua/achievement_overlay_movie.lua`, `fceux/lua/achievement_overlay_playlist.lua`, `docs/SCRIPTS.md`, `docs/GAME_RUSHN_ATTACK.md` §5, опц. новый `streaming/` (board HTML/JSON)  
 **Контекст в чат:** этот файл + [STREAMING_CONCEPT.md](../STREAMING_CONCEPT.md) §5–7 + [GLOSSARY.md](../GLOSSARY.md) (editorial, broadcast board, frontier, эпизод поколения)
 
@@ -33,7 +33,7 @@
 ### Не делать (антискоуп)
 
 - Chatting / podcasting / речь ведущего
-- Миграция day→gen (если ещё open — сначала [TASK_GEN_LOG_POOL](TASK_GEN_LOG_POOL.md))
+- Миграция day→gen — [TASK_GEN_LOG_POOL](archive/TASK_GEN_LOG_POOL.md) (done)
 - Полный продакшн Twitch-канал как обязательный DoD до gate ML (достаточно локального каркаса)
 - Speedrun/WR-метрики как цель оверлея
 
