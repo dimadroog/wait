@@ -37,7 +37,7 @@
 | Компонент               | Описание                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | Алгоритм                | PPO (stable-baselines3)                                      |
-| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи attempts + inputs; FM2, achievements. **As-is:** `logs/YYYYMMDD/` + day-retention. **Цель:** [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/` ([TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md)); [airtime](GLOSSARY.md#airtime) — длина editorial, не час pad ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) |
+| Inference | CPU локально, `predict()` — **headless** FCEUX (окно: `--show-window`); логи attempts + inputs; FM2, achievements. Пул: [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/`; [airtime](GLOSSARY.md#airtime) — длина editorial, не час pad ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) |
 | Обучение                | **CPU локально**; запуск **вручную** по `train_task.json`                           |
 | Хостинг                 | **Только текущий ПК**                                                       |
 | Эталон       | FM2 + полное прохождение миссии + manifest + ≥3 seg |
@@ -107,7 +107,7 @@ flowchart TB
     subgraph finetune [Дообучение по триггеру]
         Trigger["rules: N deaths / no progress"]
         Task[train_task.json]
-        Attempts["attempts.jsonl (gen pool / as-is day)"]
+        Attempts["attempts.jsonl (gen pool)"]
         Trigger --> Task
         Task --> LocalPPO
         Attempts --> Trigger
@@ -125,14 +125,14 @@ flowchart TB
 ```
 v0: PPO на CPU
         ↓
-Inference + лог attempts (as-is: `logs/YYYYMMDD/`; цель: `logs/genN/`)
+Inference + лог attempts (`logs/genN/`)
         ↓
 Триггер → train_task.json + seg
         ↓
 PPO → genN+1
 ```
 
-Эфир (editorial + live) — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md); миграция пула — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md).
+Эфир (editorial + live) — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
 
 ---
 
@@ -251,7 +251,7 @@ reward -= step_penalty
 - **FM2** — запись inputs (frame-perfect); файл в `reference/` каталога миссии
 - Lua-лог кадра → `reference/human_playthrough.jsonl`
 - **Save states** на границах CP (CP0..CPn) → `save_states/cpN.fc`*
-- Сложные места выявляются после inference из attempts ([пул поколения](GLOSSARY.md#пул-поколения) — цель; as-is ещё `logs/YYYYMMDD/`)
+- Сложные места выявляются после inference из attempts ([пул поколения](GLOSSARY.md#пул-поколения))
 - Видео без actions — слабый сигнал; нужен FM2 или лог кнопок
 
 
@@ -285,7 +285,7 @@ Lua-скрипт в FCEUX (`emu.registerafter`, каждый кадр):
 | Сценарий                        | Действие                                                       |
 | ------------------------------- | -------------------------------------------------------------- |
 | `env.reset()` для train         | Hot `LOAD` из Lua-кэша (`CACHE` при cold start); без перезапуска FCEUX |
-| Inference, смерть | Лог `death_x`, `death_room` в attempts.jsonl (пул gen / as-is день) |
+| Inference, смерть | Лог `death_x`, `death_room` в attempts.jsonl (пул поколения) |
 | Дообучение на seg       | Load save state начала seg + `hot_zone` |
 
 
@@ -406,10 +406,9 @@ save models/genN+1.zip
 
 | | Путь | Пул номинаций |
 | --- | --- | --- |
-| **As-is** | `logs/YYYYMMDD/` | day-retention UTC+3 ([устаревший термин](GLOSSARY.md#retention-window-устарело)) |
-| **Цель** | `logs/genN/` | [пул поколения](GLOSSARY.md#пул-поколения) |
+| Факт | `logs/genN/` | [пул поколения](GLOSSARY.md#пул-поколения) |
 
-Схема полей и CLI as-is — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Overlay / board — [STREAMING_CONCEPT.md §7](STREAMING_CONCEPT.md#7-слои-информации-на-экране) и §10. Миграция — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md).
+Схема полей и CLI — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Overlay / board — [STREAMING_CONCEPT.md §7](STREAMING_CONCEPT.md#7-слои-информации-на-экране) и §10. Устаревший day-layout — [retention window](GLOSSARY.md#retention-window-устарело) (архив).
 
 ### FM2 из inference
 

@@ -1,17 +1,18 @@
-"""Покадровый лог inference → logs/YYYYMMDD/inference_inputs.jsonl."""
+"""Покадровый лог inference → logs/<model_version>/inference_inputs.jsonl."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from jsonl_logs import append_jsonl, dated_log_path
+from jsonl_logs import append_jsonl, gen_log_path
 
 
 class InferenceInputLogger:
-    def __init__(self, logs_dir: str | Path) -> None:
+    def __init__(self, logs_dir: str | Path, *, model_version: str = "smoke") -> None:
         self.logs_dir = Path(logs_dir)
-        self._path = dated_log_path(self.logs_dir, "inference_inputs")
+        self.model_version = model_version
+        self._path = gen_log_path(self.logs_dir, model_version, "inference_inputs")
         self._episode = 0
 
     @property

@@ -1,28 +1,17 @@
 #!/usr/bin/env python3
-
 """FM2-плейлист по номинациям achievements."""
-
 from __future__ import annotations
 
-
-
 import argparse
-
 import sys
-
 from pathlib import Path
 
-
-
 _REPO = Path(__file__).resolve().parents[1]
-
 sys.path.insert(0, str(_REPO / "src"))
-
-
 
 from achievements.airtime import measure_playlist_airtime, parse_airtime_hours  # noqa: E402
 from achievements.playlist import build_playlist  # noqa: E402
-from jsonl_logs import dated_log_path  # noqa: E402
+from jsonl_logs import gen_log_path, resolve_default_model_version  # noqa: E402
 from project_paths import mission_dir  # noqa: E402
 
 
@@ -30,6 +19,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build inference playlist by achievement nominations")
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
+    parser.add_argument("--model", default=None, help="models/genN.zip (для stem пула)")
+    parser.add_argument("--model-version", default=None, help="имя пула logs/<version>/")
     parser.add_argument("--attempts", default=None)
     parser.add_argument(
         "--inputs",
@@ -46,8 +37,18 @@ def main() -> None:
 
     mission = mission_dir(args.game, args.mission)
     logs = mission / "logs"
-    attempts = Path(args.attempts) if args.attempts else dated_log_path(logs, "attempts")
-    inputs_candidate = Path(args.inputs) if args.inputs else dated_log_path(logs, "inference_inputs")
+    if args.attempts:
+        attempts = Path(args.attempts)
+        version = args.model_version or attempts.parent.name
+    else:
+        version = resolve_default_model_version(
+            mission, model=args.model, model_version=args.model_version
+        )
+        attempts = gen_log_path(logs, version, "attempts")
+
+    inputs_candidate = (
+        Path(args.inputs) if args.inputs else gen_log_path(logs, version, "inference_inputs")
+    )
     inputs = inputs_candidate if inputs_candidate.is_file() else None
 
     if not attempts.is_file():
@@ -65,6 +66,7 @@ def main() -> None:
         mission=args.mission,
         dedupe=not args.no_dedupe,
         pad_to_seconds=pad_to_seconds,
+        model_version=version,
     )
     if manifest_path:
         print(f"Manifest: {manifest_path} ({clip_count} clips)")
@@ -76,10 +78,5 @@ def main() -> None:
     print(f"Blocks: {len(created)} slug(s), {sum(len(v) for v in created.values())} clips under {logs}")
 
 
-
-
-
 if __name__ == "__main__":
-
     main()
-

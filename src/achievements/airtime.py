@@ -99,12 +99,12 @@ def parse_airtime_hours(value: str | float | int) -> float:
     return hours
 
 
-def load_day_playlist_airtime(day_dir: Path) -> PlaylistAirtime | None:
-    """Airtime из day_dir/playlist.json или None, если манифеста нет."""
-    path = day_dir / "playlist.json"
+def load_playlist_airtime(pool_dir: Path) -> PlaylistAirtime | None:
+    """Airtime из pool_dir/playlist.json или None, если манифеста нет."""
+    path = pool_dir / "playlist.json"
     if not path.is_file():
         return None
-    return measure_playlist_airtime(path, logs_dir=day_dir)
+    return measure_playlist_airtime(path, logs_dir=pool_dir)
 
 
 def estimate_fm2_frames(

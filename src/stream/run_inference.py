@@ -1,4 +1,4 @@
-"""Локальный inference: model.predict() + logs/YYYYMMDD/*.jsonl + playlist."""
+"""Локальный inference: model.predict() + logs/<model_version>/*.jsonl + playlist."""
 from __future__ import annotations
 
 import argparse
@@ -14,7 +14,7 @@ sys.path.insert(0, str(_REPO / "src"))
 
 from achievements.airtime import (  # noqa: E402
     DEFAULT_TARGET_AIRTIME_HOURS,
-    load_day_playlist_airtime,
+    load_playlist_airtime,
     parse_airtime_hours,
 )
 from achievements.evaluator import (  # noqa: E402
@@ -30,7 +30,7 @@ from fceux_launch import load_fceux_profile  # noqa: E402
 from fm2_export import export_episode_fm2_from_steps, write_fm2_sidecar  # noqa: E402
 from inference_input_logger import InferenceInputLogger  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
-from jsonl_logs import dated_day_dir, iter_jsonl, load_jsonl_window  # noqa: E402
+from jsonl_logs import gen_pool_dir, iter_jsonl, load_jsonl, normalize_model_version  # noqa: E402
 from project_paths import mission_dir, repo_root  # noqa: E402
 
 
@@ -44,8 +44,8 @@ def _write_overlay(session_id: str, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
-def _write_episode_overlay(day_dir: Path, episode: int, payload: dict) -> Path:
-    path = day_dir / f"ep{episode:04d}.overlay.json"
+def _write_episode_overlay(pool_dir: Path, episode: int, payload: dict) -> Path:
+    path = pool_dir / f"ep{episode:04d}.overlay.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -79,6 +79,7 @@ def _rebuild_playlist(
     mission: str,
     dedupe: bool,
     pad_to_seconds: float | None,
+    model_version: str,
     target_hours: float | None = None,
 ) -> tuple[Path | None, int, float]:
     created, manifest_path, clip_count = build_playlist(
@@ -90,10 +91,11 @@ def _rebuild_playlist(
         mission=mission,
         dedupe=dedupe,
         pad_to_seconds=pad_to_seconds,
+        model_version=model_version,
     )
     hours = 0.0
     if manifest_path and manifest_path.is_file():
-        air = load_day_playlist_airtime(manifest_path.parent)
+        air = load_playlist_airtime(manifest_path.parent)
         hours = air.hours if air else 0.0
         print(f"playlist manifest: {manifest_path} ({clip_count} clips)")
         print(f"playlist launcher: {manifest_path.with_suffix('.play.cmd')}")
@@ -115,7 +117,7 @@ def _run_one_episode(
     args: argparse.Namespace,
     mission: Path,
     save_state: str,
-    day_dir: Path,
+    pool_dir: Path,
     attempt_logger: AttemptLogger,
     input_logger: InferenceInputLogger,
     achievements_cfg: dict[str, Any],
@@ -141,11 +143,11 @@ def _run_one_episode(
         step_log.append({"action": action_str, "frame": frame})
 
     fm2_path: Path | None = None
-    # С плейлистом канон имён — NN_slug_MMM; epNNNN не пишем в logs/YYYYMMDD/.
+    # С плейлистом канон имён — NN_slug_MMM; epNNNN не пишем в logs/genN/.
     write_raw_ep_fm2 = bool(args.save_episode_fm2) and not bool(args.build_playlist)
     if write_raw_ep_fm2:
         save_state_path = mission / save_state
-        fm2_path = day_dir / f"ep{ep:04d}.fm2"
+        fm2_path = pool_dir / f"ep{ep:04d}.fm2"
         export_episode_fm2_from_steps(
             step_log,
             fm2_path,
@@ -166,7 +168,7 @@ def _run_one_episode(
     if fm2_path:
         record["fm2_path"] = str(fm2_path.resolve())
 
-    history = load_jsonl_window(attempt_logger.log_path)
+    history = load_jsonl(attempt_logger.log_path)
     tagged = evaluate_records(history, achievements_cfg)
     if fm2_path:
         for row in tagged:
@@ -179,7 +181,7 @@ def _run_one_episode(
     overlay = overlay_payload(record, config=achievements_cfg)
     _write_overlay(args.session, overlay)
     if write_raw_ep_fm2:
-        ep_overlay = _write_episode_overlay(day_dir, ep, overlay)
+        ep_overlay = _write_episode_overlay(pool_dir, ep, overlay)
         if fm2_path:
             write_fm2_sidecar(fm2_path, overlay=overlay)
         print(f"  overlay: {ep_overlay}")
@@ -200,16 +202,6 @@ def run_inference(args: argparse.Namespace) -> None:
         target_hours = parse_airtime_hours(args.target_airtime)
         args.build_playlist = True
 
-    if not args.skip_preflight:
-        from inference_preflight import require_inference_preflight  # noqa: WPS433
-
-        require_inference_preflight(
-            game=args.game,
-            mission=args.mission,
-            clean_logs=bool(getattr(args, "wipe_day_logs", False)),
-            label="run_inference",
-        )
-
     mission = mission_dir(args.game, args.mission)
     model_path = Path(args.model)
     if not model_path.is_absolute():
@@ -219,6 +211,19 @@ def run_inference(args: argparse.Namespace) -> None:
         model_path = model_path.with_suffix(".zip")
     if not model_path.is_file():
         raise SystemExit(f"Model not found: {model_path}")
+
+    model_version = normalize_model_version(args.model_version or model_path.stem)
+
+    if not args.skip_preflight:
+        from inference_preflight import require_inference_preflight  # noqa: WPS433
+
+        require_inference_preflight(
+            game=args.game,
+            mission=args.mission,
+            model_version=model_version,
+            clean_logs=bool(getattr(args, "wipe_gen_logs", False)),
+            label="run_inference",
+        )
 
     save_state = args.save_state
     if not save_state:
@@ -236,12 +241,11 @@ def run_inference(args: argparse.Namespace) -> None:
     show_window = args.show_window or not bool(profile.get("headless", True))
     turbo = profile.get("turbo", False) if args.turbo is None else args.turbo
 
-    model_version = args.model_version or model_path.stem
     logs_dir = mission / "logs"
-    attempt_logger = AttemptLogger(logs_dir)
-    input_logger = InferenceInputLogger(logs_dir)
+    attempt_logger = AttemptLogger(logs_dir, model_version=model_version)
+    input_logger = InferenceInputLogger(logs_dir, model_version=model_version)
     achievements_cfg = load_achievements_config()
-    day_dir = dated_day_dir(logs_dir)
+    pool_dir = gen_pool_dir(logs_dir, model_version)
     batch_size = max(1, int(args.episodes))
     dedupe = not args.playlist_no_dedupe
     pad_to_seconds = (target_hours * 3600.0) if target_hours is not None else None
@@ -268,7 +272,7 @@ def run_inference(args: argparse.Namespace) -> None:
                     args=args,
                     mission=mission,
                     save_state=save_state,
-                    day_dir=day_dir,
+                    pool_dir=pool_dir,
                     attempt_logger=attempt_logger,
                     input_logger=input_logger,
                     achievements_cfg=achievements_cfg,
@@ -284,6 +288,7 @@ def run_inference(args: argparse.Namespace) -> None:
                     mission=args.mission,
                     dedupe=dedupe,
                     pad_to_seconds=None,
+                    model_version=model_version,
                 )
         else:
             max_batches = max(1, int(args.max_airtime_batches))
@@ -291,11 +296,11 @@ def run_inference(args: argparse.Namespace) -> None:
                 f"target-airtime: {target_hours:.4f}h "
                 f"(batch={batch_size} episodes, max_batches={max_batches}, pad=on)"
             )
-            existing = load_day_playlist_airtime(day_dir)
+            existing = load_playlist_airtime(pool_dir)
             current_h = existing.hours if existing else 0.0
             print(f"target-airtime start: {_format_airtime_progress(current_h=current_h, target_h=target_hours)}")
 
-            # Сначала пересобрать из уже накопленного дня (без новых эпизодов).
+            # Сначала пересобрать из уже накопленного пула (без новых эпизодов).
             _, _, current_h = _rebuild_playlist(
                 attempts_path=attempt_logger.log_path,
                 logs_dir=logs_dir,
@@ -305,6 +310,7 @@ def run_inference(args: argparse.Namespace) -> None:
                 mission=args.mission,
                 dedupe=dedupe,
                 pad_to_seconds=pad_to_seconds,
+                model_version=model_version,
                 target_hours=target_hours,
             )
 
@@ -332,7 +338,7 @@ def run_inference(args: argparse.Namespace) -> None:
                         args=args,
                         mission=mission,
                         save_state=save_state,
-                        day_dir=day_dir,
+                        pool_dir=pool_dir,
                         attempt_logger=attempt_logger,
                         input_logger=input_logger,
                         achievements_cfg=achievements_cfg,
@@ -348,6 +354,7 @@ def run_inference(args: argparse.Namespace) -> None:
                     mission=args.mission,
                     dedupe=dedupe,
                     pad_to_seconds=pad_to_seconds,
+                    model_version=model_version,
                     target_hours=target_hours,
                 )
             else:
@@ -408,7 +415,7 @@ def main() -> None:
     parser.add_argument(
         "--save-episode-fm2",
         action="store_true",
-        help="писать logs/YYYYMMDD/epNNNN.fm2 (только без --build-playlist; с плейлистом — NN_slug_MMM)",
+        help="писать logs/<model_version>/epNNNN.fm2 (только без --build-playlist; с плейлистом — NN_slug_MMM)",
     )
     parser.add_argument(
         "--skip-preflight",
@@ -416,9 +423,9 @@ def main() -> None:
         help="не вызывать inference_preflight (inference_local.sh чистит отдельно)",
     )
     parser.add_argument(
-        "--wipe-day-logs",
+        "--wipe-gen-logs",
         action="store_true",
-        help="перед сбором удалить logs/YYYYMMDD/ текущего дня (default: keep + учесть airtime)",
+        help="перед сбором удалить logs/<model_version>/ (default: keep + учесть airtime)",
     )
     args = parser.parse_args()
     run_inference(args)

@@ -16,7 +16,6 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from achievements.airtime import measure_playlist_airtime  # noqa: E402
-from jsonl_logs import retention_date_prefix  # noqa: E402
 from project_paths import mission_dir  # noqa: E402
 
 TARGET = "2m"
@@ -47,7 +46,7 @@ def test_target_airtime_2m_playlist_and_play() -> None:
         "--model",
         "gen0.zip",
         "--stochastic",
-        "--wipe-day-logs",
+        "--wipe-gen-logs",
         "--target-airtime",
         TARGET,
         "--episodes",
@@ -63,8 +62,8 @@ def test_target_airtime_2m_playlist_and_play() -> None:
     result = subprocess.run(collect, cwd=str(_REPO), check=False, env=env)
     assert result.returncode == 0, f"run_inference failed (exit {result.returncode})"
 
-    day = mission / "logs" / retention_date_prefix()
-    playlist = day / "playlist.json"
+    pool = mission / "logs" / "gen0"
+    playlist = pool / "playlist.json"
     assert playlist.is_file(), f"missing playlist: {playlist}"
     manifest = json.loads(playlist.read_text(encoding="utf-8"))
     assert "airtime" in manifest, "playlist.json missing airtime summary"

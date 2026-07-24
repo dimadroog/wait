@@ -235,7 +235,7 @@ Random agent / короткий env smoke. `--log` пишет в `games/.../logs
 | `--save-state` | относительно миссии (default `save_states/cp1.fc0`) |
 | `--session` | id bridge (default `smoke_env`) |
 | `--death-mode` | `life_lost` \| `game_over` (override `env_config.yaml`; H3) |
-| `--log` | append в `logs/YYYYMMDD/attempts.jsonl` |
+| `--log` | append в `logs/smoke/attempts.jsonl` |
 | `--game` / `--mission` | игра / миссия |
 
 ---
@@ -459,7 +459,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 
 | Флаг | Описание |
 | ---- | -------- |
-| `path` | `inference_inputs.jsonl` или каталог дня логов |
+| `path` | `inference_inputs.jsonl` или каталог пула логов |
 | `--attempts` | явный `attempts.jsonl` (иначе соседний файл, если есть) |
 | `--json [OUT]` | JSON в stdout (`-`) или в файл |
 
@@ -467,25 +467,26 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 
 ### `inference_preflight.py`
 
-Перед inference: staging/bridge; **logs дня по умолчанию сохраняются** (печатает текущий airtime). Wipe — только по флагу. Вызывается из `inference_local.sh` / `play_inference_fm2`.
+Перед inference: staging/bridge; **пул поколения по умолчанию сохраняется** (печатает текущий airtime). Wipe — только по флагу. Вызывается из `inference_local.sh` / `play_inference_fm2`.
 
 ```bash
-./.venv/Scripts/python.exe scripts/inference_preflight.py
-./.venv/Scripts/python.exe scripts/inference_preflight.py --wipe-day-logs
+./.venv/Scripts/python.exe scripts/inference_preflight.py --model gen0.zip
+./.venv/Scripts/python.exe scripts/inference_preflight.py --model gen0.zip --wipe-gen-logs
 ./.venv/Scripts/python.exe scripts/inference_preflight.py --playback-only
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
 | `--playback-only` | только staging/bridge (для replay, без wipe logs) |
-| `--wipe-day-logs` | удалить `logs/YYYYMMDD/` текущего retention-дня перед сбором |
+| `--wipe-gen-logs` | удалить `logs/<model_version>/` перед сбором |
+| `--model` / `--model-version` | stem пула (иначе `models/latest.zip`) |
 | `--game` / `--mission` | |
 
 ---
 
 ### `inference_local.sh`
 
-Фасад: preflight → `run_inference`. Без аргументов — короткий прогон (`--episodes 5`, playlist). Свои флаги оболочки: `--play`, `--skip-preflight`, `--wipe-day-logs`; остальное — в `run_inference`.
+Фасад: preflight → `run_inference`. Без аргументов — короткий прогон (`--episodes 5`, playlist). Свои флаги оболочки: `--play`, `--skip-preflight`, `--wipe-gen-logs`; остальное — в `run_inference`.
 
 ```bash
 # Короткий прогон (без target-airtime)
@@ -499,15 +500,15 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 # Автотест: pytest tests/test_playlist_airtime_smoke.py -m slow
 ./scripts/inference_local.sh --stochastic --target-airtime 2m --episodes 8 --max-steps 80 --play
 
-# С нуля за день (wipe) + тот же smoke
-./scripts/inference_local.sh --wipe-day-logs --stochastic --target-airtime 3m --episodes 5
+# С нуля по поколению (wipe) + тот же smoke
+./scripts/inference_local.sh --wipe-gen-logs --stochastic --target-airtime 3m --episodes 5
 ```
 
 | Флаг оболочки | Описание |
 | ------------- | -------- |
 | `--play` | после прогона вызвать `play_inference_fm2` на playlist |
 | `--skip-preflight` | не вызывать `inference_preflight` |
-| `--wipe-day-logs` | снести накопление дня перед сбором (default: keep) |
+| `--wipe-gen-logs` | снести накопление пула поколения перед сбором (default: keep) |
 
 ---
 
@@ -516,8 +517,8 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 <a id="inference"></a>
 <a id="run_inferencepy"></a>
 
-Локальный PPO inference. Логи: `games/.../logs/YYYYMMDD/` (`attempts.jsonl`, `inference_inputs.jsonl`). Default save state: `save_states/inference_cp0.fc0`.  
-[Retention window](GLOSSARY.md#retention-window) (**as-is**, устаревает → [пул поколения](GLOSSARY.md#пул-поколения)) — пул attempts за календарный день (UTC+3); не путать с [airtime](GLOSSARY.md#airtime) editorial-пакета. Целевая модель эфира — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md); миграция — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md). Подробнее — ML_CONCEPT §8.
+Локальный PPO inference. Логи: `games/.../logs/<model_version>/` (`attempts.jsonl`, `inference_inputs.jsonl`); `model_version` = stem модели (`gen0` из `gen0.zip`). Default save state: `save_states/inference_cp0.fc0`.  
+Пул номинаций — [пул поколения](GLOSSARY.md#пул-поколения); не путать с [airtime](GLOSSARY.md#airtime) editorial-пакета. Эфир — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Подробнее — ML_CONCEPT §8.
 
 ```bash
 # Фиксированное число эпизодов + плейлист
@@ -549,7 +550,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 | `--reward-profile` / `--model-version` | |
 | `--target-airtime` | целевой airtime (`1h` / `3m` / `120s`; флаг без значения = 1h); цикл + pad |
 | `--max-airtime-batches` | лимит батчей добора (default 200) |
-| `--wipe-day-logs` | wipe `logs/YYYYMMDD/` перед сбором (default: keep + учесть airtime) |
+| `--wipe-gen-logs` | wipe `logs/<model_version>/` перед сбором (default: keep + учесть airtime) |
 | `--skip-preflight` | |
 | `--game` / `--mission` | |
 
@@ -568,7 +569,8 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 | Флаг | Описание |
 | ---- | -------- |
 | `-o` / `--output` | путь `.fm2` (обязательный) |
-| `--input` | jsonl (default — сегодня, день retention window) |
+| `--input` | jsonl (default — `logs/<model_version>/inference_inputs.jsonl`) |
+| `--model` / `--model-version` | stem пула, если нет `--input` |
 | `--episode` | один эпизод |
 | `--frame-skip` | NES-кадров на env step (default 4) |
 | `--template` | заголовок FM2 |
@@ -582,12 +584,13 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 Правила [`config/achievements.yaml`](../config/achievements.yaml) → `tags[]` в attempts. Номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
 
 ```bash
-./.venv/Scripts/python.exe scripts/eval_achievements.py
+./.venv/Scripts/python.exe scripts/eval_achievements.py --model gen0.zip
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `--attempts` | путь к attempts (default — сегодня, день retention window) |
+| `--attempts` | путь к attempts (default — `logs/<model_version>/attempts.jsonl`) |
+| `--model` / `--model-version` | stem пула, если нет `--attempts` |
 | `--config` | путь к YAML |
 | `--game` / `--mission` | |
 
@@ -598,26 +601,27 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 <a id="achievements-и-плейлист"></a>
 
 Attempts (+ опц. inputs) → `NN_slug_MMM.fm2`, `.overlay.json`, `playlist.json` (поле `airtime`), `playlist.play.cmd`.  
-Кандидаты — из [retention window](GLOSSARY.md#retention-window) (**as-is**; цель — [пул поколения](GLOSSARY.md#пул-поколения)); длина editorial — [airtime](GLOSSARY.md#airtime). Исторический сбор «под N часов» — через `run_inference --target-airtime` (не режиссёрский дефолт hybrid); этот скрипт — пересборка / pad из уже накопленного пула.
+Кандидаты — из [пула поколения](GLOSSARY.md#пул-поколения); длина editorial — [airtime](GLOSSARY.md#airtime). Исторический сбор «под N часов» — через `run_inference --target-airtime` (не режиссёрский дефолт hybrid); этот скрипт — пересборка / pad из уже накопленного пула.
 
 ```bash
-./.venv/Scripts/python.exe scripts/build_playlist.py
-./.venv/Scripts/python.exe scripts/build_playlist.py --inputs logs/YYYYMMDD/inference_inputs.jsonl
+./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip
+./.venv/Scripts/python.exe scripts/build_playlist.py --inputs logs/gen0/inference_inputs.jsonl
 
 # Добить pad-клипами до N (часы / минуты), не меняя порядок номинаций
-./.venv/Scripts/python.exe scripts/build_playlist.py --pad-to-airtime 1h
-./.venv/Scripts/python.exe scripts/build_playlist.py --pad-to-airtime 3m
+./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip --pad-to-airtime 1h
+./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip --pad-to-airtime 3m
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
 | `--attempts` | attempts.jsonl |
 | `--inputs` | on-demand FM2 из inputs |
+| `--model` / `--model-version` | stem пула, если нет `--attempts` |
 | `--no-dedupe` | не пропускать дубликаты эпизодов |
 | `--pad-to-airtime` | pad до N (`1h`, `3m`, …) после блоков номинаций |
 | `--game` / `--mission` | |
 
-Выход в `logs/YYYYMMDD/`: `.fm2` (embed savestate), `.overlay.json`, `playlist.json` (+ `airtime`), `.play.cmd`.
+Выход в `logs/<model_version>/`: `.fm2` (embed savestate), `.overlay.json`, `playlist.json` (+ `airtime`, `model_version`), `.play.cmd`.
 
 ---
 
@@ -626,9 +630,9 @@ Attempts (+ опц. inputs) → `NN_slug_MMM.fm2`, `.overlay.json`, `playlist.js
 Replay одного self-contained `.fm2` или всего `playlist.json` (эфир).
 
 ```bash
-# После smoke-сбора (YYYYMMDD = день retention UTC+3)
+# После сбора (genN = stem модели)
 ./.venv/Scripts/python.exe scripts/play_inference_fm2.py \
-  games/rushn_attack/missions/m1/logs/YYYYMMDD/playlist.json
+  games/rushn_attack/missions/m1/logs/gen0/playlist.json
 ./.venv/Scripts/python.exe scripts/play_inference_fm2.py path/to/clip.fm2
 ```
 

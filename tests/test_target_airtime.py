@@ -17,8 +17,9 @@ from achievements.airtime import (  # noqa: E402
     parse_airtime_hours,
 )
 from achievements.playlist import build_playlist  # noqa: E402
-from jsonl_logs import utc_date_prefix  # noqa: E402
 from project_paths import repo_root  # noqa: E402
+
+_GEN = "gen0"
 
 
 def test_parse_airtime_hours_units() -> None:
@@ -56,7 +57,7 @@ def test_build_playlist_pad_reaches_target_seconds() -> None:
     logs = repo_root() / "tmp" / "smoke" / "playlist_pad_airtime" / "logs"
     if logs.exists():
         shutil.rmtree(logs)
-    day = logs / utc_date_prefix()
+    day = logs / _GEN
     day.mkdir(parents=True)
 
     inputs_lines: list[str] = []

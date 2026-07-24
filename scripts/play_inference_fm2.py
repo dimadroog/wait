@@ -360,7 +360,7 @@ def _play_playlist(args: argparse.Namespace, playlist_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Play inference FM2 (-playmovie) or playlist")
-    parser.add_argument("input", help=".fm2 | logs/YYYYMMDD/playlist.json")
+    parser.add_argument("input", help=".fm2 | logs/<model_version>/playlist.json")
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
     parser.add_argument("--overlay", type=Path, default=None)

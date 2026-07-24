@@ -4,8 +4,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from achievements.airtime import load_day_playlist_airtime
-from jsonl_logs import retention_date_prefix
+from achievements.airtime import load_playlist_airtime
+from jsonl_logs import gen_pool_dir, normalize_model_version, resolve_default_model_version
 from project_paths import mission_dir, repo_root
 from train.env_factory import require_clean_preflight
 
@@ -21,55 +21,43 @@ def cleanup_play_fm2_staging() -> None:
 def cleanup_inference_logs(
     logs_dir: Path,
     *,
-    date_prefix: str | None = None,
+    model_version: str,
 ) -> list[Path]:
-    """Удалить inference-артефакты за день retention (logs/YYYYMMDD/ + legacy YYYYMMDD_*)."""
+    """Удалить inference-артефакты пула поколения logs/<model_version>/."""
     if not logs_dir.is_dir():
         return []
-    prefix = date_prefix or retention_date_prefix()
+    version = normalize_model_version(model_version)
     removed: list[Path] = []
-    day_dir = logs_dir / prefix
-    if day_dir.is_dir():
-        shutil.rmtree(day_dir, ignore_errors=True)
-        removed.append(day_dir)
-    # Legacy flat layout: logs/YYYYMMDD_*.jsonl / .fm2 / playlist
-    for path in sorted(logs_dir.iterdir()):
-        if path.name == ".gitkeep":
-            continue
-        if path.name == prefix or not path.name.startswith(f"{prefix}_"):
-            continue
-        if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
-        else:
-            path.unlink(missing_ok=True)
-        removed.append(path)
+    pool_dir = logs_dir / version
+    if pool_dir.is_dir():
+        shutil.rmtree(pool_dir, ignore_errors=True)
+        removed.append(pool_dir)
     return removed
 
 
-def day_logs_dir(logs_dir: Path, *, date_prefix: str | None = None) -> Path:
-    """Путь logs/YYYYMMDD/ за текущий retention-день (без mkdir)."""
-    prefix = date_prefix or retention_date_prefix()
-    return logs_dir / prefix
+def gen_logs_dir(logs_dir: Path, *, model_version: str) -> Path:
+    """Путь logs/<model_version>/ (без mkdir)."""
+    return gen_pool_dir(logs_dir, model_version, mkdir=False)
 
 
-def report_day_airtime(
+def report_gen_airtime(
     logs_dir: Path,
     *,
-    date_prefix: str | None = None,
+    model_version: str,
     label: str = "preflight",
 ) -> float:
-    """Напечатать текущий airtime дня; вернуть hours (0 если плейлиста нет)."""
-    day_dir = day_logs_dir(logs_dir, date_prefix=date_prefix)
-    air = load_day_playlist_airtime(day_dir) if day_dir.is_dir() else None
+    """Напечатать текущий airtime пула поколения; вернуть hours (0 если плейлиста нет)."""
+    pool_dir = gen_logs_dir(logs_dir, model_version=model_version)
+    air = load_playlist_airtime(pool_dir) if pool_dir.is_dir() else None
     if air is None:
         print(
-            f"preflight [{label}]: keep day logs ({day_dir.name}); "
+            f"preflight [{label}]: keep gen logs ({pool_dir.name}); "
             f"airtime=0s (no playlist.json yet)",
             flush=True,
         )
         return 0.0
     print(
-        f"preflight [{label}]: keep day logs ({day_dir.name}); "
+        f"preflight [{label}]: keep gen logs ({pool_dir.name}); "
         f"airtime={air.seconds:.1f}s ({air.hours:.4f}h), clips={air.clip_count}",
         flush=True,
     )
@@ -96,29 +84,40 @@ def require_inference_preflight(
     *,
     game: str = "rushn_attack",
     mission: str = "m1",
+    model_version: str | None = None,
+    model: str | None = None,
     clean_logs: bool = False,
     label: str = "inference_preflight",
-) -> None:
-    """Перед inference: staging/bridge; logs дня по умолчанию сохраняются.
+) -> str:
+    """Перед inference: staging/bridge; пул gen по умолчанию сохраняется.
 
-    clean_logs=True — опциональный wipe logs/YYYYMMDD/ перед сбором.
-    При keep — печатает текущий airtime дня (для remaining target).
+    clean_logs=True — опциональный wipe logs/<model_version>/ перед сбором.
+    При keep — печатает текущий airtime пула.
+    Возвращает канонический model_version.
     """
     cleanup_play_fm2_staging()
     warn_portable_movies_pollution(label=label)
-    logs_dir = mission_dir(game, mission) / "logs"
+    mission_path = mission_dir(game, mission)
+    version = resolve_default_model_version(
+        mission_path, model=model, model_version=model_version
+    )
+    logs_dir = mission_path / "logs"
     if clean_logs:
-        removed = cleanup_inference_logs(logs_dir)
+        removed = cleanup_inference_logs(logs_dir, model_version=version)
         if removed:
             print(
                 f"preflight [{label}]: wiped {len(removed)} log artifact(s) under {logs_dir}",
                 flush=True,
             )
         else:
-            print(f"preflight [{label}]: wipe day logs (nothing to remove)", flush=True)
+            print(
+                f"preflight [{label}]: wipe gen logs ({version}) (nothing to remove)",
+                flush=True,
+            )
     else:
-        report_day_airtime(logs_dir, label=label)
+        report_gen_airtime(logs_dir, model_version=version, label=label)
     require_clean_preflight(label=label, prefixes=INFERENCE_BRIDGE_PREFIXES)
+    return version
 
 
 def require_playback_preflight(*, label: str = "playback_preflight") -> None:

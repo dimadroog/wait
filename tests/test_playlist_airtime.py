@@ -40,7 +40,7 @@ def test_overlay_hold_frames_from_show_until(tmp_path: Path) -> None:
 
 
 def test_measure_playlist_airtime_sums_fm2_and_hold(tmp_path: Path) -> None:
-    day = tmp_path / "20260718"
+    day = tmp_path / "gen0"
     day.mkdir()
     _write_fm2(day / "01_a_001.fm2", 60)
     _write_fm2(day / "02_b_001.fm2", 120)
@@ -51,7 +51,7 @@ def test_measure_playlist_airtime_sums_fm2_and_hold(tmp_path: Path) -> None:
         json.dumps({"show_until_frame": 60}), encoding="utf-8"
     )
     playlist = {
-        "date": "20260718",
+        "model_version": "gen0",
         "clips": [
             {"fm2": "01_a_001.fm2", "overlay": "01_a_001.overlay.json"},
             {"fm2": "02_b_001.fm2", "overlay": "02_b_001.overlay.json"},
@@ -67,15 +67,16 @@ def test_measure_playlist_airtime_sums_fm2_and_hold(tmp_path: Path) -> None:
 
 
 def test_write_playlist_manifest_embeds_airtime(tmp_path: Path) -> None:
-    day = tmp_path / "20260718"
+    day = tmp_path / "gen0"
     day.mkdir()
     _write_fm2(day / "01_x_001.fm2", 30)
     (day / "01_x_001.overlay.json").write_text(
         json.dumps({"show_until_frame": 90}), encoding="utf-8"
     )
     clips = [{"idx": 1, "fm2": "01_x_001.fm2", "overlay": "01_x_001.overlay.json"}]
-    path = write_playlist_manifest(clips, day, date_prefix="20260718")
+    path = write_playlist_manifest(clips, day, model_version="gen0")
     data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["model_version"] == "gen0"
     assert data["airtime"]["clip_count"] == 1
     assert data["airtime"]["total_fm2_frames"] == 30
     assert data["airtime"]["total_hold_frames"] == 90

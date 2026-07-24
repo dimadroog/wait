@@ -1,12 +1,13 @@
-"""Оценка achievements по logs/YYYYMMDD/attempts.jsonl."""
+"""Оценка achievements по logs/<model_version>/attempts.jsonl."""
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from jsonl_logs import load_jsonl_window, retention_offset_hours_from_config
+from jsonl_logs import load_jsonl
 from project_paths import load_yaml, repo_root
 
 
@@ -95,7 +96,7 @@ def evaluate_records(
             if key and counts[key] >= min_count and "deja_vu" not in record["tags"]:
                 record["tags"].append("deja_vu")
 
-    # new_record: новый max_checkpoint для model_version в retention window
+    # new_record: новый max_checkpoint для model_version в пуле файла
     if noms.get("new_record"):
         best_by_model: dict[str, int] = defaultdict(lambda: -1)
         ordered = sorted(
@@ -129,19 +130,17 @@ def evaluate_attempts_file(
     attempts_path: Path,
     *,
     config: dict[str, Any] | None = None,
-    when: datetime | None = None,
 ) -> list[dict[str, Any]]:
     achievements_config = config or load_achievements_config()
-    offset = retention_offset_hours_from_config(achievements_config)
-    records = load_jsonl_window(attempts_path, when=when, offset_hours=offset)
+    records = load_jsonl(attempts_path)
     return evaluate_records(records, achievements_config)
 
 
 def write_tagged_attempts(attempts_path: Path, records: list[dict[str, Any]]) -> None:
-    """Перезаписать файл только строками из retention window."""
+    """Перезаписать attempts.jsonl строками пула (с tags[])."""
     with attempts_path.open("w", encoding="utf-8") as f:
         for row in records:
-            f.write(__import__("json").dumps(row, ensure_ascii=False) + "\n")
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def tier_for_slug(slug: str, config: dict[str, Any] | None = None) -> str:
