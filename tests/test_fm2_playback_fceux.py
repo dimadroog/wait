@@ -64,20 +64,10 @@ def test_clear_fm2_playback_ram_probe_gameplay_start(
     """Эталон power-on: на реальном gameplay_start — lives 1..9."""
     if not _CLEAR_FM2.is_file():
         pytest.skip(f"missing {_CLEAR_FM2}")
-    from etalon_build_config import (
-        gameplay_start_rule_from_etalon_build,
-        load_etalon_build_config,
-        transition_rooms_from_etalon_build,
-    )
-    from playthrough_build import gameplay_start_frame_from_rows, load_human_playthrough_rows
+    from playthrough_build import gameplay_start_frame_from_head_saves, load_head_save_states
 
-    etalon = load_etalon_build_config("rushn_attack")
-    rows = load_human_playthrough_rows(mission_m1 / "reference" / "human_playthrough.jsonl")
-    gp = gameplay_start_frame_from_rows(
-        rows,
-        transition_rooms=transition_rooms_from_etalon_build(etalon),
-        rule=gameplay_start_rule_from_etalon_build(etalon),
-    )
+    gp = gameplay_start_frame_from_head_saves(load_head_save_states(mission_m1))
+    assert gp is not None
     probe = probe_movie_playback(
         _CLEAR_FM2,
         resolve_rom("rushn_attack"),

@@ -77,3 +77,51 @@ def test_step_raises_after_retry_exhausted() -> None:
             with pytest.raises(FceuxBridgeError, match="IPC timeout for STEP"):
                 FceuxBridge.step(bridge, "right")
     assert mock_request.call_count == 3
+
+
+def test_write_config_includes_show_window(tmp_path) -> None:
+    bridge = FceuxBridge.__new__(FceuxBridge)
+    bridge.session_root = tmp_path
+    bridge.ipc_dir = tmp_path / "ipc"
+    bridge.frame_skip = 4
+    bridge.no_focus = False
+    bridge.show_window = True
+    bridge.obs_format = "gd"
+    bridge._ram_addrs = {"room": 0x0C}
+    path = FceuxBridge._write_config(bridge)
+    text = path.read_text(encoding="utf-8")
+    assert '"show_window": true' in text
+    assert '"no_focus": false' in text
+
+
+def test_write_config_show_window_false_for_headless(tmp_path) -> None:
+    bridge = FceuxBridge.__new__(FceuxBridge)
+    bridge.session_root = tmp_path
+    bridge.ipc_dir = tmp_path / "ipc"
+    bridge.frame_skip = 4
+    bridge.no_focus = True
+    bridge.show_window = False
+    bridge.obs_format = "raw"
+    bridge._ram_addrs = {}
+    path = FceuxBridge._write_config(bridge)
+    assert '"show_window": false' in path.read_text(encoding="utf-8")
+
+
+def test_apply_operator_fceux_cfg_full_copy(tmp_path, monkeypatch) -> None:
+    from fceux_launch import apply_operator_fceux_cfg, operator_fceux_cfg_path
+
+    root = tmp_path / "repo"
+    op = root / "fceux" / "operator"
+    op.mkdir(parents=True)
+    preset = op / "fceux.cfg"
+    preset.write_text('"sound" 1\n"winspecial" 4\nmarker_operator\n', encoding="utf-8")
+    fceux_dir = tmp_path / "portable"
+    fceux_dir.mkdir()
+    (fceux_dir / "fceux.cfg").write_text('"sound" 0\nold\n', encoding="utf-8")
+    monkeypatch.setattr("fceux_launch.repo_root", lambda: root)
+    dest = apply_operator_fceux_cfg(fceux_dir)
+    text = dest.read_text(encoding="utf-8")
+    assert "marker_operator" in text
+    assert '"sound" 1' in text
+    assert "old" not in text
+    assert operator_fceux_cfg_path() == preset

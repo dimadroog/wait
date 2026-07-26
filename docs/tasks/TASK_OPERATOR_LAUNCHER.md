@@ -24,7 +24,7 @@ v1 закрывает ритуал hybrid-эпизода: накопить [пу
 | **Train** | Обучить / дообучить поколение | `train_local.sh` / `train_ppo` |
 | **Pool** | Накопить попытки в `logs/genN/` | `inference_local.sh` / `run_inference` |
 | **Episode prep** | Собрать короткий editorial + `broadcast_board.json` | `hybrid_episode_prep` (или `build_playlist --editorial` + `build_broadcast_board`) |
-| **Air** | Editorial replay и/или live на эфире | `play_inference_fm2` + `run_inference --show-window`; смена `mode` board |
+| **Air** | Editorial replay и/или live на эфире | `play_inference_fm2` + `run_inference --live`; смена `mode` board |
 
 Рекомендуемая компоновка UI: вкладки Train / Pool / **Episode** (prep + чеклист Air) / либо отдельная Air. Smoke / bench / parse rollouts — **вне** v1.
 
@@ -45,7 +45,7 @@ v1 закрывает ритуал hybrid-эпизода: накопить [пу
 
 **Air:**
 - выбор `logs/genN/playlist.json` (не дней);
-- Editorial replay; Live (`--show-window`, короткий episodes);
+- Editorial replay; Live (`--live`, короткий episodes);
 - кнопки смены mode board: `open` → `live` → `close` (вызов `build_broadcast_board`);
 - опционально: открыть `streaming/board/index.html` в браузере (без управления OBS).
 
@@ -64,7 +64,7 @@ v1 закрывает ритуал hybrid-эпизода: накопить [пу
 ### Критерий готовности (DoD)
 
 - [ ] С GUI можно: выбрать `genN` → при необходимости наполнить Pool → Episode prep → показать airtime editorial и пути артефактов
-- [ ] С GUI можно: запустить editorial replay и короткий live (`--show-window`); сменить mode board и/или открыть HTML board локально
+- [ ] С GUI можно: запустить editorial replay и короткий live (`--live`); сменить mode board и/или открыть HTML board локально
 - [ ] Primary-пресеты ведут к editorial (`--editorial` / prep), а не к длинному плейлисту «на весь слот»
 - [ ] Выбор материала — по `logs/genN/`, не по `YYYYMMDD`
 - [ ] Лаунчер не содержит бизнес-логики train/inference/playlist (только argv → subprocess / существующие фасады)

@@ -130,21 +130,23 @@ milestone_bonus: 50
 
 ### Чекпоинты миссии 1 (канон)
 
-Канон в `config/routes.yaml`:
+Канон в `config/routes.yaml` согласован с `head_save_states` (после аудита clear.fm2, 2026-07-26):
 
-- Нет платного старта на `room 0x00` (CP0 `start` убран) — reset не даёт бесплатный checkpoint-бонус за стояние.
-- `late_mission` (id 4): `room 0x00` + `min_y: 60` и **`requires_checkpoint: 3`** — late только после `mid_mission`, иначе фарм CP на стартовой комнате.
+- Геймплей почти весь в `room 0x00`; прогресс — RAM **`stage`** (`0x0030`), не старые комнаты `0x0C`/`0x08`.
+- Старт `cp_gameplay0` (`stage=0`) **без** платного CP — reset/стояние не дают бонус.
+- Цепочка `requires_checkpoint` — нельзя перепрыгнуть узел.
 
 ```
-CP1: first_screen (0x0C)
-CP2: ladder (0x08)
-CP3: mid_mission (0x12)
-CP4: late_mission (0x00, min_y≥60, требует CP3)
-CP5: mission_clear (flag)
+CP1: after_second_ladder     (min_stage≥1)   ≈ после cp_gameplay1
+CP2: ladders_done_mines_start (min_stage≥3)  = cp_gameplay2
+CP3: after_red_enemy_ground  (min_stage≥6)   = cp_gameplay3
+CP4: after_single_mine       (min_stage≥8)   = cp_gameplay4
+CP5: mission1_boss           (min_stage≥9)   = cp_bossfight0
+CP6: mission_clear           (flag)
 ```
 
-Точные `room_id` и `(x,y)` — в `games/rushn_attack/missions/m1/ram_map.md`.  
-История правки routes / gen1 ablation — [TASK_GEN1_POLICY_ABLATION](tasks/archive/TASK_GEN1_POLICY_ABLATION.md).
+Поле `stage` — в `config/ram_resolve.json` / `ram_map.md`.  
+История H3 (убрать фарм на старте) — [TASK_GEN1_POLICY_ABLATION](tasks/archive/TASK_GEN1_POLICY_ABLATION.md).
 
 ---
 
@@ -212,24 +214,17 @@ game: rushn_attack
 mission: '1'
 checkpoints:
   - id: 1
-    name: first_screen
-    trigger: { room: '0x0C' }
+    name: after_second_ladder
+    trigger: { room: '0x00', min_stage: 1 }
   - id: 2
-    name: ladder
-    trigger: { room: '0x08' }
-  - id: 3
-    name: mid_mission
-    trigger: { room: '0x12' }
-  - id: 4
-    name: late_mission
-    trigger:
-      room: '0x00'
-      min_y: 60
-      requires_checkpoint: 3
+    name: ladders_done_mines_start
+    trigger: { room: '0x00', min_stage: 3, requires_checkpoint: 1 }
   - id: 5
+    name: mission1_boss
+    trigger: { room: '0x00', min_stage: 9, requires_checkpoint: 4 }
+  - id: 6
     name: mission_clear
     trigger: { flag: mission_complete }
-
 rewards:
   default:
     checkpoint_bonus: 100

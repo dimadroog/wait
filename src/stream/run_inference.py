@@ -227,8 +227,11 @@ def run_inference(args: argparse.Namespace) -> None:
             )
 
     profile = load_fceux_profile(args.fceux_profile)
-    show_window = args.show_window or not bool(profile.get("headless", True))
+    show_window = bool(args.live) or not bool(profile.get("headless", True))
     turbo = profile.get("turbo", False) if args.turbo is None else args.turbo
+    # Live: не держать nothrottle — иначе окно часто серое/не обновляется.
+    if show_window and args.turbo is None:
+        turbo = False
 
     heads_spec = load_policy_heads_spec(args.game)
     if heads_spec is None:
@@ -319,7 +322,11 @@ def main() -> None:
     parser.add_argument("--session", default="inference")
     parser.add_argument("--stochastic", action="store_true")
     parser.add_argument("--fceux-profile", default="inference", help="fceux/profiles/{name}.yaml")
-    parser.add_argument("--show-window", action="store_true", help="видимое окно FCEUX (default: headless)")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="эфир: окно FCEUX + полный fceux/operator/fceux.cfg (default: headless pool)",
+    )
     parser.add_argument("--turbo", action="store_true", default=None, help="force turbo on (в inference.yaml уже true)")
     parser.add_argument("--build-playlist", action="store_true", help="собрать плейлист после прогона")
     parser.add_argument(

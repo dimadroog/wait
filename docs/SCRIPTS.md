@@ -132,10 +132,10 @@
 
 ### `build_playthrough.py`
 
-После `ram_scout`: `human_playthrough.jsonl`, `config/routes.yaml`, `playthrough_manifest.yaml`, `save_states/cp_<head><i>.fc0`, `reference/demos_for_bc` (stub obs).
+После `ram_scout`: `human_playthrough.jsonl`, `playthrough_manifest.yaml`, `save_states/cp_<head><i>.fc0`, `reference/demos_for_bc` (stub obs).
 
-Правила нарезки и авто-`gameplay_start` — в `games/<id>/etalon_build.yaml`; ядро только интерпретирует.  
-Если в манифесте есть `head_save_states` — кадры и имена `.fc0` берутся **только** оттуда (`cp_title0`, `cp_intro0`, `cp_gameplay0`, …). Train и inference reset — **один** файл (`cp_gameplay0`); отдельный `inference_cp*` не пишется. GUID для FM2 embed — только при экспорте/staging.
+Кадры и имена `.fc0` — из `head_save_states` в манифесте (`cp_title0`, `cp_intro0`, `cp_gameplay0`, …). Train и inference reset — **один** файл (`cp_gameplay0`).  
+Опциональный `games/<id>/etalon_build.yaml` — автогенерация `routes.yaml` / эвристика `gameplay_start`; если файла нет (пилот RnA), `routes.yaml` не перезаписывается. `--states-only` etalon_build не требует.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/build_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2
@@ -495,9 +495,9 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 ./.venv/Scripts/python.exe src/stream/run_inference.py \
   --model gen0.zip --episodes 5 --stochastic --build-playlist
 
-# Live на эфире (видимое окно FCEUX)
+# Live на эфире (окно + fceux/operator/fceux.cfg)
 ./.venv/Scripts/python.exe src/stream/run_inference.py \
-  --model gen0.zip --show-window --episodes 3 --stochastic
+  --model gen0.zip --live --episodes 3 --stochastic
 ```
 
 | Флаг | Описание |
@@ -509,7 +509,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 | `--save-episode-fm2` | писать FM2 эпизодов |
 | `--build-playlist` | плейлист по номинациям |
 | `--playlist-no-dedupe` | без дедупа эпизодов в плейлисте |
-| `--show-window` | видимое окно (default headless) |
+| `--live` | эфир: окно FCEUX + полная подмена `portable/fceux.cfg` из `fceux/operator/fceux.cfg` (default headless pool) |
 | `--fceux-profile` | default `inference` |
 | `--turbo` | force turbo on |
 | `--session` | id bridge (default `inference`) |
@@ -635,7 +635,7 @@ Attempts (+ опц. inputs) → `NN_slug_MMM.fm2`, `.overlay.json`, `playlist.js
 | `--model` / `--model-version` | |
 | `--game` / `--mission` | |
 
-Board в браузере: `streaming/board/index.html` (читает соседний `broadcast_board.json`). Live: `run_inference --show-window`.
+Board в браузере: `streaming/board/index.html` (читает соседний `broadcast_board.json`). Live: `run_inference --live`.
 
 ---
 

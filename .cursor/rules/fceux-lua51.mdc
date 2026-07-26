@@ -1,0 +1,16 @@
+---
+description: Контракт Lua 5.1 для скриптов FCEUX (fceux/lua)
+globs: fceux/lua/**/*.lua
+alwaysApply: false
+---
+
+# FCEUX Lua = только 5.1
+
+Полный список ловушек: [fceux/README.md § Lua 5.1](../../fceux/README.md#lua-51-обязательно).
+
+При правках `fceux/lua/**/*.lua`:
+
+1. **Не** использовать `|` в `string.match` / `gmatch` как «или» — в patterns Lua 5.1 его нет. Для JSON bool: `text:match('"key"%s*:%s*(%a+)') == "true"`.
+2. **Не** писать `return (a, b, c)` — syntax error; только `return a, b, c`.
+3. Не тянуть синтаксис Lua 5.2+ / 5.3+.
+4. При баге «флаг в Python true, поведение как false» — сначала сверить разбор конфига в Lua с `tmp/bridge/.../config.json`, не крутить `-noicon` / GUI вслепую.
