@@ -17,7 +17,7 @@
 | Хочу… | Скрипт |
 | ----- | ------ |
 | Поставить `.venv` | [`setup_all.ps1`](#setup_allps1) → [`verify_env.py`](#verify_envpy) |
-| RAM-разведка эталона | [`ram_scout.py`](#ram_scoutpy) |
+| RAM-разведка (shell / mission) | [`ram_scout.py`](#ram_scoutpy) |
 | Собрать эталон (jsonl, save_states, demos_for_bc stub) | [`build_playthrough.py`](#build_playthroughpy) |
 | Пересобрать save states из `head_save_states` | [`build_playthrough.py --states-only`](#build_playthroughpy) |
 | Demos с реальными obs (BC) | [`record_demos.py`](#record_demospy) |
@@ -49,7 +49,7 @@
 | [`parse_train_rollouts.py`](#parse_train_rolloutspy) | Сводка `rollouts.jsonl` |
 | [`play_fm2_gui.py`](#play_fm2_guipy) | GUI replay одного FM2 (отладка) |
 | [`play_inference_fm2.py`](#play_inference_fm2py) | Replay FM2 или `playlist.json` |
-| [`ram_scout.py`](#ram_scoutpy) | RAM scout эталонного FM2 |
+| [`ram_scout.py`](#ram_scoutpy) | RAM scout: shell (`games/…/reference/`) или mission clear |
 | [`record_demos.py`](#record_demospy) | Demos с реальными obs |
 | [`run_smoke.py`](#run_smokepy) | Единый smoke entry point |
 | [`segment_playthrough.py`](#segment_playthroughpy) | Demos actions-only (obs=stub) |
@@ -110,17 +110,23 @@
 
 ### `ram_scout.py`
 
-FM2 → `reference/scout/ram_scout.jsonl`, `config/ram_resolve.json`, `ram_map.md`.
+[Раунд разведки RAM](GLOSSARY.md#раунд-разведки-ram): FM2 → сырой scout.  
+**Mission** (`games/<game>/missions/<m>/reference/*.fm2`) → плоский `reference/scout/`, затем `config/ram_resolve.json` + `ram_map.md`.  
+**Shell** (`games/<game>/reference/*.fm2`) → `reference/scout/<round>/` только (якоря вручную в `env_config.yaml`).
 
 ```bash
+# mission (эталон clear)
 ./.venv/Scripts/python.exe scripts/ram_scout.py games/rushn_attack/missions/m1/reference/clear.fm2
+# shell (game over; не трогает mission scout / ram_resolve)
+./.venv/Scripts/python.exe scripts/ram_scout.py games/rushn_attack/reference/game_over_to_attract.fm2
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `fm2` | путь к FM2 |
+| `fm2` | shell или mission layout (см. выше) |
+| `--round` | id раунда (default: stem FM2); у shell — подкаталог `scout/<round>/` |
 | `--timeout` | лимит секунд FCEUX (default 600) |
-| `--no-ram-map` | не обновлять `ram_map.md` |
+| `--no-ram-map` | mission: не писать `ram_resolve` / `ram_map` |
 
 ---
 

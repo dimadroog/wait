@@ -150,11 +150,20 @@ CP5: mission_clear (flag)
 
 ## 3. Эталон и сегменты
 
-Пути относительно `games/rushn_attack/missions/m1/`.
+**Shell** (относительно `games/rushn_attack/`): клипы оболочки игры — title / game over.
 
 | Артефакт | Путь |
 | -------- | ---- |
-| FM2 эталона | `reference/clear.fm2` (+ research: `header.fm2`, `game_over_to_attract*.fm2`) |
+| FM2 game over → attract | `reference/game_over_to_attract*.fm2` |
+| Scout shell-раунда | `reference/scout/<round>/` (после `ram_scout`; не в git) |
+
+Якоря title / game over → [`env_config.yaml`](../games/rushn_attack/env_config.yaml) (`screen_phases`, `episode_end_title`).
+
+**Миссия m1** (относительно `games/rushn_attack/missions/m1/`):
+
+| Артефакт | Путь |
+| -------- | ---- |
+| FM2 эталона | `reference/clear.fm2` (+ research: `header.fm2`) |
 | Jsonl эталона | `reference/human_playthrough.jsonl` |
 | Manifest | `config/playthrough_manifest.yaml` (`head_save_states`, `train`/`inference`) |
 | Routes | `config/routes.yaml` |

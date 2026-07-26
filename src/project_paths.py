@@ -5,11 +5,12 @@ import os
 import shutil
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 import yaml
 
 ARTIFACT_KINDS = frozenset({"smoke", "bench"})
+ScoutScope = Literal["shell", "mission"]
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,43 +50,100 @@ def ram_resolve_path(mission: Path) -> Path:
     return mission / "config" / "ram_resolve.json"
 
 
+def game_reference_dir(game_id: str) -> Path:
+    """Shell-клипы и scout раундов оболочки: games/<game>/reference/."""
+    return game_dir(game_id) / "reference"
+
+
+def game_scout_dir(game_id: str, round_id: str) -> Path:
+    """Сырой scout shell-раунда: games/<game>/reference/scout/<round_id>/."""
+    safe = _safe_round_id(round_id)
+    return game_reference_dir(game_id) / "scout" / safe
+
+
+def game_ram_scout_jsonl_path(game_id: str, round_id: str) -> Path:
+    return game_scout_dir(game_id, round_id) / "ram_scout.jsonl"
+
+
+def game_ram_scout_candidates_path(game_id: str, round_id: str) -> Path:
+    return game_scout_dir(game_id, round_id) / "ram_scout_candidates.json"
+
+
+def _safe_round_id(round_id: str) -> str:
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in round_id.strip())
+    if not safe:
+        raise ValueError("round id must be non-empty")
+    return safe
+
+
+def _normalize_fm2_path(fm2_arg: str | Path) -> Path:
+    p = Path(fm2_arg)
+    if not p.is_absolute():
+        p = repo_root() / p
+    p = p.resolve()
+    if not p.is_file():
+        raise FileNotFoundError(f"FM2 not found: {p}")
+    if p.suffix.lower() != ".fm2":
+        raise ValueError(f"Not an FM2 file: {p}")
+    return p
+
+
 def resolve_mission_fm2(fm2_arg: str | Path) -> tuple[Path, str, Path]:
     """FM2 → (файл, game_id, каталог миссии).
 
     Ожидаемый layout: games/<game>/missions/<mission>/reference/<file>.fm2
     Относительные пути — от корня репозитория.
     """
-    p = Path(fm2_arg)
-    if not p.is_absolute():
-        p = repo_root() / p
-    p = p.resolve()
+    p, game_id, scope, mission = resolve_reference_fm2(fm2_arg)
+    if scope != "mission" or mission is None:
+        raise ValueError(
+            "FM2 path must be games/<game>/missions/<mission>/reference/<file>.fm2"
+        )
+    return p, game_id, mission
 
-    if not p.is_file():
-        raise FileNotFoundError(f"FM2 not found: {p}")
-    if p.suffix.lower() != ".fm2":
-        raise ValueError(f"Not an FM2 file: {p}")
+
+def resolve_reference_fm2(
+    fm2_arg: str | Path,
+) -> tuple[Path, str, ScoutScope, Path | None]:
+    """FM2 → (файл, game_id, scope, каталог миссии | None).
+
+    Допустимые layout:
+    - mission: games/<game>/missions/<mission>/reference/<file>.fm2
+    - shell:   games/<game>/reference/<file>.fm2
+    """
+    p = _normalize_fm2_path(fm2_arg)
 
     parts = p.parts
     try:
         games_idx = parts.index("games")
     except ValueError as e:
         raise ValueError(
-            "FM2 path must be games/<game>/missions/<mission>/reference/<file>.fm2"
+            "FM2 path must be games/<game>/reference/<file>.fm2 or "
+            "games/<game>/missions/<mission>/reference/<file>.fm2"
         ) from e
 
     tail = parts[games_idx + 1 :]
-    if len(tail) != 5 or tail[1] != "missions" or tail[3] != "reference":
-        raise ValueError(
-            "FM2 path must be games/<game>/missions/<mission>/reference/<file>.fm2"
-        )
+    # games/<g>/reference/<file>.fm2
+    if len(tail) == 3 and tail[1] == "reference":
+        game_id = tail[0]
+        reference = game_reference_dir(game_id)
+        if p.parent.resolve() != reference.resolve():
+            raise ValueError(f"FM2 must be in {reference.as_posix()}: {p}")
+        return p, game_id, "shell", None
 
-    game_id, mission_id = tail[0], tail[2]
-    mission = mission_dir(game_id, mission_id)
-    reference = mission / "reference"
-    if p.parent.resolve() != reference.resolve():
-        raise ValueError(f"FM2 must be in {reference.as_posix()}: {p}")
+    # games/<g>/missions/<m>/reference/<file>.fm2
+    if len(tail) == 5 and tail[1] == "missions" and tail[3] == "reference":
+        game_id, mission_id = tail[0], tail[2]
+        mission = mission_dir(game_id, mission_id)
+        reference = mission / "reference"
+        if p.parent.resolve() != reference.resolve():
+            raise ValueError(f"FM2 must be in {reference.as_posix()}: {p}")
+        return p, game_id, "mission", mission
 
-    return p, game_id, mission
+    raise ValueError(
+        "FM2 path must be games/<game>/reference/<file>.fm2 or "
+        "games/<game>/missions/<mission>/reference/<file>.fm2"
+    )
 
 
 def resolve_rom(game_id: str) -> Path:

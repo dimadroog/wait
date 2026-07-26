@@ -498,10 +498,10 @@ env = make_env("<game_id>", "<mission_id>")
 ### Добавление новой игры
 
 1. `games/<game_id>/game.yaml` + `rom/`.
-2. `games/<game_id>/env_config.yaml` — `actions`, `lives`, опц. `death_mode` (`life_lost` \| `game_over`).
-3. `games/<game_id>/env/__init__.py` с `make_env()`.
-4. `missions/<mission_id>/` + `config/routes.yaml`.
-5. Эталон → `reference/` (в т.ч. `demos_for_bc/`), `save_states/`.
+2. `games/<game_id>/env/__init__.py` с `make_env()`; черновик `env_config.yaml` (`actions`, `lives`, опц. `death_mode`).
+3. **Shell-раунды** разведки RAM: короткие FM2 в `games/<game_id>/reference/` (title, game over) → `scripts/ram_scout.py` → якоря в `env_config.yaml` (`screen_phases`, конец эпизода). См. [раунд разведки RAM](GLOSSARY.md#раунд-разведки-ram).
+4. `missions/<mission_id>/` + заготовка `config/routes.yaml`.
+5. Эталон миссии → `missions/<mission_id>/reference/clear.fm2` → `ram_scout` → `build_playthrough` (`human_playthrough.jsonl`, save states, `demos_for_bc/`).
 6. Тот же FCEUX 2.6.6 portable на весь проект.
 
 ---

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RAM-разведка: FM2 в FCEUX → jsonl → candidates → авто-resolve → ram_map.md."""
+"""RAM-разведка: FM2 в FCEUX → jsonl → candidates → (mission) авто-resolve → ram_map.md."""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +17,9 @@ sys.path.insert(0, str(_REPO / "src"))
 
 from project_paths import (  # noqa: E402
     count_fm2_frames,
+    game_ram_scout_candidates_path,
+    game_ram_scout_jsonl_path,
+    game_scout_dir,
     mission_scout_dir,
     parse_fm2_rom_basename,
     ram_resolve_path,
@@ -24,7 +27,7 @@ from project_paths import (  # noqa: E402
     ram_scout_jsonl_path,
     repo_root,
     resolve_fceux_binary,
-    resolve_mission_fm2,
+    resolve_reference_fm2,
     resolve_rom,
 )
 from ram_resolve import run_resolve  # noqa: E402
@@ -100,27 +103,58 @@ def _run_fceux(staged_fm2: Path, staged_rom: Path, config_path: Path, timeout_se
             raise RuntimeError(f"FCEUX exited with code {proc.returncode}")
 
 
+def _write_candidates_only(jsonl: Path, candidates: Path) -> None:
+    from ram_resolve import build_candidates, collect_stats, load_frames, write_candidates
+
+    frames = load_frames(jsonl)
+    stats = collect_stats(frames)
+    write_candidates(candidates, len(frames), build_candidates(stats))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="RAM scout via FM2 replay")
     parser.add_argument(
         "fm2",
-        help="путь к FM2: games/<game>/missions/<mission>/reference/<file>.fm2",
+        help=(
+            "путь к FM2: games/<game>/reference/<file>.fm2 (shell) или "
+            "games/<game>/missions/<mission>/reference/<file>.fm2 (mission)"
+        ),
+    )
+    parser.add_argument(
+        "--round",
+        default=None,
+        help="id раунда (default: stem имени FM2); для shell — подкаталог scout/<round>/",
     )
     parser.add_argument("--timeout", type=float, default=600.0, help="секунд на проигрывание")
-    parser.add_argument("--no-ram-map", action="store_true", help="не обновлять ram_map.md")
+    parser.add_argument(
+        "--no-ram-map",
+        action="store_true",
+        help="не обновлять ram_resolve/ram_map (mission); для shell всегда только сырой лог",
+    )
     args = parser.parse_args()
 
     try:
-        fm2, game_id, mission = resolve_mission_fm2(args.fm2)
+        fm2, game_id, scope, mission = resolve_reference_fm2(args.fm2)
     except (FileNotFoundError, ValueError) as e:
         raise SystemExit(str(e)) from e
 
+    round_id = args.round if args.round is not None else fm2.stem
     rom = resolve_rom(game_id)
-    mission_scout_dir(mission).mkdir(parents=True, exist_ok=True)
-    ram_resolve_path(mission).parent.mkdir(parents=True, exist_ok=True)
 
-    jsonl = ram_scout_jsonl_path(mission)
-    candidates = ram_scout_candidates_path(mission)
+    if scope == "shell":
+        scout_dir = game_scout_dir(game_id, round_id)
+        scout_dir.mkdir(parents=True, exist_ok=True)
+        jsonl = game_ram_scout_jsonl_path(game_id, round_id)
+        candidates = game_ram_scout_candidates_path(game_id, round_id)
+        do_resolve = False
+    else:
+        assert mission is not None
+        mission_scout_dir(mission).mkdir(parents=True, exist_ok=True)
+        ram_resolve_path(mission).parent.mkdir(parents=True, exist_ok=True)
+        jsonl = ram_scout_jsonl_path(mission)
+        candidates = ram_scout_candidates_path(mission)
+        do_resolve = not args.no_ram_map
+
     staging = repo_root() / "tmp" / "ram_scout" / "staging"
     config_path = repo_root() / "tmp" / "ram_scout" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,23 +174,22 @@ def main() -> None:
     )
 
     print(f"FM2: {fm2} ({frames} frames)")
+    print(f"Scope: {scope}  round: {round_id}")
     print(f"Staging: {staging}")
     print(f"Output: {jsonl}")
     print("Starting FCEUX...")
 
     _run_fceux(staged_fm2, staged_rom, config_path, timeout)
 
-    picks = run_resolve(jsonl, mission) if not args.no_ram_map else []
-    if args.no_ram_map:
-        from ram_resolve import build_candidates, collect_stats, load_frames, write_candidates
-
-        frames = load_frames(jsonl)
-        stats = collect_stats(frames)
-        write_candidates(candidates, len(frames), build_candidates(stats))
+    picks = []
+    if do_resolve:
+        picks = run_resolve(jsonl, mission)
+    else:
+        _write_candidates_only(jsonl, candidates)
 
     print(f"Done: {jsonl}")
     print(f"Candidates: {candidates}")
-    if not args.no_ram_map:
+    if do_resolve:
         resolve_json = ram_resolve_path(mission)
         print(f"Resolve: {resolve_json}")
         for p in picks:
@@ -165,6 +198,8 @@ def main() -> None:
             else:
                 print(f"  {p.name}: unresolved")
         print(f"RAM map: {mission / 'ram_map.md'}")
+    elif scope == "shell":
+        print("Shell round: raw scout only (copy anchors into env_config.yaml manually)")
 
 
 if __name__ == "__main__":

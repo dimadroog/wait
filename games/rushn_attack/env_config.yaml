@@ -23,13 +23,14 @@ death_mode: game_over
 # Игнорировать dip lives на смене комнаты (streak ≤3); confirm должен быть больше.
 death_confirm_steps: 4
 
-# Конец попытки (train + inference): durable GAME OVER freeze.
-# Поля title_* — якоря для отличия GO от title standing (y∉title_ys).
+# Конец попытки (train + inference): durable game over freeze.
+# Поля title_* — якоря для отличия game over от title standing (y∉title_ys).
+# Shell-клипы: games/rushn_attack/reference/game_over_to_attract*.fm2
 episode_end_title:
   rooms: ["0x00"]
   title_x: 129
   title_ys: [131, 133, 135]
-  # Стоп на экране GAME OVER до title/attract (TASK_STOP_TITLE_ATTRACT).
+  # Стоп на экране game over до title/attract (TASK_STOP_TITLE_ATTRACT).
   game_over_freeze_confirm_steps: 32
   # Гейт «попытка началась» для freeze (не стопить чистый power-on intro).
   min_attempt_steps: 120

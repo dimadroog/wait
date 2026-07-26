@@ -169,6 +169,19 @@
 
 Не путать с картинкой на [PPU](#ppu) и с пиксельным [наблюдением](#obs) для нейросети.
 
+### Раунд разведки RAM
+
+<a id="раунд-разведки-ram"></a>
+
+**Раунд разведки RAM** — один прогон `scripts/ram_scout.py` по одному [FM2](#fm2) с явной целью (например «якоря title» или «карта адресов эталона миссии»). Scope:
+
+| Scope | Вход | Выход | Куда переносят выводы |
+| ----- | ---- | ----- | --------------------- |
+| **shell** | `games/<game>/reference/*.fm2` (title, game over) | `games/<game>/reference/scout/<round>/` | вручную в `env_config.yaml` |
+| **mission** | `games/<game>/missions/<m>/reference/*.fm2` (обычно `clear.fm2`) | плоский `missions/<m>/reference/scout/` + `ram_resolve.json` / `ram_map.md` | конфиги миссии / [эталон](#etalon) |
+
+Shell-раунд **не** перезаписывает scout и `ram_resolve` миссии. Id раунда — флаг `--round` (по умолчанию stem имени FM2). См. [SCRIPTS.md § ram_scout](SCRIPTS.md#ram_scoutpy), [DESIGN.md](DESIGN.md) (дерево `games/<id>/reference/`).
+
 ### Пул поколения
 
 **Пул поколения** — из каких попыток [inference](#inference) система выбирает кандидатов в [achievements](#achievement-inference) и материал [editorial](#editorial). Раскладка: каталог `logs/genN/` в миссии (attempts, inputs, editorial playlist), согласованный с [поколением модели](#поколение-модели-genn) `models/genN.zip` (`model_version` = stem без `.zip`). Сравнивать прогресс и номинации нужно между поколениями, а не между календарными датами.

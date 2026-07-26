@@ -66,6 +66,7 @@
 | `scripts/` | CLI |
 | `fceux/lua/`, `fceux/profiles/`, `fceux/runtime.yaml`, `fceux/README.md` | Контракт эмулятора |
 | `games/<game>/game.yaml`, `env_config.yaml`, `env/` | Плагин игры |
+| `games/<game>/reference/*.fm2` | Shell-клипы (title / game over); в git при наличии |
 | `games/…/missions/…/config/`, `ram_map.md` | CP, rewards, heuristics (в git — контракты; данные эталона — часто B) |
 | `requirements.txt`, `.gitignore` | Зависимости / исключения B |
 
@@ -75,8 +76,9 @@
 | ---- | ---------- | -------------- |
 | `fceux/portable/` | FCEUX 2.6.6 win64 | распаковка ([fceux/README.md](../fceux/README.md)) |
 | `games/<game>/rom/*.nes` | ROM | вручную (legal) |
-| `games/…/reference/` | FM2, jsonl, scout, demos_for_bc | запись эталона |
-| `games/…/config/` runtime | `ram_resolve.json`, `inference.*` | scout / build |
+| `games/<game>/reference/scout/` | сырой scout shell-раундов | `ram_scout` (scope shell) |
+| `games/…/missions/…/reference/` | FM2 эталона, jsonl, scout, demos_for_bc | запись эталона миссии |
+| `games/…/config/` runtime | `ram_resolve.json`, `inference.*` | mission scout / build |
 | `games/…/save_states/`, `models/`, `logs/`, `tasks/`; `reference/demos_for_bc/` | ML / эталон | train / inference / BC |
 | `.venv/` | pip-пакеты | `requirements.txt` |
 | `tmp/` | IPC FCEUX ↔ Python | runtime |
@@ -102,10 +104,11 @@ wait/
 │   ├── env_config.yaml
 │   ├── env/
 │   ├── rom/
+│   ├── reference/               # shell: title / game over FM2 + scout/<round>/
 │   └── missions/<mission_id>/
 │       ├── ram_map.md
 │       ├── config/
-│       ├── reference/           # FM2, jsonl, scout/, demos_for_bc/
+│       ├── reference/           # эталон миссии: clear.fm2, jsonl, scout/, demos_for_bc/
 │       ├── save_states/
 │       ├── models/
 │       ├── logs/
