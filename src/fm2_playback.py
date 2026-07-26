@@ -206,7 +206,7 @@ def probe_movie_playback_ppu(
     probe_at_mf: int = 8,
     timeout_sec: float = 90.0,
 ) -> dict:
-    """RAM + PPU heuristic @ mf (регрессия G0: не title на inference_cp0)."""
+    """RAM + PPU heuristic @ mf (не title на gameplay-start save state)."""
     shot = tmp_dir / f"ppu_mf{probe_at_mf}.png"
     result = probe_movie_playback_visual(
         fm2_path,

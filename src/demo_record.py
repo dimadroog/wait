@@ -49,7 +49,7 @@ def record_segment(
     frame_skip = int(base.frame_skip)
     start = int(seg["frame_start"])
     end = int(seg["frame_end"])
-    save_state = str(seg.get("save_state", "save_states/cp0.fc0"))
+    save_state = str(seg.get("save_state", "save_states/cp_gameplay0.fc0"))
     action_strings = base.action_strings
 
     obs, _info = env.reset(options={"save_state": save_state})

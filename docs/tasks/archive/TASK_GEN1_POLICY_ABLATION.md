@@ -1,7 +1,8 @@
 # TASK_GEN1_POLICY_ABLATION — однофакторный разбор noop-политики gen1
 
 **Статус:** done (закрыто 2026-07-22)  
-**Итог:** ablation H0–H5 измерен; канон routes = H3; CLI `summarize_inference_actions` для `noop_frac`.  
+**Итог:** ablation H0–H5 измерен; канон routes = H3.  
+**Позже снято (policy-separation cleanup):** CLI `summarize_inference_actions` / `prefer_embedded_actions` — не использовать как текущий путь.  
 **Приоритет:** high  
 **Ветка:** `task/gen1-policy-ablation` — проработку этой задачи выполнять только в этой ветке.  
 **Зависит от:** [TRAIN_ANALYSIS.md](../../TRAIN_ANALYSIS.md) (чтение лога); исходный `models/gen0.zip` как контроль  

@@ -37,7 +37,7 @@ def main() -> None:
     parser.add_argument(
         "--save-state",
         default=None,
-        help="путь к .fc0 для embed (default: save_states/inference_cp0.fc0)",
+        help="путь к .fc0 для embed (default: save_states/cp_gameplay0.fc0)",
     )
     args = parser.parse_args()
 
@@ -57,7 +57,7 @@ def main() -> None:
             save_state_path = mission / args.save_state
     else:
         try:
-            rel = resolve_inference_reset_state(mission, cp_index=0)
+            rel = resolve_inference_reset_state(mission)
         except FileNotFoundError as exc:
             raise SystemExit(str(exc)) from exc
         save_state_path = mission / rel

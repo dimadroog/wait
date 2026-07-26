@@ -10,6 +10,22 @@ transition_rooms:
   - "0x02"
   - "0x01"
 
+# Критерий кадра «управляемый gameplay» (не title/fade). Ядро только интерпретирует.
+gameplay_start:
+  exclude_transition_rooms: true
+  lives_min: 1
+  lives_max: 9
+  # move_or_attack — нужен direction/A/B; одного start недостаточно (intro).
+  require_input: move_or_attack
+
+# Дефолтный блок rewards при генерации routes.yaml (миссия может переопределить вручную).
+rewards_default:
+  checkpoint_bonus: 100
+  death_penalty: 40
+  mission_clear_bonus: 1000
+  step_penalty: 0.005
+  kill_bonus: 0
+
 checkpoint_names:
   - start
   - first_screen

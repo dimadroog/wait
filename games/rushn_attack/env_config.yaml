@@ -18,9 +18,7 @@ lives:
   max: 9
 
 # H3: штрафы за каждую потерю жизни; выход эпизода RnA — только game-over-freeze
-# (не бюджет N смертей). A/B со старым life_lost: --death-mode life_lost
-# (ядро BaseNesEnv; RnA всё равно не terminated на death —
-# см. RushnAttackEnv._terminate_on_death).
+# (не бюджет N смертей).
 death_mode: game_over
 # Игнорировать dip lives на смене комнаты (streak ≤3); confirm должен быть больше.
 death_confirm_steps: 4
@@ -39,3 +37,32 @@ episode_end_title:
   # Truncate grace у max_episode_steps.
   truncate_grace_steps: 40
   truncate_cool_steps: 16
+
+# Детектор фазы экрана → info.phase_id (TASK_POLICY_SEPARATION).
+# Ядро только читает строку; match-числа только здесь (плагин).
+# Порядок: gameplay (room≥level_room_min или уже был уровень) → title (pose) → иначе intro.
+screen_phases:
+  level_room_min: "0x08"
+  title:
+    rooms: ["0x00"]
+    x: 129
+    ys: [131, 133, 135]
+
+# Multi-head: phase_id → head_id (+ маски действий). Один models/genN.zip.
+# title — жать start; intro — только noop;
+# gameplay / bossfight — все действия кроме start (чтобы не ловить паузу в уровне).
+# Детектор bossfight — later.
+policy_heads:
+  default_head: gameplay
+  heads: [title, intro, gameplay, bossfight]
+  phase_to_head:
+    title: title
+    intro: intro
+    gameplay: gameplay
+    bossfight: bossfight
+  action_masks:
+    title: ["", "start"]
+    intro: [""]
+    gameplay: ["", "left", "right", "down", "up", "right+up", "left+up", "A", "B"]
+    bossfight: ["", "left", "right", "down", "up", "right+up", "left+up", "A", "B"]
+

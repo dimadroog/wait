@@ -18,12 +18,18 @@ def main() -> None:
         fm2 = sys.argv[1]
 
     _, game_id, mission = resolve_mission_fm2(fm2)
-    state = mission / "save_states" / "cp1.fc0"
+    state = mission / "save_states" / "cp_gameplay1.fc0"
     if not state.is_file():
-        raise SystemExit(f"Missing {state}. Run build_playthrough.py first.")
+        state = mission / "save_states" / "cp_gameplay0.fc0"
+    if not state.is_file():
+        raise SystemExit(
+            f"Missing save state under {mission / 'save_states'}. "
+            "Run build_playthrough.py --states-only first."
+        )
+    rel = state.relative_to(mission).as_posix()
 
     with FceuxBridge(mission, game_id, frame_skip=4) as bridge:
-        bridge.load_state("save_states/cp1.fc0")
+        bridge.load_state(rel)
         pid = bridge._proc.pid if bridge._proc else None
         bridge.ping()
         print("PING ok (cold start)")
@@ -35,7 +41,7 @@ def main() -> None:
         ram1 = bridge.get_ram()
         print(f"RAM@step:  room={ram1['room']} x={ram1['x']} y={ram1['y']}")
 
-        bridge.load_state("save_states/cp1.fc0")
+        bridge.load_state(rel)
         if bridge._proc and pid is not None and bridge._proc.pid != pid:
             raise SystemExit("Hot reset failed: FCEUX process was restarted")
         ram_hot = bridge.get_ram()

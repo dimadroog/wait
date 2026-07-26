@@ -143,6 +143,7 @@ Launcher: `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Over
 | Создание env | **Abstract Factory** | `src/env/loader.py` + `games/.../env/` | `make_env()`, `build_vec_env()` |
 | Награды, метрики на env | **Decorator** | `src/rewards/` | `CheckpointRewardWrapper` |
 | Варианты правил | **Strategy** | YAML + тонкий evaluator | `routes.yaml`, `achievements.yaml` |
+| Несколько политик по фазе экрана | **Multi-head Policy** | ядро: `src/train/multi_head_policy.py`, `phase_heads.py`; сигнал фазы — из env | shared backbone + головы по [`phase_id`](GLOSSARY.md#фаза-экрана-phase_id); детектор фазы — YAML/hooks плагина |
 | Общий цикл env, hooks | **Template Method** | `BaseNesEnv` + override в плагине | `_death_occurred()` |
 | CLI / smoke | **Facade** | `scripts/` | `smoke_bridge.py`, `run_inference` entry |
 | Цепочка артефактов | **Pipeline** | `scripts/` → `src/` | scout → build → train → inference |
@@ -164,7 +165,7 @@ CP, heuristics, профили наград — в `games/.../config/` (мисс
 В `src/` — только интерпретатор (`trigger_matches`, `mission_complete_heuristic`, `playthrough_build`, загрузчики YAML).
 
 **Плохо:** константы комнат, CP-имена или эвристики сборки эталона в `src/`.  
-**Хорошо:** `routes.yaml` (runtime CP); `etalon_build.yaml` + ключ в `game.yaml` (сборка эталона из FM2).
+**Хорошо:** `routes.yaml` (runtime CP); `etalon_build.yaml` + ключ в `game.yaml` (сборка эталона из FM2: transition_rooms, checkpoint_heuristics, `gameplay_start`, `rewards_default`).
 
 ### Именование в коде
 
@@ -178,7 +179,7 @@ CP, heuristics, профили наград — в `games/.../config/` (мисс
 
 Ориентиры: PEP 8, PEP 20 («Explicit is better than implicit»), выразительные имена (Clean Code).  
 Функция — действие или результат; переменная — роль или значение; класс — сущность.  
-Ясность важнее краткости. Roadmap ML («Phase 0», «Phase 1»…) — только в `ML_CONCEPT.md` / `README.md`, **не** в идентификаторах кода.
+Ясность важнее краткости. Roadmap ML («Phase 0», «Phase 1»…) — только в `ML_CONCEPT.md` / `README.md`, **не** в идентификаторах кода. Идентификатор [фазы экрана](GLOSSARY.md#фаза-экрана-phase_id) (`phase_id`, значения вроде `title` / `gameplay`) — предметная область runtime, не номер этапа плана.
 
 **Плохо:** `if game_id == "rushn_attack": ...` в ядре.  
 **Хорошо:** правило в YAML плагина; ядро читает и интерпретирует.
@@ -219,14 +220,16 @@ Experiment-ветки — для проверки гипотез; в main и в 
 │
 ├─ Только для одной игры / миссии?
 │   ├─ Правила, CP, heuristics (runtime) → games/.../missions/.../config/*.yaml (Strategy)
-│   ├─ Heuristics сборки эталона → games/<game>/etalon_build.yaml
+│   ├─ Heuristics / gameplay_start / rewards_default эталона → games/<game>/etalon_build.yaml
 │   ├─ Действия, lives, env-параметры → games/.../env_config.yaml
+│   ├─ Детектор фазы экрана (phase_id) → YAML + hooks в games/<game>/env/
 │   └─ Фабрика env, override hooks → games/<game>/env/__init__.py
 │
 ├─ Общий для всех игр?
 │   ├─ Новый внешний процесс / протокол → src/*_bridge.py (Adapter)
 │   ├─ Обвязка поведения env → src/rewards/ или wrapper (Decorator)
 │   ├─ Общий алгоритм env → src/env/base_nes_env.py (Template Method)
+│   ├─ Multi-head policy / phase→head → src/train/ (Multi-head Policy)
 │   └─ Train / inference / export → src/train/, src/stream/, src/
 │
 └─ Точка входа / smoke / benchmark → scripts/ (Facade)
@@ -240,7 +243,9 @@ Experiment-ветки — для проверки гипотез; в main и в 
 | ----------- | ------------ | ------ |
 | `if game_id` в `src/` | Ядро раздувается с каждой игрой | YAML Strategy или hook в плагине |
 | Игровые room/CP-константы в `src/` | Нарушает Pluggable Core | `etalon_build.yaml` / `routes.yaml` в плагине |
-| Имена `phaseN_*`, `phaseN.yaml` в коде | Путает roadmap и runtime | доменные имена (`etalon_build`, `playthrough`, …) |
+| Имена `phaseN_*`, `phaseN.yaml` в коде (roadmap) | Путает план ML и runtime | доменные имена (`etalon_build`, `playthrough`, …); не путать с [`phase_id`](GLOSSARY.md#фаза-экрана-phase_id) экрана |
+| Детектор title/cutscene/boss в `src/train/` | Игро-специфика в ядре | YAML/hooks плагина → нейтральный `phase_id`; ядро только выбирает голову |
+| Несколько `genN/*.zip` + bundle router как продуктовый путь | Ломает «поколение = один zip»; дубли train | Multi-head в одном `models/genN.zip` ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)) |
 | Награды в `BaseNesEnv.step` | Нельзя менять профиль без форка env | `CheckpointRewardWrapper` |
 | Бизнес-логика в `scripts/` | Дубли, нет переиспользования | `src/` + тонкий Facade |
 | Копия train под игру | Два контура обучения | Один `train_ppo.py` + `make_env` |

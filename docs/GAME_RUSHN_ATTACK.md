@@ -61,10 +61,12 @@ noop | left | right | down | up | right+up | left+up | A | B | start
 
 - **B** — атака ножом.
 - **A** — использование оружия, когда доступно.
-- **start** — кнопка Start (меню / title); в Discrete action space для будущих политик.
+- **start** — кнопка Start (меню / title); в Discrete action space для Multi-head intro-головы.
 - Диагонали — основа геймплея; прыжки: `up`, `right+up`, `left+up`.
 
 Список в `games/rushn_attack/env_config.yaml`.
+
+Там же: `screen_phases` → `info.phase_id` (`title` / `intro` / `gameplay`) и `policy_heads` (Multi-head: `intro` + `gameplay`, маска intro = noop+start). Контракт — [TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md).
 
 ### Конец эпизода (`death_mode`)
 
@@ -83,7 +85,7 @@ noop | left | right | down | up | right+up | left+up | A | B | start
 
 `info.terminate_reason` при конце по freeze: `game_over_screen` (в ядре для других игр также возможен `death`; у RnA death не режет).
 
-Smoke (random, `save_states/cp0.fc0`, 2026-07-18, исторический): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
+Smoke (random, `save_states/cp_gameplay0.fc0`, 2026-07-18, исторический): `life_lost` → `ep_len=2`; `game_over` → **≥300** steps без terminate после 1-й смерти.
 
 ---
 
@@ -152,14 +154,13 @@ CP5: mission_clear (flag)
 
 | Артефакт | Путь |
 | -------- | ---- |
-| FM2 эталона | `reference/user_clear_v1.fm2` |
+| FM2 эталона | `reference/clear.fm2` (+ research: `header.fm2`, `game_over_to_attract*.fm2`) |
 | Jsonl эталона | `reference/human_playthrough.jsonl` |
-| Manifest | `config/playthrough_manifest.yaml` |
+| Manifest | `config/playthrough_manifest.yaml` (`head_save_states`, `train`/`inference`) |
 | Routes | `config/routes.yaml` |
-| Save states | `save_states/cpN.fc*` |
-| Demos (BC) | `reference/demos_for_bc/seg_*.npz` |
+| Save states | `save_states/cp_<head><n>.fc0` из `head_save_states`; канон train/inference = `cp_gameplay0` |
+| Demos (BC) | `reference/demos_for_bc/` (по необходимости) |
 | Поколения модели | `models/genN.zip` |
-| Inference start | `save_states/inference_cp0.fc0` |
 
 Общий контракт записи / IPC — [ML_CONCEPT.md §7](ML_CONCEPT.md#7-эталонное-прохождение-и-дообучение).
 
@@ -180,37 +181,19 @@ CP5: mission_clear (flag)
 ### `config/playthrough_manifest.yaml` (фрагмент)
 
 ```yaml
-playthrough_id: user_clear_v1
+playthrough_id: clear
 game: rushn_attack
-mission: 1
-emulator: fceux
-fceux_version: "2.6.6"
-fm2_file: reference/user_clear_v1.fm2
-
-segments:
-  - id: seg_001
-    name: start_to_first_ladder
-    checkpoint_from: 0
-    checkpoint_to: 1
-    room_ids: [0x01, 0x02]
-    demo_file: reference/demos_for_bc/seg_001.npz
-    save_state: save_states/cp0.fc*
-
-  - id: seg_002
-    name: ladder_section
-    checkpoint_from: 1
-    checkpoint_to: 2
-    room_ids: [0x03, 0x04]
-    demo_file: reference/demos_for_bc/seg_002.npz
-    save_state: save_states/cp1.fc*
-
-  - id: seg_003
-    name: mid_mission_alley
-    checkpoint_from: 2
-    checkpoint_to: 3
-    room_ids: [0x05, 0x06]
-    demo_file: reference/demos_for_bc/seg_003.npz
-    save_state: save_states/cp2.fc*
+mission: "1"
+fm2_file: reference/clear.fm2
+head_save_states:
+  gameplay:
+    - id: cp_gameplay0
+      frame: 1243
+      label: level_start
+train:
+  save_state: save_states/cp_gameplay0.fc0
+inference:
+  save_state: save_states/cp_gameplay0.fc0
 ```
 
 ### `config/routes.yaml` (фрагмент)

@@ -31,7 +31,8 @@ def _make_base(
             game_id="rushn_attack",
             mission_id="m1",
             action_strings=("noop", "right"),
-            save_state="save_states/cp0.fc0",
+            save_state="save_states/cp_gameplay0.fc0",
+
             session_id="test_death",
             death_mode=death_mode,
             death_confirm_steps=death_confirm_steps,
@@ -68,7 +69,8 @@ def _make_rna(
             game_id="rushn_attack",
             mission_id="m1",
             action_strings=("noop", "right"),
-            save_state="save_states/cp0.fc0",
+            save_state="save_states/cp_gameplay0.fc0",
+
             session_id="test_death",
             death_mode=death_mode,
             death_confirm_steps=death_confirm_steps,

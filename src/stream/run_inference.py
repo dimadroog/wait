@@ -1,4 +1,4 @@
-"""Локальный inference: model.predict() + logs/YYYYMMDD/*.jsonl + playlist."""
+"""Локальный inference: PPO / Multi-head predict + logs/YYYYMMDD/*.jsonl + playlist."""
 from __future__ import annotations
 
 import argparse
@@ -32,6 +32,12 @@ from inference_input_logger import InferenceInputLogger  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
 from jsonl_logs import dated_day_dir, iter_jsonl, load_jsonl_window  # noqa: E402
 from project_paths import mission_dir, repo_root  # noqa: E402
+from train.phase_aware_ppo import PhaseAwarePPO  # noqa: E402
+from train.phase_heads import (  # noqa: E402
+    load_policy_heads_spec,
+    predict_with_phase,
+    resolve_model_zip,
+)
 
 
 def _overlay_path(session_id: str) -> Path:
@@ -111,6 +117,7 @@ def _run_one_episode(
     *,
     env: Any,
     model: PPO,
+    heads_spec: Any,
     ep: int,
     args: argparse.Namespace,
     mission: Path,
@@ -127,9 +134,20 @@ def _run_one_episode(
     last_info = info
     steps = 0
     step_log: list[dict] = []
+    heads_used: set[str] = set()
+    prev_head_id: str | None = None
+    head_switches = 0
 
     while not done and steps < args.max_steps:
-        action, _ = model.predict(obs, deterministic=not args.stochastic)
+        phase_id = info.get("phase_id")
+        action, _, head_id = predict_with_phase(
+            model, obs, phase_id, heads_spec, deterministic=not args.stochastic
+        )
+        heads_used.add(head_id)
+        if prev_head_id is not None and head_id != prev_head_id:
+            head_switches += 1
+        prev_head_id = head_id
+
         obs, _reward, terminated, truncated, info = env.step(int(action))
         last_info = info
         steps += 1
@@ -138,7 +156,14 @@ def _run_one_episode(
         action_str = info.get("action", "")
         frame = int((info.get("ram") or {}).get("frame", 0))
         input_logger.log_step(step=steps - 1, frame=frame, action=action_str)
-        step_log.append({"action": action_str, "frame": frame})
+        step_log.append(
+            {
+                "action": action_str,
+                "frame": frame,
+                "phase_id": phase_id,
+                "head_id": head_id,
+            }
+        )
 
     fm2_path: Path | None = None
     # С плейлистом канон имён — NN_slug_MMM; epNNNN не пишем в logs/YYYYMMDD/.
@@ -190,7 +215,9 @@ def _run_one_episode(
     print(
         f"episode {ep}: steps={steps} max_cp={last_info.get('max_checkpoint')} "
         f"reward={last_info.get('episode_reward', 0):.2f} died={last_info.get('died')} "
-        f"tags={record.get('tags', [])}"
+        f"tags={record.get('tags', [])} "
+        f"heads={sorted(heads_used)} switches={head_switches} "
+        f"end_phase={last_info.get('phase_id')}"
     )
 
 
@@ -211,31 +238,44 @@ def run_inference(args: argparse.Namespace) -> None:
         )
 
     mission = mission_dir(args.game, args.mission)
-    model_path = Path(args.model)
-    if not model_path.is_absolute():
-        candidate = mission / model_path
-        model_path = candidate if candidate.is_file() else mission / "models" / model_path
-    if not model_path.is_file() and not str(model_path).endswith(".zip"):
-        model_path = model_path.with_suffix(".zip")
-    if not model_path.is_file():
-        raise SystemExit(f"Model not found: {model_path}")
+    try:
+        model_path = resolve_model_zip(mission, args.model)
+    except FileNotFoundError as exc:
+        raise SystemExit(str(exc)) from exc
 
     save_state = args.save_state
     if not save_state:
         try:
-            save_state = resolve_inference_reset_state(mission, cp_index=0)
+            save_state = resolve_inference_reset_state(mission)
         except FileNotFoundError as exc:
             raise SystemExit(str(exc)) from exc
         if not (mission / save_state).is_file():
             raise SystemExit(
                 f"Inference save state not found: {mission / save_state}. "
-                "Run scripts/build_inference_states.py"
+                "Run: scripts/build_playthrough.py … --states-only"
             )
 
     profile = load_fceux_profile(args.fceux_profile)
     show_window = args.show_window or not bool(profile.get("headless", True))
     turbo = profile.get("turbo", False) if args.turbo is None else args.turbo
 
+    heads_spec = load_policy_heads_spec(args.game)
+    if heads_spec is None:
+        model = PPO.load(str(model_path.with_suffix("")), device="cpu")
+    else:
+        try:
+            model = PhaseAwarePPO.load(str(model_path.with_suffix("")), device="cpu")
+        except Exception as exc:
+            raise SystemExit(
+                f"policy_heads is set in env_config but model is not Multi-head PhaseAwarePPO: {exc}. "
+                "Train a new genN with Multi-head (no single-head CnnPolicy fallback)."
+            ) from exc
+        if not hasattr(model.policy, "set_active_head"):
+            raise SystemExit(
+                "policy_heads is set but loaded policy has no set_active_head; "
+                "train a Multi-head genN"
+            )
+        model.heads_spec = heads_spec
     model_version = args.model_version or model_path.stem
     logs_dir = mission / "logs"
     attempt_logger = AttemptLogger(logs_dir)
@@ -255,7 +295,6 @@ def run_inference(args: argparse.Namespace) -> None:
         reward_profile=args.reward_profile,
         show_window=show_window,
     )
-    model = PPO.load(str(model_path.with_suffix("")), device="cpu")
 
     try:
         if target_hours is None:
@@ -264,6 +303,7 @@ def run_inference(args: argparse.Namespace) -> None:
                 _run_one_episode(
                     env=env,
                     model=model,
+                    heads_spec=heads_spec,
                     ep=next_ep + offset,
                     args=args,
                     mission=mission,
@@ -328,6 +368,7 @@ def run_inference(args: argparse.Namespace) -> None:
                     _run_one_episode(
                         env=env,
                         model=model,
+                    heads_spec=heads_spec,
                         ep=next_ep + offset,
                         args=args,
                         mission=mission,
@@ -367,7 +408,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Local PPO inference")
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
-    parser.add_argument("--model", default="gen0.zip", help="models/gen0.zip или имя файла")
+    parser.add_argument(
+        "--model",
+        default="gen0.zip",
+        help="models/gen0.zip или имя файла в models/",
+    )
     parser.add_argument(
         "--episodes",
         type=int,

@@ -8,8 +8,13 @@ from pathlib import Path
 import yaml
 
 from etalon_build_config import (
+    REQUIRE_INPUT_MOVE_OR_ATTACK,
+    REQUIRE_INPUT_NONE,
+    GameplayStartRule,
     checkpoint_heuristics_from_etalon_build,
     checkpoint_names_from_etalon_build,
+    gameplay_start_rule_from_etalon_build,
+    rewards_default_from_etalon_build,
     segment_count_from_etalon_build,
     transition_rooms_from_etalon_build,
 )
@@ -153,18 +158,69 @@ def checkpoint_triggers(
     return triggers[:n]
 
 
-def plan_segments(total_frames: int, n: int) -> list[dict]:
-    """N сегментов → CP0..CP(n-1), границы по кадрам."""
+def plan_segments(
+    total_frames: int,
+    n: int,
+    *,
+    gameplay_start_frame: int | None = None,
+) -> list[dict]:
+    """N сегментов по кадрам эталона.
+
+    Если задан ``gameplay_start_frame`` (>1):
+      - seg_001 = [1 .. gp-1] — до геймплея (title/intro);
+
+      - seg_002..seg_N = равные доли [gp .. total] — прогресс миссии
+        (save ``cp0`` .. ``cp{N-2}``).
+
+    Иначе — прежнее равное деление всего фильма (legacy).
+    """
     if total_frames < n * 30:
         raise ValueError(f"Too few frames ({total_frames}) for {n} segments")
-    chunk = total_frames // n
-    segments: list[dict] = []
-    for i in range(n):
-        start = 1 if i == 0 else i * chunk + 1
-        end = total_frames if i == n - 1 else (i + 1) * chunk
+    gp = None if gameplay_start_frame is None else int(gameplay_start_frame)
+    if gp is None or gp <= 1:
+        chunk = total_frames // n
+        segments: list[dict] = []
+        for i in range(n):
+            start = 1 if i == 0 else i * chunk + 1
+            end = total_frames if i == n - 1 else (i + 1) * chunk
+            segments.append(
+                {
+                    "id": f"seg_{i + 1:03d}",
+                    "checkpoint_from": i,
+                    "checkpoint_to": i + 1,
+                    "frame_start": start,
+                    "frame_end": end,
+                }
+            )
+        return segments
+
+    if gp >= total_frames:
+        raise ValueError(
+            f"gameplay_start_frame ({gp}) must be < total_frames ({total_frames})"
+        )
+    if n < 2:
+        raise ValueError("need at least 2 segments when gameplay_start_frame is set")
+
+    segments = [
+        {
+            "id": "seg_001",
+            "checkpoint_from": 0,
+            "checkpoint_to": 0,
+            "frame_start": 1,
+            "frame_end": gp - 1,
+        }
+    ]
+    n_gameplay = n - 1
+    span = total_frames - gp + 1
+    for i in range(n_gameplay):
+        start = gp + (i * span) // n_gameplay
+        if i == n_gameplay - 1:
+            end = total_frames
+        else:
+            end = gp + ((i + 1) * span) // n_gameplay - 1
         segments.append(
             {
-                "id": f"seg_{i + 1:03d}",
+                "id": f"seg_{i + 2:03d}",
                 "checkpoint_from": i,
                 "checkpoint_to": i + 1,
                 "frame_start": start,
@@ -190,8 +246,8 @@ def load_human_playthrough_rows(path: Path) -> list[dict]:
     return rows
 
 
-def _has_gameplay_input(action: str | None) -> bool:
-    """Направление / удар — не Start (intro) и не пустой кадр."""
+def _has_move_or_attack_input(action: str | None) -> bool:
+    """Направление или удар; не Start/Select и не пустой кадр."""
     a = (action or "").lower()
     return any(tok in a for tok in ("right", "left", "up", "down", "+a", "+b", "a+", "b+")) or a in {
         "a",
@@ -203,35 +259,121 @@ def gameplay_start_frame_from_rows(
     rows: list[dict],
     *,
     transition_rooms: frozenset[int],
-    lives_min: int = 1,
-    lives_max: int = 9,
+    rule: GameplayStartRule,
 ) -> int:
-    """Первый кадр управляемого gameplay.
-
-    Только ``room ∉ transition_rooms`` недостаточно: на title/attract у Rush'n Attack
-    уже бывает ``room=0x00`` при ``lives=0`` и ``x=129`` (ложный gameplay-start @18).
-    ``lives`` 1..9 тоже недостаточно: перед уровнем идёт fade (room 0x11→0x01, чёрный
-    экран @1226). Нужен ещё кадр с реальным вводом (right/left/…).
-    """
+    """Первый кадр управляемого gameplay по правилу из etalon_build (плагин)."""
     for row in rows:
         room = int(str(row["room"]), 16)
         lives = int(row.get("lives", 0))
-        if room in transition_rooms:
+        if rule.exclude_transition_rooms and room in transition_rooms:
             continue
-        if not (lives_min <= lives <= lives_max):
-            continue
-        if not _has_gameplay_input(row.get("action")):
-            continue
+        if rule.lives_min is not None and rule.lives_max is not None:
+            if not (rule.lives_min <= lives <= rule.lives_max):
+                continue
+        if rule.require_input == REQUIRE_INPUT_MOVE_OR_ATTACK:
+            if not _has_move_or_attack_input(row.get("action")):
+                continue
         return int(row["frame"])
+
+    parts = []
+    if rule.exclude_transition_rooms:
+        parts.append("room not in transition_rooms")
+    if rule.lives_min is not None:
+        parts.append(f"lives in [{rule.lives_min}, {rule.lives_max}]")
+    if rule.require_input != REQUIRE_INPUT_NONE:
+        parts.append(f"require_input={rule.require_input}")
     raise ValueError(
         "No gameplay start frame found in human_playthrough rows "
-        f"(need room outside transition, lives in [{lives_min}, {lives_max}], "
-        "and a movement/attack action)"
+        f"(need {', '.join(parts) or 'any frame'})"
     )
 
 
-def inference_save_state_plan(gameplay_frame: int) -> list[dict]:
-    return [{"frame": gameplay_frame, "file": "inference_cp0.fc0", "slot": 0}]
+def load_head_save_states(mission: Path) -> dict[str, list[dict]] | None:
+    """Блок head_save_states из playthrough_manifest (ручные якоря / пилот)."""
+    path = mission / "config" / "playthrough_manifest.yaml"
+    if not path.is_file():
+        return None
+    raw = load_yaml(path).get("head_save_states")
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out: dict[str, list[dict]] = {}
+    for head, items in raw.items():
+        if not isinstance(items, list):
+            raise ValueError(f"head_save_states.{head} must be a list")
+        out[str(head)] = [dict(x) for x in items]
+    return out
+
+
+def iter_head_save_entries(head_save_states: dict[str, list[dict]]) -> list[dict]:
+    """Плоский список слотов, отсортированный по кадру FM2."""
+    entries: list[dict] = []
+    for head, items in head_save_states.items():
+        for item in items:
+            if "id" not in item or "frame" not in item:
+                raise ValueError(f"head_save_states.{head} entry needs id+frame: {item!r}")
+            entries.append({**item, "head": str(head)})
+    entries.sort(key=lambda e: int(e["frame"]))
+    frames = [int(e["frame"]) for e in entries]
+    if len(frames) != len(set(frames)):
+        raise ValueError(f"duplicate frames in head_save_states: {frames}")
+    return entries
+
+
+def head_save_state_plan(head_save_states: dict[str, list[dict]]) -> list[dict]:
+    """План FCEUX save: ``cp_<head><i>.fc0`` из манифеста (слоты 0..9)."""
+    entries = iter_head_save_entries(head_save_states)
+    if len(entries) > 10:
+        raise ValueError(
+            f"head_save_states has {len(entries)} slots; FCEUX supports at most 10 (0..9)"
+        )
+    return [
+        {
+            "frame": int(e["frame"]),
+            "file": f"{e['id']}.fc0",
+            "slot": i,
+        }
+        for i, e in enumerate(entries)
+    ]
+
+
+def default_gameplay_save_rel(head_save_states: dict[str, list[dict]] | None) -> str:
+    """Канон train+inference reset: первый gameplay-слот или первый слот вообще."""
+    if not head_save_states:
+        return "save_states/cp_gameplay0.fc0"
+    gameplay = head_save_states.get("gameplay") or []
+    if gameplay:
+        return f"save_states/{gameplay[0]['id']}.fc0"
+    entries = iter_head_save_entries(head_save_states)
+    return f"save_states/{entries[0]['id']}.fc0"
+
+
+def gameplay_start_frame_from_head_saves(
+    head_save_states: dict[str, list[dict]] | None,
+) -> int | None:
+    if not head_save_states:
+        return None
+    gameplay = head_save_states.get("gameplay") or []
+    if not gameplay:
+        return None
+    return int(gameplay[0]["frame"])
+
+
+def nearest_head_save_rel(
+    frame: int,
+    head_save_states: dict[str, list[dict]] | None,
+) -> str | None:
+    """Save state с max(frame_slot ≤ frame); иначе None."""
+    if not head_save_states:
+        return None
+    best: dict | None = None
+    for e in iter_head_save_entries(head_save_states):
+        if int(e["frame"]) <= int(frame):
+            best = e
+        else:
+            break
+    if best is None:
+        return None
+    return f"save_states/{best['id']}.fc0"
 
 
 def write_routes_yaml(
@@ -260,15 +402,7 @@ def write_routes_yaml(
         "game": game_id,
         "mission": mission_id.replace("m", "") if mission_id.startswith("m") else mission_id,
         "checkpoints": checkpoints,
-        "rewards": {
-            "default": {
-                "checkpoint_bonus": 100,
-                "death_penalty": 40,
-                "mission_clear_bonus": 1000,
-                "step_penalty": 0.005,
-                "kill_bonus": 0,
-            }
-        },
+        "rewards": {"default": rewards_default_from_etalon_build(etalon_build)},
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.dump(routes_yaml, allow_unicode=True, sort_keys=False), encoding="utf-8")
@@ -285,8 +419,12 @@ def write_manifest_yaml(
     frames: list[dict],
     addrs: dict[str, int],
     gameplay_start_frame: int | None = None,
+    head_save_states: dict[str, list[dict]] | None = None,
 ) -> None:
     runtime = load_yaml(repo_root() / "fceux" / "runtime.yaml")
+    gp = gameplay_start_frame_from_head_saves(head_save_states)
+    if gp is not None:
+        gameplay_start_frame = gp
     seg_rows = []
     for i, seg in enumerate(segments):
         rooms = set()
@@ -294,6 +432,9 @@ def write_manifest_yaml(
             fr = f["frame"]
             if seg["frame_start"] <= fr <= seg["frame_end"]:
                 rooms.add(_ram_byte(f["ram_hex"], addrs["room"]))
+        save_rel = nearest_head_save_rel(int(seg["frame_start"]), head_save_states)
+        if save_rel is None:
+            save_rel = default_gameplay_save_rel(head_save_states)
         seg_rows.append(
             {
                 "id": seg["id"],
@@ -305,10 +446,10 @@ def write_manifest_yaml(
                 "room_ids": [f"0x{r:02X}" for r in sorted(rooms)[:8]],
                 "reference_clear_sec": round((seg["frame_end"] - seg["frame_start"]) / 60.0, 1),
                 "demo_file": f"reference/demos_for_bc/{seg['id']}.npz",
-                "save_state": f"save_states/cp{i}.fc0",
+                "save_state": save_rel,
             }
         )
-    manifest_yaml = {
+    manifest_yaml: dict = {
         "playthrough_id": Path(fm2_rel).stem,
         "game": game_id,
         "mission": mission_id.replace("m", "") if mission_id.startswith("m") else mission_id,
@@ -321,21 +462,36 @@ def write_manifest_yaml(
         "reference_clear_sec": round(total_frames / 60.0, 1),
         "segments": seg_rows,
     }
+    if head_save_states:
+        manifest_yaml["head_save_states"] = head_save_states
     if gameplay_start_frame is not None:
+        save_rel = default_gameplay_save_rel(head_save_states)
+        manifest_yaml["train"] = {
+            "save_state": save_rel,
+            "gameplay_start_frame": int(gameplay_start_frame),
+        }
         manifest_yaml["inference"] = {
-            "gameplay_start_frame": gameplay_start_frame,
-            "save_state": "save_states/inference_cp0.fc0",
+            "save_state": save_rel,
+            "gameplay_start_frame": int(gameplay_start_frame),
         }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.dump(manifest_yaml, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
-def save_state_plan(segments: list[dict]) -> list[dict]:
-    """Кадры и слоты FCEUX (0..4) для save states."""
-    return [
-        {"frame": seg["frame_start"], "file": f"cp{i}.fc0", "slot": i}
-        for i, seg in enumerate(segments)
-    ]
+def save_state_plan(
+    segments: list[dict],
+    *,
+    gameplay_start_frame: int | None = None,
+    head_save_states: dict[str, list[dict]] | None = None,
+) -> list[dict]:
+    """Кадры и слоты FCEUX: только ``head_save_states`` → ``cp_<head><i>.fc0``."""
+    del segments, gameplay_start_frame  # сегменты не задают имена слотов
+    if not head_save_states:
+        raise ValueError(
+            "head_save_states required in playthrough_manifest.yaml "
+            "(manual anchors → cp_<head><i>.fc0)"
+        )
+    return head_save_state_plan(head_save_states)
 
 
 def build_playthrough_artifacts(
@@ -348,9 +504,17 @@ def build_playthrough_artifacts(
     addrs = load_ram_addresses(mission)
     rows = build_human_playthrough(frames, addrs)
     n_segments = segment_count_from_etalon_build(etalon_build)
-    segments = plan_segments(len(frames), n_segments)
     transition_rooms = transition_rooms_from_etalon_build(etalon_build)
-    gameplay_frame = gameplay_start_frame_from_rows(rows, transition_rooms=transition_rooms)
+    start_rule = gameplay_start_rule_from_etalon_build(etalon_build)
+    head_saves = load_head_save_states(mission)
+    gameplay_frame = gameplay_start_frame_from_head_saves(head_saves)
+    if gameplay_frame is None:
+        gameplay_frame = gameplay_start_frame_from_rows(
+            rows, transition_rooms=transition_rooms, rule=start_rule
+        )
+    segments = plan_segments(
+        len(frames), n_segments, gameplay_start_frame=gameplay_frame
+    )
 
     reference = mission / "reference"
     config = mission / "config"
@@ -369,5 +533,6 @@ def build_playthrough_artifacts(
         frames=frames,
         addrs=addrs,
         gameplay_start_frame=gameplay_frame,
+        head_save_states=head_saves,
     )
     return rows, segments

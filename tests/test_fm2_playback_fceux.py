@@ -14,7 +14,8 @@ from project_paths import artifact_quarantine_dir, cleanup_artifact_quarantine, 
 from ram_map_load import load_ram_addresses  # noqa: E402
 
 _MISSION = Path(__file__).resolve().parents[1] / "games" / "rushn_attack" / "missions" / "m1"
-_INFERENCE_CP0 = _MISSION / "save_states" / "inference_cp0.fc0"
+_GAMEPLAY_FC0 = _MISSION / "save_states" / "cp_gameplay0.fc0"
+
 _CLEAR_FM2 = _MISSION / "reference" / "clear.fm2"
 
 
@@ -63,15 +64,19 @@ def test_clear_fm2_playback_ram_probe_gameplay_start(
     """Эталон power-on: на реальном gameplay_start — lives 1..9."""
     if not _CLEAR_FM2.is_file():
         pytest.skip(f"missing {_CLEAR_FM2}")
-    from etalon_build_config import load_etalon_build_config, transition_rooms_from_etalon_build
+    from etalon_build_config import (
+        gameplay_start_rule_from_etalon_build,
+        load_etalon_build_config,
+        transition_rooms_from_etalon_build,
+    )
     from playthrough_build import gameplay_start_frame_from_rows, load_human_playthrough_rows
 
+    etalon = load_etalon_build_config("rushn_attack")
     rows = load_human_playthrough_rows(mission_m1 / "reference" / "human_playthrough.jsonl")
     gp = gameplay_start_frame_from_rows(
         rows,
-        transition_rooms=transition_rooms_from_etalon_build(
-            load_etalon_build_config("rushn_attack")
-        ),
+        transition_rooms=transition_rooms_from_etalon_build(etalon),
+        rule=gameplay_start_rule_from_etalon_build(etalon),
     )
     probe = probe_movie_playback(
         _CLEAR_FM2,
@@ -87,14 +92,14 @@ def test_clear_fm2_playback_ram_probe_gameplay_start(
 
 @pytest.mark.requires_fceux
 def test_inference_embed_fm2_playback_ram_probe_mf8(mission_m1: Path, playback_probe_dir: Path) -> None:
-    """Inference-клип с embed inference_cp0: probe @ mf=8."""
-    if not _INFERENCE_CP0.is_file():
-        pytest.skip(f"missing {_INFERENCE_CP0}")
+    """Inference-клип с embed gameplay_fc0: probe @ mf=8."""
+    if not _GAMEPLAY_FC0.is_file():
+        pytest.skip(f"missing {_GAMEPLAY_FC0}")
     fm2 = playback_probe_dir / "inference_probe.fm2"
     build_empty_fm2(
         fm2,
         template=default_fm2_template("rushn_attack", "m1"),
-        save_state_path=_INFERENCE_CP0,
+        save_state_path=_GAMEPLAY_FC0,
         guid=episode_fm2_guid(salt="n4-test"),
         num_frames=60,
     )
@@ -114,14 +119,14 @@ def test_inference_embed_fm2_playback_ram_probe_mf8(mission_m1: Path, playback_p
 def test_inference_embed_fm2_ppu_gameplay_at_mf8(
     mission_m1: Path, playback_probe_dir: Path
 ) -> None:
-    """G0: после rebuild inference_cp0 — PPU gameplay @ mf=8 (не title)."""
-    if not _INFERENCE_CP0.is_file():
-        pytest.skip(f"missing {_INFERENCE_CP0}")
+    """G0: после rebuild cp_gameplay0 — PPU gameplay @ mf=8 (не title)."""
+    if not _GAMEPLAY_FC0.is_file():
+        pytest.skip(f"missing {_GAMEPLAY_FC0}")
     fm2 = playback_probe_dir / "inference_ppu_probe.fm2"
     build_empty_fm2(
         fm2,
         template=default_fm2_template("rushn_attack", "m1"),
-        save_state_path=_INFERENCE_CP0,
+        save_state_path=_GAMEPLAY_FC0,
         guid=episode_fm2_guid(salt="n4-ppu-test"),
         num_frames=60,
     )

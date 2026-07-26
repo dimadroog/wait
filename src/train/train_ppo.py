@@ -34,6 +34,13 @@ from train.checkpointing import (  # noqa: E402
     write_sidecar,
 )
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_clean_preflight  # noqa: E402
+from train.multi_head_policy import MultiHeadActorCriticPolicy  # noqa: E402
+from train.phase_aware_ppo import PhaseAwarePPO  # noqa: E402
+from train.phase_heads import (  # noqa: E402
+    build_action_mask_table,
+    load_game_action_strings,
+    load_policy_heads_spec,
+)
 from train.learn_watchdog import (  # noqa: E402
     DEFAULT_LEARN_STALL_TIMEOUT_S,
     LearnStallError,
@@ -50,13 +57,19 @@ POLICY_KWARGS = {"normalize_images": False}  # obs уже float [0,1], channel-f
 
 
 def _default_save_state(mission: Path) -> str:
-    manifest = mission / "config" / "playthrough_manifest.yaml"
-    if manifest.is_file():
-        manifest = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-        segments = manifest.get("segments") or []
-        if segments:
-            return str(segments[0].get("save_state", "save_states/cp0.fc0"))
-    return "save_states/cp0.fc0"
+    """Train reset: канон gameplay из manifest (cp_gameplay0), не title/intro."""
+    manifest_path = mission / "config" / "playthrough_manifest.yaml"
+    if manifest_path.is_file():
+        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+        train = data.get("train") or {}
+        rel = train.get("save_state")
+        if rel and (mission / str(rel)).is_file():
+            return str(rel)
+        inference = data.get("inference") or {}
+        rel = inference.get("save_state")
+        if rel and (mission / str(rel)).is_file():
+            return str(rel)
+    return "save_states/cp_gameplay0.fc0"
 
 
 def load_train_task(path: Path) -> dict[str, Any]:
@@ -189,6 +202,36 @@ def train(args: argparse.Namespace) -> Path:
         model_in = _resolve_model_path(args.model_in, mission)
         resuming = False
         skip_bc = False
+        heads_spec = load_policy_heads_spec(args.game)
+        if heads_spec:
+            print(
+                f"multi-head policy: heads={list(heads_spec.heads)} "
+                f"default={heads_spec.default_head}"
+            )
+
+        def _attach_heads_spec(loaded: PPO) -> PPO:
+            if heads_spec is None:
+                return loaded
+            if not hasattr(loaded.policy, "set_active_head"):
+                raise SystemExit(
+                    "env_config.policy_heads is set but checkpoint policy is not MultiHead; "
+                    "train a new genN with Multi-head"
+                )
+            if not isinstance(loaded, PhaseAwarePPO):
+                raise SystemExit(
+                    "Multi-head checkpoint must be loaded as PhaseAwarePPO "
+                    f"(got {type(loaded).__name__})"
+                )
+            loaded.heads_spec = heads_spec
+            loaded._last_phase_ids = []
+            loaded._rollout_heads = None
+            loaded._heads_flat = None
+            loaded._isolation_counts = {
+                "gameplay_on_title_intro": 0,
+                "total_steps": 0,
+            }
+            loaded._phase_step_counts = {}
+            return loaded
 
         if args.resume and model_out.is_file():
             sidecar = read_sidecar(model_out)
@@ -201,14 +244,40 @@ def train(args: argparse.Namespace) -> Path:
                         f"resume: raising target_timesteps {prev_target} -> {target_timesteps} (CLI)"
                     )
             print(f"resume model {model_out}  target={target_timesteps}")
-            model = PPO.load(str(model_out.with_suffix("")), env=vec_env, device="cpu")
+            load_cls = PhaseAwarePPO if heads_spec else PPO
+            model = load_cls.load(str(model_out.with_suffix("")), env=vec_env, device="cpu")
+            model = _attach_heads_spec(model)
             model.learning_rate = args.learning_rate
             resuming = True
             skip_bc = True
         elif model_in and model_in.is_file():
             print(f"load model {model_in}")
-            model = PPO.load(str(model_in.with_suffix("")), env=vec_env, device="cpu")
+            load_cls = PhaseAwarePPO if heads_spec else PPO
+            model = load_cls.load(str(model_in.with_suffix("")), env=vec_env, device="cpu")
+            model = _attach_heads_spec(model)
             model.learning_rate = args.learning_rate
+        elif heads_spec is not None:
+            action_strings = load_game_action_strings(args.game)
+            mask_table = build_action_mask_table(heads_spec, action_strings)
+            policy_kwargs = {
+                **POLICY_KWARGS,
+                "head_ids": list(heads_spec.heads),
+                "action_masks": {h: mask_table[h].tolist() for h in heads_spec.heads},
+            }
+            print("new PhaseAwarePPO MultiHeadActorCriticPolicy")
+            model = PhaseAwarePPO(
+                MultiHeadActorCriticPolicy,
+                vec_env,
+                heads_spec=heads_spec,
+                learning_rate=args.learning_rate,
+                n_steps=args.n_steps,
+                batch_size=args.batch_size,
+                n_epochs=args.n_epochs,
+                gamma=args.gamma,
+                policy_kwargs=policy_kwargs,
+                verbose=1,
+                device="cpu",
+            )
         else:
             print("new PPO CnnPolicy")
             model = PPO(
@@ -390,6 +459,36 @@ def train(args: argparse.Namespace) -> Path:
                         reason=abort_reason,
                     )
 
+        if isinstance(model, PhaseAwarePPO):
+            counts = getattr(model, "_isolation_counts", {}) or {}
+            bad = int(counts.get("gameplay_on_title_intro", 0))
+            total = int(counts.get("total_steps", 0))
+            ok = bad == 0 and total > 0
+            phase_counts = getattr(model, "_phase_step_counts", {}) or {}
+            phase_bits = " ".join(
+                f"{k}={v}" for k, v in sorted(phase_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            )
+            reached_gameplay = int(phase_counts.get("gameplay", 0)) > 0
+            print(
+                f"phase-head isolation: ok={ok} "
+                f"gameplay_on_title_intro={bad}/{total} "
+                f"(expect 0 bad when phase->head routing is correct)"
+            )
+            print(
+                f"phase-head coverage: reached_gameplay={reached_gameplay} "
+                f"steps_by_phase[{phase_bits or 'none'}]"
+            )
+            if not ok and total > 0:
+                raise SystemExit(
+                    "phase-head isolation failed: gameplay head was active "
+                    f"on title/intro steps ({bad}/{total})"
+                )
+            if not reached_gameplay and total > 0:
+                raise SystemExit(
+                    "phase-head pilot failed: never reached phase_id=gameplay "
+                    f"(steps_by_phase[{phase_bits or 'none'}])"
+                )
+
         return checkpoint_zip_path(model_out)
     finally:
         if smoke_session is not None:
@@ -411,7 +510,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--learning-rate", type=float, default=2.5e-4)
     p.add_argument("--save-every", type=int, default=50_000, help="промежуточный save каждые N env steps (total)")
     p.add_argument("--threads", type=int, default=2, help="torch/BLAS threads (cap 2 при n_envs≥6)")
-    p.add_argument("--save-state", default=None, help="save_states/cp0.fc0 относительно миссии")
+    p.add_argument("--save-state", default=None, help="save_states/cp_gameplay0.fc0 относительно миссии")
     p.add_argument(
         "--death-mode",
         default=None,

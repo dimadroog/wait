@@ -51,7 +51,7 @@ def main() -> None:
     parser.add_argument(
         "--no-refresh-embed",
         action="store_true",
-        help="не обновлять savestate из inference_cp0 (играть как в файле)",
+        help="не обновлять embedded savestate (играть как в файле)",
     )
     parser.add_argument(
         "--turbo",
@@ -84,7 +84,7 @@ def main() -> None:
     if not args.no_refresh_embed:
         clip_guid = episode_fm2_guid(salt=f"gui-{fm2.stem}")
         remap_fm2_guid(staged_fm2, clip_guid)
-        fc0 = mission / resolve_inference_reset_state(mission, cp_index=0)
+        fc0 = mission / resolve_inference_reset_state(mission)
         refresh_fm2_embedded_savestate(staged_fm2, fc0, guid=clip_guid)
         print(f"Refreshed embed from {fc0.name}")
 

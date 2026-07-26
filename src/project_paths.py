@@ -191,18 +191,13 @@ def default_model_zip(mission: Path, generation: int = 0) -> Path:
 
 
 def save_states_dir(mission: Path) -> Path:
-    """Каталог FCEUX save states миссии (cpN.fc0, inference_cp0.fc0)."""
+    """Каталог FCEUX save states миссии (cp_<head><i>.fc0)."""
     return mission / "save_states"
 
 
 def demos_for_bc_dir(mission: Path) -> Path:
     """Каталог BC-демо (эталон → NPZ): reference/demos_for_bc/."""
     return mission / "reference" / "demos_for_bc"
-
-
-def default_save_state_rel(cp_index: int = 0) -> str:
-    """Путь save state относительно миссии: save_states/cpN.fc0."""
-    return f"save_states/cp{int(cp_index)}.fc0"
 
 
 def _mission_model_dirs(mission: Path) -> list[Path]:

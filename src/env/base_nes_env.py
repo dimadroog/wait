@@ -122,11 +122,15 @@ class BaseNesEnv(gym.Env):
     def _default_save_state(self) -> str:
         manifest = self.mission / "config" / "playthrough_manifest.yaml"
         if manifest.is_file():
-            manifest = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-            segments = manifest.get("segments") or []
+            data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+            train = data.get("train") or {}
+            rel = train.get("save_state")
+            if rel:
+                return str(rel)
+            segments = data.get("segments") or []
             if segments:
-                return str(segments[0].get("save_state", "save_states/cp0.fc0"))
-        return "save_states/cp0.fc0"
+                return str(segments[0].get("save_state", "save_states/cp_gameplay0.fc0"))
+        return "save_states/cp_gameplay0.fc0"
 
     def _action_string(self, action: int) -> str:
         return self.action_strings[int(action)]

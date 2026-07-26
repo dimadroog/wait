@@ -35,6 +35,7 @@ class RushnAttackEnv(BaseNesEnv):
         title_pose_truncate_grace: int = 0,
         title_pose_truncate_cool: int = 0,
         game_over_freeze_confirm_steps: int = 32,
+        screen_phases: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -49,7 +50,30 @@ class RushnAttackEnv(BaseNesEnv):
         self.title_pose_truncate_cool = max(0, int(title_pose_truncate_cool))
         # 0 = выкл; эталон game over: freeze r=0,x=129,y∉title_ys ≥32 env-step.
         self.game_over_freeze_confirm_steps = max(0, int(game_over_freeze_confirm_steps))
+        self._configure_screen_phases(screen_phases)
         self._on_episode_reset()
+
+    def _configure_screen_phases(self, screen_phases: dict[str, Any] | None) -> None:
+        """Правила phase_id из env_config.screen_phases (без ядра)."""
+        cfg = screen_phases or {}
+        self.screen_phases_enabled = bool(cfg)
+        title_cfg = cfg.get("title") or {}
+        if cfg.get("level_room_min") is not None:
+            self.phase_level_room_min = parse_hex_or_int(cfg["level_room_min"])
+        else:
+            self.phase_level_room_min = self.title_level_room_min
+        if title_cfg.get("rooms") is not None:
+            self.phase_title_rooms = parse_int_set(title_cfg.get("rooms"))
+        else:
+            self.phase_title_rooms = self.title_end_rooms
+        if title_cfg.get("x") is not None:
+            self.phase_title_x = int(title_cfg["x"])
+        else:
+            self.phase_title_x = self.title_pose_x
+        if title_cfg.get("ys") is not None:
+            self.phase_title_ys = frozenset(int(y) for y in title_cfg["ys"])
+        else:
+            self.phase_title_ys = self.title_pose_ys
 
     def _on_episode_reset(self) -> None:
         self._seen_level_room = False
@@ -162,6 +186,53 @@ class RushnAttackEnv(BaseNesEnv):
     def _secondary_terminate_reason(self) -> str:
         return self._last_secondary_reason
 
+    def _screen_title_match(self, ram: dict[str, Any]) -> bool:
+        """Title/attract standing для phase_id (без гейта lives — power-on L=0 тоже title)."""
+        if not self.phase_title_rooms or self.phase_title_x is None or not self.phase_title_ys:
+            return False
+        if self._ram_int(ram, "room") not in self.phase_title_rooms:
+            return False
+        if self._ram_int(ram, "x") != self.phase_title_x:
+            return False
+        return self._ram_int(ram, "y") in self.phase_title_ys
+
+    def _phase_id_from_ram(self, ram: dict[str, Any]) -> str:
+        """title | intro | gameplay — контракт постановки v1 TASK_POLICY_SEPARATION."""
+        room = self._ram_int(ram, "room")
+        level_min = self.phase_level_room_min
+        if level_min is not None and (self._seen_level_room or room >= level_min):
+            return "gameplay"
+        if self._screen_title_match(ram):
+            return "title"
+        return "intro"
+
+    def _attach_phase_id(self, info: dict[str, Any]) -> dict[str, Any]:
+        if not self.screen_phases_enabled:
+            return info
+        ram = info.get("ram") or {}
+        info["phase_id"] = self._phase_id_from_ram(ram)
+        return info
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[Any, dict[str, Any]]:
+        obs, info = super().reset(seed=seed, options=options)
+        ram = info.get("ram") or {}
+        # sticky gameplay: reset сразу в уровень (cp0) без ожидания step._on_ram
+        if (
+            self.phase_level_room_min is not None
+            and self._ram_int(ram, "room") >= self.phase_level_room_min
+        ):
+            self._seen_level_room = True
+        return obs, self._attach_phase_id(info)
+
+    def step(self, action: int) -> tuple[Any, float, bool, bool, dict[str, Any]]:
+        obs, reward, terminated, truncated, info = super().step(action)
+        return obs, reward, terminated, truncated, self._attach_phase_id(info)
+
 
 def make_env(
     mission_id: str = "m1",
@@ -202,6 +273,8 @@ def make_env(
         kwargs["game_over_freeze_confirm_steps"] = int(
             title_end["game_over_freeze_confirm_steps"]
         )
+    if "screen_phases" not in kwargs and env_config.get("screen_phases") is not None:
+        kwargs["screen_phases"] = env_config.get("screen_phases")
     env = RushnAttackEnv(
         game_id=game_id,
         mission_id=mission_id,

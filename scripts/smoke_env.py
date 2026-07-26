@@ -18,25 +18,23 @@ def main() -> None:
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
     parser.add_argument("--steps", type=int, default=100)
-    parser.add_argument("--save-state", default=None, help="save_states/cpN.fc0 относительно миссии")
+    parser.add_argument("--save-state", default=None, help="save_states/cp_gameplay0.fc0 относительно миссии")
     parser.add_argument("--session", default="smoke_env", help="FCEUX bridge session id")
     parser.add_argument(
         "--death-mode",
         default=None,
         choices=["life_lost", "game_over"],
-        help="override env_config death_mode (H3)",
+        help="override env_config death_mode",
     )
     parser.add_argument("--log", action="store_true", help="append logs/attempts.jsonl")
     args = parser.parse_args()
 
     mission = mission_dir(args.game, args.mission)
-    state = mission / "save_states" / "cp1.fc0"
-    if not state.is_file():
-        state = mission / "save_states" / "cp0.fc0"
-    if not state.is_file():
-        raise SystemExit(f"Missing {state}. Run build_playthrough.py first.")
+    default_rel = "save_states/cp_gameplay0.fc0"
+    if not (mission / default_rel).is_file():
+        raise SystemExit(f"Missing {mission / default_rel}. Run build_playthrough.py --states-only first.")
 
-    kwargs: dict = {"session_id": args.session, "save_state": args.save_state or "save_states/cp1.fc0"}
+    kwargs: dict = {"session_id": args.session, "save_state": args.save_state or default_rel}
     if args.death_mode:
         kwargs["death_mode"] = args.death_mode
 

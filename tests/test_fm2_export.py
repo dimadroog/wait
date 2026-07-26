@@ -28,19 +28,20 @@ from fm2_export import episode_fm2_guid  # noqa: E402
 from fm2_export import remap_fm2_guid  # noqa: E402
 
 _MISSION = Path(__file__).resolve().parents[1] / "games" / "rushn_attack" / "missions" / "m1"
-_INFERENCE_CP0 = _MISSION / "save_states" / "inference_cp0.fc0"
+_GAMEPLAY_FC0 = _MISSION / "save_states" / "cp_gameplay0.fc0"
+
 _CLEAR_GUID = "A8C431C3-A298-2CE5-5493-21BB5AEAE61F"
 
 
 @pytest.fixture
-def inference_cp0() -> Path:
-    if not _INFERENCE_CP0.is_file():
-        pytest.skip(f"missing {_INFERENCE_CP0}")
-    return _INFERENCE_CP0
+def gameplay_fc0() -> Path:
+    if not _GAMEPLAY_FC0.is_file():
+        pytest.skip(f"missing {_GAMEPLAY_FC0}")
+    return _GAMEPLAY_FC0
 
 
-def test_patch_savestate_movie_guid(inference_cp0: Path) -> None:
-    blob = inference_cp0.read_bytes()
+def test_patch_savestate_movie_guid(gameplay_fc0: Path) -> None:
+    blob = gameplay_fc0.read_bytes()
     patched = ensure_savestate_movie_guid(blob, INFERENCE_FM2_GUID)
     from fm2_export import FCS_MOVIE_GUID_OFFSET, _GUID_BYTES_RE
 
@@ -50,10 +51,10 @@ def test_patch_savestate_movie_guid(inference_cp0: Path) -> None:
     assert again == patched
 
 
-def test_fc0_to_savestate_hex_prefix(inference_cp0: Path) -> None:
-    hex_val = fc0_to_savestate_hex(inference_cp0, target_guid=INFERENCE_FM2_GUID)
+def test_fc0_to_savestate_hex_prefix(gameplay_fc0: Path) -> None:
+    hex_val = fc0_to_savestate_hex(gameplay_fc0, target_guid=INFERENCE_FM2_GUID)
     assert hex_val.startswith("0x")
-    assert len(hex_val) == 2 + inference_cp0.stat().st_size * 2
+    assert len(hex_val) == 2 + gameplay_fc0.stat().st_size * 2
 
 
 def test_inference_guid_differs_from_reference_template() -> None:
@@ -70,12 +71,12 @@ def test_default_fm2_template_not_in_portable() -> None:
     assert "fceux/portable/movies" not in template.as_posix()
 
 
-def test_build_fm2_header_embeds_savestate(inference_cp0: Path) -> None:
+def test_build_fm2_header_embeds_savestate(gameplay_fc0: Path) -> None:
     template = default_fm2_template("rushn_attack", "m1")
     header = build_fm2_header(
         template,
         embed_savestate=True,
-        save_state_path=inference_cp0,
+        save_state_path=gameplay_fc0,
     )
     # no length key (FM3 guard)
     assert not any(line.startswith("length ") for line in header)
@@ -95,14 +96,14 @@ def test_episode_fm2_guid_unique_per_episode() -> None:
     assert g2 != INFERENCE_FM2_GUID
 
 
-def test_remap_fm2_guid_changes_header_and_savestate(tmp_path: Path, inference_cp0: Path) -> None:
+def test_remap_fm2_guid_changes_header_and_savestate(tmp_path: Path, gameplay_fc0: Path) -> None:
     from fm2_export import export_episode_fm2_from_steps, read_fm2_guid, remap_fm2_guid
 
     src = tmp_path / "src.fm2"
     export_episode_fm2_from_steps(
         [{"action": "right"}],
         src,
-        save_state_path=inference_cp0,
+        save_state_path=gameplay_fc0,
         episode=1,
     )
     old = read_fm2_guid(src)
@@ -111,13 +112,13 @@ def test_remap_fm2_guid_changes_header_and_savestate(tmp_path: Path, inference_c
     assert read_fm2_guid(src) == new
 
 
-def test_export_episode_fm2_embedded(tmp_path: Path, inference_cp0: Path) -> None:
+def test_export_episode_fm2_embedded(tmp_path: Path, gameplay_fc0: Path) -> None:
     out = tmp_path / "ep.fm2"
     steps = [{"action": "right"}, {"action": ""}]
     export_episode_fm2_from_steps(
         steps,
         out,
-        save_state_path=inference_cp0,
+        save_state_path=gameplay_fc0,
         episode=7,
     )
     assert fm2_has_embedded_savestate(out)
@@ -126,26 +127,26 @@ def test_export_episode_fm2_embedded(tmp_path: Path, inference_cp0: Path) -> Non
     assert not sidecar.is_file()
 
 
-def test_read_embedded_savestate_blob(tmp_path: Path, inference_cp0: Path) -> None:
+def test_read_embedded_savestate_blob(tmp_path: Path, gameplay_fc0: Path) -> None:
     out = tmp_path / "ep.fm2"
     export_episode_fm2_from_steps(
         [{"action": "right"}],
         out,
-        save_state_path=inference_cp0,
+        save_state_path=gameplay_fc0,
         episode=3,
     )
     blob = read_embedded_savestate_blob(out)
     assert blob is not None
-    assert len(blob) == inference_cp0.stat().st_size
+    assert len(blob) == gameplay_fc0.stat().st_size
 
 
-def test_stage_playback_savestate_from_embed(tmp_path: Path, inference_cp0: Path) -> None:
+def test_stage_playback_savestate_from_embed(tmp_path: Path, gameplay_fc0: Path) -> None:
     fm2 = tmp_path / "clip.fm2"
     staging = tmp_path / "staging"
     export_episode_fm2_from_steps(
         [{"action": "right"}],
         fm2,
-        save_state_path=inference_cp0,
+        save_state_path=gameplay_fc0,
         episode=5,
     )
     remap_fm2_guid(fm2, episode_fm2_guid(salt="stage-test"))
@@ -156,9 +157,9 @@ def test_stage_playback_savestate_from_embed(tmp_path: Path, inference_cp0: Path
 
 
 def test_stage_playback_savestate_fallback_patches_guid(
-    tmp_path: Path, inference_cp0: Path
+    tmp_path: Path, gameplay_fc0: Path
 ) -> None:
-    """Без embed — fallback inference_cp0 с GUID клипа."""
+    """Без embed — fallback cp_gameplay0 с GUID клипа."""
     from fm2_export import build_fm2_header, default_fm2_template
 
     fm2 = tmp_path / "no_embed.fm2"
@@ -166,26 +167,26 @@ def test_stage_playback_savestate_fallback_patches_guid(
     header = build_fm2_header(default_fm2_template("rushn_attack", "m1"), guid=guid)
     fm2.write_text("\n".join(header + ["|0|........|........||"]) + "\n", encoding="utf-8")
     staging = tmp_path / "staging"
-    staged = stage_playback_savestate(fm2, staging, fallback_fc0=inference_cp0)
+    staged = stage_playback_savestate(fm2, staging, fallback_fc0=gameplay_fc0)
     assert staged.is_file()
     assert read_embedded_savestate_blob(fm2) is None
-    patched = patch_savestate_movie_guid(inference_cp0.read_bytes(), guid)
+    patched = patch_savestate_movie_guid(gameplay_fc0.read_bytes(), guid)
     from fm2_export import _GUID_BYTES_RE
 
-    if list(_GUID_BYTES_RE.finditer(inference_cp0.read_bytes())):
+    if list(_GUID_BYTES_RE.finditer(gameplay_fc0.read_bytes())):
         assert staged.read_bytes() == patched
     else:
-        assert staged.read_bytes() == inference_cp0.read_bytes()
+        assert staged.read_bytes() == gameplay_fc0.read_bytes()
 
 
-def test_remap_fm2_guid_injects_missing_blob_guid(tmp_path: Path, inference_cp0: Path) -> None:
+def test_remap_fm2_guid_injects_missing_blob_guid(tmp_path: Path, gameplay_fc0: Path) -> None:
     from fm2_export import FCS_MOVIE_GUID_OFFSET, _GUID_BYTES_RE, read_embedded_savestate_blob
 
     src = tmp_path / "src.fm2"
     export_episode_fm2_from_steps(
         [{"action": "right"}],
         src,
-        save_state_path=inference_cp0,
+        save_state_path=gameplay_fc0,
         episode=1,
     )
     new = episode_fm2_guid(salt="inject-test")
@@ -196,8 +197,8 @@ def test_remap_fm2_guid_injects_missing_blob_guid(tmp_path: Path, inference_cp0:
     assert len(list(_GUID_BYTES_RE.finditer(blob))) == 1
 
 
-def test_refresh_fm2_embedded_savestate_from_inference_cp0(
-    tmp_path: Path, inference_cp0: Path
+def test_refresh_fm2_embedded_savestate_from_gameplay_fc0(
+    tmp_path: Path, gameplay_fc0: Path
 ) -> None:
     from fm2_export import FCS_MOVIE_GUID_OFFSET, export_episode_fm2_from_steps, refresh_fm2_embedded_savestate
 
@@ -205,7 +206,7 @@ def test_refresh_fm2_embedded_savestate_from_inference_cp0(
     export_episode_fm2_from_steps(
         [{"action": "right"}],
         fm2,
-        save_state_path=inference_cp0,
+        save_state_path=gameplay_fc0,
         episode=9,
     )
     # Симуляция старого лога: embed без GUID в blob.
@@ -217,25 +218,25 @@ def test_refresh_fm2_embedded_savestate_from_inference_cp0(
     assert read_embedded_savestate_blob(fm2) is None
     clip_guid = episode_fm2_guid(salt="refresh-test")
     remap_fm2_guid(fm2, clip_guid)
-    refresh_fm2_embedded_savestate(fm2, inference_cp0, guid=clip_guid)
+    refresh_fm2_embedded_savestate(fm2, gameplay_fc0, guid=clip_guid)
     blob = read_embedded_savestate_blob(fm2)
     assert blob is not None
     assert blob[FCS_MOVIE_GUID_OFFSET : FCS_MOVIE_GUID_OFFSET + 36] == clip_guid.encode()
-    assert len(blob) == inference_cp0.stat().st_size
+    assert len(blob) == gameplay_fc0.stat().st_size
 
 
-def test_embed_export_timing_and_size(inference_cp0: Path, tmp_path: Path) -> None:
-    """Замер на типичном inference_cp0.fc0 (BACKLOG 3.1)."""
+def test_embed_export_timing_and_size(gameplay_fc0: Path, tmp_path: Path) -> None:
+    """Замер на типичном cp_gameplay0.fc0 (BACKLOG 3.1)."""
     out = tmp_path / "bench.fm2"
     t0 = time.perf_counter()
     export_episode_fm2_from_steps(
         [{"action": "right"}],
         out,
-        save_state_path=inference_cp0,
+        save_state_path=gameplay_fc0,
     )
     elapsed = time.perf_counter() - t0
     fm2_size = out.stat().st_size
     # ~97 KiB state → ~195 KiB hex + header; экспорт должен быть быстрым
-    assert fm2_size > inference_cp0.stat().st_size
+    assert fm2_size > gameplay_fc0.stat().st_size
     assert elapsed < 2.0, f"embed export too slow: {elapsed:.2f}s"
     print(f"embed export: {fm2_size} bytes in {elapsed*1000:.1f} ms")

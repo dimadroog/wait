@@ -19,7 +19,7 @@
 | Поставить `.venv` | [`setup_all.ps1`](#setup_allps1) → [`verify_env.py`](#verify_envpy) |
 | RAM-разведка эталона | [`ram_scout.py`](#ram_scoutpy) |
 | Собрать эталон (jsonl, save_states, demos_for_bc stub) | [`build_playthrough.py`](#build_playthroughpy) |
-| Только inference save state | [`build_inference_states.py`](#build_inference_statespy) |
+| Пересобрать save states из `head_save_states` | [`build_playthrough.py --states-only`](#build_playthroughpy) |
 | Demos с реальными obs (BC) | [`record_demos.py`](#record_demospy) |
 | Smoke после правок bridge/env | [`run_smoke.py`](#run_smokepy) |
 | Обучение PPO | [`train_local.sh`](#train_localsh) → [`train_ppo.py`](#train_ppopy) |
@@ -27,7 +27,6 @@
 | Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
 | Benchmark bridge / e2e train | [`benchmark_bridge.py`](#benchmark_bridgepy), [`benchmark_train.py`](#benchmark_trainpy) |
 | Разбор `rollouts.jsonl` | [`parse_train_rollouts.py`](#parse_train_rolloutspy) |
-| Доля пустых действий inference | [`summarize_inference_actions.py`](#summarize_inference_actionspy) |
 
 ---
 
@@ -38,9 +37,8 @@
 | [`bench_parallel_step.py`](#bench_parallel_steppy) | Быстрый замер latency parallel step (4 env, без CLI) |
 | [`benchmark_bridge.py`](#benchmark_bridgepy) | Benchmark IPC bridge → `tmp/bench/` |
 | [`benchmark_train.py`](#benchmark_trainpy) | E2E PPO benchmark → `tmp/bench/` |
-| [`build_inference_states.py`](#build_inference_statespy) | `save_states/inference_cp0.fc0` + блок `inference` в manifest |
 | [`build_playlist.py`](#build_playlistpy) | FM2-плейлист по номинациям |
-| [`build_playthrough.py`](#build_playthroughpy) | Эталон: jsonl, routes, save_states, demos_for_bc |
+| [`build_playthrough.py`](#build_playthroughpy) | Эталон: jsonl, routes, `cp_<head><i>.fc0`, demos_for_bc |
 | [`eval_achievements.py`](#eval_achievementspy) | `tags[]` в `attempts.jsonl` |
 | [`export_fm2.py`](#export_fm2py) | `inference_inputs.jsonl` → self-contained `.fm2` |
 | [`inference_local.sh`](#inference_localsh) | Фасад: preflight → `run_inference` |
@@ -58,7 +56,6 @@
 | [`smoke_env.py`](#smoke_envpy) | Smoke Gymnasium env |
 | [`stress_e2e_gate.py`](#stress_e2e_gatepy) | Длительный IPC/gate stress |
 | [`stress_parallel_reset.py`](#stress_parallel_resetpy) | Короткий parallel reset stress (устаревший относительно gate) |
-| [`summarize_inference_actions.py`](#summarize_inference_actionspy) | `noop_frac` / гистограмма из `inference_inputs.jsonl` |
 | [`test_parallel_env.py`](#test_parallel_envpy) | Parallel vec step + reset |
 | [`train_fps_round_prep.py`](#train_fps_round_preppy) | Prep `models/gen0` для fps-раунда |
 | [`train_local.sh`](#train_localsh) | Фасад: preflight → `train_ppo` (`--n-envs 6`) |
@@ -126,36 +123,24 @@ FM2 → `reference/scout/ram_scout.jsonl`, `config/ram_resolve.json`, `ram_map.m
 
 ### `build_playthrough.py`
 
-После `ram_scout`: `human_playthrough.jsonl`, `config/routes.yaml`, `playthrough_manifest.yaml`, train `save_states/cp*.fc0`, `reference/demos_for_bc` (stub obs), опц. inference state.
+После `ram_scout`: `human_playthrough.jsonl`, `config/routes.yaml`, `playthrough_manifest.yaml`, `save_states/cp_<head><i>.fc0`, `reference/demos_for_bc` (stub obs).
 
-`cp0.fc0` — reset train; `inference_cp0.fc0` — старт gameplay для inference/плейлиста.
+Правила нарезки и авто-`gameplay_start` — в `games/<id>/etalon_build.yaml`; ядро только интерпретирует.  
+Если в манифесте есть `head_save_states` — кадры и имена `.fc0` берутся **только** оттуда (`cp_title0`, `cp_intro0`, `cp_gameplay0`, …). Train и inference reset — **один** файл (`cp_gameplay0`); отдельный `inference_cp*` не пишется. GUID для FM2 embed — только при экспорте/staging.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/build_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2
+# только переснять .fc0 по якорям манифеста (без routes/jsonl):
+./.venv/Scripts/python.exe scripts/build_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2 --states-only
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
 | `fm2` | путь к FM2 |
 | `--timeout` | лимит FCEUX (default 600) |
-| `--skip-states` | без train `cp*.fc0` |
-| `--skip-inference-states` | без `inference_cp0.fc0` |
+| `--skip-states` | без `.fc0` |
+| `--states-only` | только `save_states/` из `head_save_states` |
 | `--skip-demos` | без `reference/demos_for_bc/seg_*.npz` |
-
----
-
-### `build_inference_states.py`
-
-Только `save_states/inference_cp0.fc0` + блок `inference` в manifest.
-
-```bash
-./.venv/Scripts/python.exe scripts/build_inference_states.py games/rushn_attack/missions/m1/reference/clear.fm2
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `fm2` | путь к FM2 |
-| `--timeout` | лимит FCEUX (default 600) |
 
 ---
 
@@ -213,7 +198,7 @@ Pytest-аналог: `pytest tests/smoke/` (не часть этого ката�
 
 ### `smoke_bridge.py`
 
-Smoke IPC `FceuxBridge` (нужен `save_states/cp1.fc0`). CLI нет.
+Smoke IPC `FceuxBridge` (нужен `save_states/cp_gameplay0.fc0` или `cp_gameplay1.fc0`). CLI нет.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/smoke_bridge.py
@@ -232,7 +217,7 @@ Random agent / короткий env smoke. `--log` пишет в `games/.../logs
 | Флаг | Описание |
 | ---- | -------- |
 | `--steps` | число шагов (default 100) |
-| `--save-state` | относительно миссии (default `save_states/cp1.fc0`) |
+| `--save-state` | относительно миссии (default `save_states/cp_gameplay0.fc0`) |
 | `--session` | id bridge (default `smoke_env`) |
 | `--death-mode` | `life_lost` \| `game_over` (override `env_config.yaml`; H3) |
 | `--log` | append в `logs/YYYYMMDD/attempts.jsonl` |
@@ -253,7 +238,7 @@ Random agent / короткий env smoke. `--log` пишет в `games/.../logs
 | `--n-envs` | parallel env (default 8) |
 | `--cycles` | раундов step (default 30) |
 | `--reset-every` | `vec.reset()` каждые N циклов (default 5; `0` = только initial) |
-| `--save-state` | default `save_states/cp0.fc0` |
+| `--save-state` | default `save_states/cp_gameplay0.fc0` |
 | `--game` / `--mission` | |
 
 ---
@@ -448,23 +433,6 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 
 ---
 
-### `summarize_inference_actions.py`
-
-Доля пустых `action` (`noop_frac`), гистограмма кнопок; опционально стык с `attempts.jsonl` (`max_checkpoint`). Ядро без игровых room/CP.
-
-```bash
-./.venv/Scripts/python.exe scripts/summarize_inference_actions.py games/rushn_attack/missions/m1/logs/20260722
-./.venv/Scripts/python.exe scripts/summarize_inference_actions.py path/to/inference_inputs.jsonl --json -
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `path` | `inference_inputs.jsonl` или каталог дня логов |
-| `--attempts` | явный `attempts.jsonl` (иначе соседний файл, если есть) |
-| `--json [OUT]` | JSON в stdout (`-`) или в файл |
-
----
-
 ### `inference_preflight.py`
 
 Перед inference: staging/bridge; **logs дня по умолчанию сохраняются** (печатает текущий airtime). Wipe — только по флагу. Вызывается из `inference_local.sh` / `play_inference_fm2`.
@@ -516,7 +484,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 <a id="inference"></a>
 <a id="run_inferencepy"></a>
 
-Локальный PPO inference. Логи: `games/.../logs/YYYYMMDD/` (`attempts.jsonl`, `inference_inputs.jsonl`). Default save state: `save_states/inference_cp0.fc0`.  
+Локальный PPO inference. Логи: `games/.../logs/YYYYMMDD/` (`attempts.jsonl`, `inference_inputs.jsonl`). Default save state: `save_states/cp_gameplay0.fc0` (тот же канон, что train).  
 [Retention window](GLOSSARY.md#retention-window) (**as-is**, устаревает → [пул поколения](GLOSSARY.md#пул-поколения)) — пул attempts за календарный день (UTC+3); не путать с [airtime](GLOSSARY.md#airtime) editorial-пакета. Целевая модель эфира — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md); миграция — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md). Подробнее — ML_CONCEPT §8.
 
 ```bash
@@ -535,10 +503,10 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 
 | Флаг | Описание |
 | ---- | -------- |
-| `--model` | `.zip` или имя в `models/` (default `gen0.zip`) |
+| `--model` | один `.zip` в `models/` (default `gen0.zip`); Multi-head — тот же путь, головы внутри zip ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)) |
 | `--episodes` / `--max-steps` | default 5 / 8000; при `--target-airtime` — размер батча добора |
 | `--stochastic` | sampling (рекомендуется vs greedy) |
-| `--save-state` | reset state (default `inference_cp0.fc0`) |
+| `--save-state` | reset state (default `cp_gameplay0.fc0`) |
 | `--save-episode-fm2` | писать FM2 эпизодов |
 | `--build-playlist` | плейлист по номинациям |
 | `--playlist-no-dedupe` | без дедупа эпизодов в плейлисте |
@@ -572,7 +540,7 @@ Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с т
 | `--episode` | один эпизод |
 | `--frame-skip` | NES-кадров на env step (default 4) |
 | `--template` | заголовок FM2 |
-| `--save-state` | `.fc0` для embed (default `inference_cp0.fc0`) |
+| `--save-state` | `.fc0` для embed (default `cp_gameplay0.fc0`) |
 | `--game` / `--mission` | |
 
 ---
