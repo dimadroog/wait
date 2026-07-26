@@ -13,8 +13,9 @@ from achievements.playlist import (  # noqa: E402
     build_playlist,
     write_overlay_clip,
 )
-from jsonl_logs import utc_date_prefix  # noqa: E402
 from project_paths import repo_root  # noqa: E402
+
+_GEN = "gen0"
 
 
 def test_write_overlay_clip_no_save_state(tmp_path: Path) -> None:
@@ -55,7 +56,7 @@ def test_build_playlist_fm2_manifest() -> None:
     logs = repo_root() / "tmp" / "smoke" / "playlist_fm2" / "logs"
     if logs.exists():
         shutil.rmtree(logs)
-    day = logs / utc_date_prefix()
+    day = logs / _GEN
     day.mkdir(parents=True)
     inputs = day / "inference_inputs.jsonl"
     inputs.write_text(
@@ -99,7 +100,7 @@ def test_build_playlist_fm2_manifest() -> None:
     clip = manifest["clips"][0]
     assert clip["episode"] == 1
     assert clip["fm2"].endswith(".fm2")
-    assert not clip["fm2"].startswith(utc_date_prefix())
+    assert not clip["fm2"].startswith(_GEN)
     assert "inference_inputs" not in clip
     fm2 = day / clip["fm2"]
     assert fm2.is_file()
@@ -118,7 +119,7 @@ def test_build_playlist_clones_conventional_ep_fm2() -> None:
     logs = repo_root() / "tmp" / "smoke" / "playlist_clone_ep" / "logs"
     if logs.exists():
         shutil.rmtree(logs)
-    day = logs / utc_date_prefix()
+    day = logs / _GEN
     day.mkdir(parents=True)
     src_ep = (
         repo_root()
@@ -176,7 +177,7 @@ def test_build_playlist_dedupes_identical_fm2() -> None:
     logs = repo_root() / "tmp" / "smoke" / "playlist_dedupe_fm2" / "logs"
     if logs.exists():
         shutil.rmtree(logs)
-    day = logs / utc_date_prefix()
+    day = logs / _GEN
     day.mkdir(parents=True)
     inputs = day / "inputs.jsonl"
     rows = []

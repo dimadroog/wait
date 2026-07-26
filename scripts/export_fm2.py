@@ -11,7 +11,7 @@ sys.path.insert(0, str(_REPO / "src"))
 
 from fm2_export import default_fm2_template, export_fm2  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
-from jsonl_logs import dated_log_path  # noqa: E402
+from jsonl_logs import gen_log_path, resolve_default_model_version  # noqa: E402
 from project_paths import mission_dir  # noqa: E402
 
 
@@ -21,10 +21,12 @@ def main() -> None:
     )
     parser.add_argument("--game", default="rushn_attack")
     parser.add_argument("--mission", default="m1")
+    parser.add_argument("--model", default=None, help="models/genN.zip (для stem пула)")
+    parser.add_argument("--model-version", default=None, help="имя пула logs/<version>/")
     parser.add_argument(
         "--input",
         default=None,
-        help="logs/YYYYMMDD/inference_inputs.jsonl (default: сегодня, день retention UTC+3)",
+        help="logs/<model_version>/inference_inputs.jsonl (default: пул модели)",
     )
     parser.add_argument("--output", "-o", required=True, help="output .fm2 path")
     parser.add_argument("--episode", type=int, default=None, help="export single episode")
@@ -42,7 +44,13 @@ def main() -> None:
     args = parser.parse_args()
 
     mission = mission_dir(args.game, args.mission)
-    jsonl = Path(args.input) if args.input else dated_log_path(mission / "logs", "inference_inputs")
+    if args.input:
+        jsonl = Path(args.input)
+    else:
+        version = resolve_default_model_version(
+            mission, model=args.model, model_version=args.model_version
+        )
+        jsonl = gen_log_path(mission / "logs", version, "inference_inputs")
     if not jsonl.is_file():
         raise SystemExit(f"Input not found: {jsonl}")
 

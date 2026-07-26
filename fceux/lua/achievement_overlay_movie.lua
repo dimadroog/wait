@@ -1,13 +1,13 @@
--- Achievement overlay при проигрывании inference FM2 (single clip или playlist).
+-- Slim Lua HUD: gen, CP, короткий тег / смерть (STREAMING §7 / TASK_HYBRID_BROADCAST).
 -- Запуск: scripts/play_inference_fm2.py
--- Конфиг: WAIT_ACHIEVEMENT_OVERLAY, опц. WAIT_BLOCK_LABEL (заголовок блока эфира)
+-- Конфиг: WAIT_ACHIEVEMENT_OVERLAY, опц. WAIT_BLOCK_LABEL
 
 local overlay_cache = nil
 local overlay_until_frame = 0
 local last_overlay_raw = ""
 local block_label = ""
 local block_label_until = 0
-local block_label_frames = 120
+local block_label_frames = 90
 
 local function overlay_path()
   local from_env = os.getenv("WAIT_ACHIEVEMENT_OVERLAY")
@@ -26,24 +26,25 @@ end
 local function parse_overlay_json(text)
   local show_until = tonumber(text:match('"show_until_frame"%s*:%s*(%d+)')) or 180
   local max_cp = tonumber(text:match('"max_cp"%s*:%s*([%d%.%-]+)')) or 0
-  local reward = tonumber(text:match('"reward"%s*:%s*([%d%.%-]+)')) or 0
-  local steps = tonumber(text:match('"steps"%s*:%s*(%d+)')) or 0
-  local achievements = {}
-  for block in text:gmatch('{[^}]*"slug"[^}]*}') do
-    local idx = tonumber(block:match('"idx"%s*:%s*(%d+)')) or 0
-    local title = block:match('"title"%s*:%s*"([^"]*)"') or ""
-    local label = block:match('"label"%s*:%s*"([^"]*)"') or ""
-    local slug = block:match('"slug"%s*:%s*"([^"]*)"') or ""
-    local tier = block:match('"tier"%s*:%s*"([^"]*)"') or "gold"
-    local display = label ~= "" and label or (title ~= "" and title or slug)
-    if display ~= "" then
-      achievements[#achievements + 1] = {idx = idx, title = display, tier = tier, slug = slug}
+  local model_version = text:match('"model_version"%s*:%s*"([^"]*)"') or ""
+  local tag = text:match('"tag"%s*:%s*"([^"]*)"') or ""
+  local death_room = text:match('"death"%s*:%s*{[^}]*"room"%s*:%s*"([^"]*)"')
+  local death_x = tonumber(text:match('"death"%s*:%s*{[^}]*"x"%s*:%s*(%d+)'))
+  if tag == "" then
+    local first = text:match('{[^}]*"slug"[^}]*}')
+    if first then
+      tag = first:match('"label"%s*:%s*"([^"]*)"')
+        or first:match('"title"%s*:%s*"([^"]*)"')
+        or first:match('"slug"%s*:%s*"([^"]*)"')
+        or ""
     end
   end
-  table.sort(achievements, function(a, b) return a.idx < b.idx end)
   return {
-    achievements = achievements,
-    stats = {max_cp = max_cp, reward = reward, steps = steps},
+    model_version = model_version,
+    tag = tag,
+    stats = {max_cp = max_cp},
+    death_room = death_room,
+    death_x = death_x,
     show_until_frame = show_until,
   }
 end
@@ -72,46 +73,6 @@ end
 local movie_done = false
 local movie_ever_active = false
 
--- Inference FM2 starts at embed gameplay: use lives (G0), not clear.fm2 frame 18/1250.
-local function is_gameplay_ram(lives)
-  return lives >= 1 and lives <= 9
-end
-
-local function draw_playback_hud()
-  local room_env = os.getenv("WAIT_PLAYBACK_ROOM")
-  if not room_env or room_env == "" then
-    return
-  end
-  local room_addr = tonumber(room_env)
-  if not room_addr then
-    return
-  end
-  local active = movie_is_active()
-  local mf = 0
-  if active then
-    mf = movie.framecount()
-  end
-  local room = memory.readbyte(room_addr)
-  local lives = 0
-  local lives_env = os.getenv("WAIT_PLAYBACK_LIVES")
-  if lives_env and lives_env ~= "" then
-    local lives_addr = tonumber(lives_env)
-    if lives_addr then
-      lives = memory.readbyte(lives_addr)
-    end
-  end
-  local phase = is_gameplay_ram(lives) and "GAMEPLAY" or "TITLE"
-  local tag = active and ("REPLAY/" .. phase) or "NO-MOVIE"
-  local color = "red"
-  if active and phase == "GAMEPLAY" then
-    color = "limegreen"
-  elseif active then
-    color = "orange"
-  end
-  local hud = string.format("%s f=%d r=0x%02X L=%d", tag, mf, room, lives)
-  gui.text(8, 220, hud, color)
-end
-
 local function draw_overlay()
   local path = overlay_path()
   if path == "" then
@@ -130,28 +91,34 @@ local function draw_overlay()
     overlay_cache = parse_overlay_json(text)
     overlay_until_frame = emu.framecount() + (overlay_cache.show_until_frame or 180)
   end
-  if block_label ~= "" and emu.framecount() <= block_label_until then
-    gui.text(8, 2, "[" .. block_label .. "]", "cyan")
-  end
   if not overlay_cache or emu.framecount() > overlay_until_frame then
     return
   end
-  local y = 12
+  local y = 4
   if block_label ~= "" and emu.framecount() <= block_label_until then
-    y = 24
-  end
-  for _, ach in ipairs(overlay_cache.achievements or {}) do
-    local prefix = "*"
-    if ach.tier == "skull" then
-      prefix = "X"
-    elseif ach.tier == "silver" then
-      prefix = "+"
-    end
-    gui.text(8, y, prefix .. " " .. ach.title, "yellow")
+    gui.text(8, y, block_label, "cyan")
     y = y + 12
   end
-  local st = overlay_cache.stats or {}
-  gui.text(8, y + 4, string.format("CP:%d  R:%.0f  steps:%d", st.max_cp or 0, st.reward or 0, st.steps or 0), "white")
+  local gen = overlay_cache.model_version or ""
+  local cp = (overlay_cache.stats and overlay_cache.stats.max_cp) or 0
+  local line = ""
+  if gen ~= "" then
+    line = gen .. "  CP:" .. tostring(cp)
+  else
+    line = "CP:" .. tostring(cp)
+  end
+  if overlay_cache.tag and overlay_cache.tag ~= "" then
+    line = line .. "  " .. overlay_cache.tag
+  end
+  gui.text(8, y, line, "white")
+  y = y + 12
+  if overlay_cache.death_room then
+    local death = "X " .. tostring(overlay_cache.death_room)
+    if overlay_cache.death_x then
+      death = death .. " x=" .. tostring(overlay_cache.death_x)
+    end
+    gui.text(8, y, death, "orange")
+  end
 end
 
 init_block_label()
@@ -161,7 +128,6 @@ if FCEU and FCEU.setrenderplanes then
 end
 
 emu.registerafter(function()
-  draw_playback_hud()
   draw_overlay()
   if movie_done then
     return

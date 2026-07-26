@@ -4,7 +4,7 @@
 > ML: [ML_CONCEPT.md](ML_CONCEPT.md) · Пилот: [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md) · Индекс: [README.md](README.md) · [GLOSSARY.md](GLOSSARY.md)  
 > **Статус:** проектирование (этап B). Установка ПО — после gate [ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml).  
 > Порядок этапов — [README.md](README.md#порядок-разработки).  
-> Реализация целевой модели: [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md), [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md).
+> Реализация целевой модели: [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md) (done), [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md) (done).
 
 ---
 
@@ -65,14 +65,14 @@
 
 Спецификация эфира. До gate [ML §12](ML_CONCEPT.md#12-критерии-приёмки-ml) — только проектирование, без установки OBS/Twitch.
 
-Материал editorial и live опирается на inference / FM2 / achievements — [ML_CONCEPT.md](ML_CONCEPT.md) / [SCRIPTS.md](SCRIPTS.md). **Целевой пул попыток** — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/…`), не календарный день. Текущий код ещё на `logs/YYYYMMDD/` + day-retention — миграция в [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md).
+Материал editorial и live опирается на inference / FM2 / achievements — [ML_CONCEPT.md](ML_CONCEPT.md) / [SCRIPTS.md](SCRIPTS.md). **Пул попыток** — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/…`), не календарный день.
 
 | Компонент | Описание |
 | --------- | -------- |
 | Платформа | Twitch |
 | Эфир | Hybrid: editorial replay + live `run_inference` + OBS 720p30 NVENC |
 | Захват | Game Capture → окно FCEUX (режим Game); отдельно сцена Board |
-| Editorial | короткий `playlist.json` поколения (без pad «до часа») |
+| Editorial | короткий `playlist.json` поколения |
 | Live | стохастический inference на границе, тот же захват FCEUX |
 | HUD в кадре | тонкий Lua overlay (инженерный вид) |
 | Перебивки / контекст | broadcast board (OBS Browser Source или эквивалент) |
@@ -95,11 +95,9 @@ encode:    OBS NVENC 720p30 → Twitch
 
 **Операторский смысл (целевой, не обязательный CLI as-is):**
 
-- Собрать eval/attempts для `genN` → собрать **короткий** editorial без `--target-airtime` как способа заполнить час.
+- Собрать eval/attempts для `genN` → собрать **короткий** editorial (`build_playlist --editorial` / `hybrid_episode_prep`).
 - Открыть эфир: Board → Editorial → Board → Live → Board (финал).
 - Длина Twitch-слота (часто ~1 ч) = editorial + live + перебивки; **не** = длина кураторского плейлиста.
-
-Исторический флаг `--target-airtime` / pad до 1 ч — наследие модели «эфир = плейлист дня»; в целевой модели не является режиссёрским дефолтом (снятие/замена — [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md)).
 
 ---
 
@@ -172,7 +170,7 @@ flowchart TB
 | Честность | `regression`, откат поколения | доверие |
 | Второстепенные | быстрая смерть, узкие death-gag | B-roll, не наполнители слота |
 
-Пул тегов/`top_k`/`deja_vu` — **поколение**, не календарный день.
+Пул тегов/`top_k`/`wall` — **поколение**, не календарный день.
 
 ### ROM
 
@@ -192,7 +190,7 @@ flowchart TB
 
 Не дублировать на Lua полную карту миссии, длинные таблицы дельты и CTA — это Board.
 
-Реализация as-is: `fceux/lua/achievement_overlay_*.lua` + sidecar `.overlay.json`; целевое ужатие полей — [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md).
+Реализация as-is: `fceux/lua/achievement_overlay_*.lua` + sidecar `.overlay.json`; целевое ужатие полей — [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md).
 
 ### B. Broadcast board (перебивка / контекст)
 
@@ -224,17 +222,17 @@ Live по возможности играет **на границе** (реле�
 | Сцена Board | Browser Source / статика из `broadcast_board` |
 | Переходы | Game ↔ Board по каркасу эпизода |
 
-Профиль сцен и источник board — этап B / [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md).
+Профиль сцен и источник board — этап B / [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md).
 
 ---
 
 ## 10. Метрики и логи
 
-**Целевая раскладка:** `games/…/missions/<m>/logs/genN/` — `attempts.jsonl`, `inference_inputs.jsonl`, editorial `playlist.json`, артефакты board.
+**Раскладка:** `games/…/missions/<m>/logs/genN/` — `attempts.jsonl`, `inference_inputs.jsonl`, editorial `playlist.json`, артефакты board.
 
 **Поля для эфира / HUD / board:** `model_version` (`genN`), `max_checkpoint`, `died`, `death_x`, `death_room`, `mission_clear`, теги achievements; для board дополнительно агрегаты eval и дельта к предыдущему поколению.
 
-**As-is (до миграции):** `logs/YYYYMMDD/` и day-retention в коде — [SCRIPTS.md](SCRIPTS.md#inference), [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных). Миграция — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md).
+Устаревший day-layout — [retention window](GLOSSARY.md#retention-window-устарело).
 
 **Airtime** в целевой модели — длина **editorial**-пакета (и вспомогательная метрика длины клипов), а не обязательство заполнить час плейлистом. Длина Twitch-слота задаётся оператором (editorial + live).
 
@@ -246,8 +244,8 @@ Live по возможности играет **на границе** (реле�
 
 | Задача | Результат |
 | ------ | --------- |
-| [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md) | пул `logs/genN/`, без day-retention как сюжетной/отборочной рамки |
-| [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md) | editorial короткий + live + Board + slim Lua |
+| [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md) | пул `logs/genN/`, без day-retention как сюжетной/отборочной рамки |
+| [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md) | editorial короткий + live + Board + slim Lua |
 | OBS / Twitch | профиль 720p30, сцены Game/Board, stream key не на экране |
 | Тестовый эфир | каркас Board → editorial → Board → короткий live |
 
@@ -260,12 +258,12 @@ Live по возможности играет **на границе** (реле�
 
 После gate [ML §12](ML_CONCEPT.md#12-критерии-приёмки-ml); не блокируют приёмку ML.
 
-- [ ] Тестовый hybrid-эфир: короткий editorial + live-фрагмент + перебивка Board
-- [ ] OBS: 720p30 NVENC; сцены Game и Board
-- [ ] Lua HUD: минимальный набор полей, картинка NES читаема
-- [ ] Board: поколение, граница/CP, смена режима; без агрессивного донат-CTA
-- [ ] Сравнение прогресса в сюжете — по `genN`, не по дате папки логов
-- [ ] Пул attempts для номинаций editorial — поколение (после TASK_GEN_LOG_POOL)
+- [x] Каркас hybrid: короткий editorial (`--editorial` / `hybrid_episode_prep`) + live (`run_inference --show-window`) + Board (`streaming/board/`) — локально без Twitch ([TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md))
+- [ ] OBS: 720p30 NVENC; сцены Game и Board (после gate ML / установка ПО)
+- [x] Lua HUD: slim (gen, CP, тег / смерть); карта миссии и CTA — на Board
+- [x] Board: поколение, граница/CP, смена режима; без агрессивного донат-CTA (макс. `support_line`)
+- [x] Сравнение прогресса в сюжете — по `genN`, не по дате папки логов
+- [x] Пул attempts для номинаций editorial — поколение ([TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md))
 
 ---
 
@@ -276,7 +274,7 @@ Live по возможности играет **на границе** (реле�
 | Слабый upload | 720p30, ~3000 kbps, speedtest |
 | Скучный live | фокус на границе; короткие блоки + Board-итог |
 | Перегруз HUD | вынести контекст на Board; Lua только компактный |
-| Дорогой часовой плейлист | editorial 8–15 мин, без pad-до-часа |
+| Дорогой часовой плейлист | editorial 8–15 мин (`--editorial`) |
 | ROM на стриме | не показывать получение ROM |
 
 ---

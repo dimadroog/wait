@@ -1,17 +1,18 @@
-"""Лог inference-попыток → logs/YYYYMMDD/attempts.jsonl (ML_CONCEPT §8)."""
+"""Лог inference-попыток → logs/<model_version>/attempts.jsonl (ML_CONCEPT §8)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from jsonl_logs import append_jsonl, dated_log_path
+from jsonl_logs import append_jsonl, gen_log_path
 
 
 class AttemptLogger:
-    def __init__(self, logs_dir: str | Path) -> None:
+    def __init__(self, logs_dir: str | Path, *, model_version: str = "smoke") -> None:
         self.logs_dir = Path(logs_dir)
-        self.log_path = dated_log_path(self.logs_dir, "attempts")
+        self.model_version = model_version
+        self.log_path = gen_log_path(self.logs_dir, model_version, "attempts")
 
     def log_episode(
         self,
@@ -19,7 +20,7 @@ class AttemptLogger:
         mission: str | int,
         episode: int,
         info: dict[str, Any],
-        model_version: str = "smoke",
+        model_version: str | None = None,
         save_state: str | None = None,
         tags: list[str] | None = None,
         inference_inputs_ref: str | None = None,
@@ -28,9 +29,10 @@ class AttemptLogger:
         episode_frames = int(info.get("episode_frames", 0))
         episode_reward = float(info.get("episode_reward", 0.0))
         death_x = ram.get("x")
+        version = model_version if model_version is not None else self.model_version
         record: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "model_version": model_version,
+            "model_version": version,
             "mission": mission,
             "episode": episode,
             "max_checkpoint": info.get("max_checkpoint", -1),

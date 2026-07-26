@@ -18,12 +18,13 @@ from fm2_export import (
     remap_fm2_guid,
 )
 from inference_states import resolve_inference_reset_state
-from jsonl_logs import dated_day_dir, utc_date_prefix
+from jsonl_logs import gen_pool_dir, normalize_model_version
 from project_paths import mission_dir, repo_root
 
-PAD_SLUG = "pad"
-PAD_IDX = 99
-PAD_LABEL = "Pad"
+# Дефолты короткого editorial (STREAMING / TASK_HYBRID_BROADCAST)
+DEFAULT_EDITORIAL_MAX_AIRTIME = "12m"
+DEFAULT_EDITORIAL_MAX_CLIPS = 12
+DEFAULT_EDITORIAL_MAX_PER_SLUG = 1
 
 
 def _sort_key_for_slug(slug: str, record: dict[str, Any]) -> tuple:
@@ -43,6 +44,35 @@ def _block_label(nom: dict[str, Any]) -> str:
     return str(nom.get("label") or nom.get("title", ""))
 
 
+def _editorial_limits(config: dict[str, Any]) -> tuple[float | None, int | None, int]:
+    """max_airtime_seconds, max_clips, max_per_slug из config.editorial."""
+    from achievements.airtime import parse_airtime_hours
+
+    ed = config.get("editorial") or {}
+    max_airtime_s: float | None = None
+    raw_air = ed.get("max_airtime")
+    if raw_air is not None:
+        max_airtime_s = parse_airtime_hours(raw_air) * 3600.0
+    max_clips = ed.get("max_clips")
+    max_clips_i = int(max_clips) if max_clips is not None else None
+    max_per = int(ed.get("max_per_slug", DEFAULT_EDITORIAL_MAX_PER_SLUG))
+    return max_airtime_s, max_clips_i, max_per
+
+
+def resolve_clip_order(
+    config: dict[str, Any],
+    *,
+    editorial: bool,
+) -> list[str]:
+    """Порядок slug: editorial_order при editorial, иначе broadcast_order."""
+    noms = _nomination_index(config)
+    if editorial and config.get("editorial_order"):
+        return [s for s in config["editorial_order"] if s in noms]
+    if config.get("broadcast_order"):
+        return [s for s in config["broadcast_order"] if s in noms]
+    return list(noms.keys())
+
+
 def _fm2_digest(path: Path) -> str:
     """MD5 покадровой части FM2 (строки |…) — одинаковый геймплей → один клип."""
     digest = hashlib.md5()
@@ -57,35 +87,31 @@ def _playlist_clip_name(name: str) -> bool:
     return bool(re.match(r"^\d{2}_.+", name))
 
 
-def cleanup_playlist_clips(logs_dir: Path, *, date_prefix: str | None = None) -> int:
-    """Удалить FM2/overlay клипов плейлиста за день (перед пересборкой)."""
-    prefix = date_prefix or utc_date_prefix()
-    day_dir = logs_dir / prefix
+def cleanup_playlist_clips(pool_dir: Path) -> int:
+    """Удалить FM2/overlay клипов плейлиста в пуле поколения (перед пересборкой)."""
     removed = 0
-    if not day_dir.is_dir():
+    if not pool_dir.is_dir():
         return 0
-    for path in list(day_dir.iterdir()):
+    for path in list(pool_dir.iterdir()):
         if not _playlist_clip_name(path.name):
             continue
         if path.name.endswith(".fm2") or path.name.endswith(".overlay.json"):
             path.unlink(missing_ok=True)
             removed += 1
     for name in ("playlist.json", "playlist.play.cmd"):
-        p = day_dir / name
+        p = pool_dir / name
         if p.is_file():
             p.unlink(missing_ok=True)
             removed += 1
     return removed
 
 
-def cleanup_episode_raw_fm2(logs_dir: Path, *, date_prefix: str | None = None) -> int:
+def cleanup_episode_raw_fm2(pool_dir: Path) -> int:
     """Удалить промежуточные epNNNN.fm2 / .overlay.json (канон — номинации плейлиста)."""
-    prefix = date_prefix or utc_date_prefix()
-    day_dir = logs_dir / prefix
     removed = 0
-    if not day_dir.is_dir():
+    if not pool_dir.is_dir():
         return 0
-    for path in list(day_dir.iterdir()):
+    for path in list(pool_dir.iterdir()):
         name = path.name
         if not name.startswith("ep"):
             continue
@@ -146,15 +172,15 @@ def _copy_overlay_sidecar(
 
 def write_playlist_manifest(
     clips: list[dict[str, Any]],
-    day_dir: Path,
+    pool_dir: Path,
     *,
-    date_prefix: str,
+    model_version: str,
     include_airtime: bool = True,
 ) -> Path:
-    manifest: dict[str, Any] = {"date": date_prefix, "clips": clips}
-    path = day_dir / "playlist.json"
+    manifest: dict[str, Any] = {"model_version": model_version, "clips": clips}
+    path = pool_dir / "playlist.json"
     if include_airtime and clips:
-        airtime = measure_playlist_airtime(manifest, logs_dir=day_dir)
+        airtime = measure_playlist_airtime(manifest, logs_dir=pool_dir)
         manifest["airtime"] = airtime.as_dict()
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
@@ -179,14 +205,14 @@ def write_playlist_launcher(
     return launcher
 
 
-def _resolve_source_fm2(record: dict[str, Any], day_dir: Path) -> Path | None:
+def _resolve_source_fm2(record: dict[str, Any], pool_dir: Path) -> Path | None:
     src = record.get("fm2_path")
     if src and Path(src).is_file():
         return Path(src)
     episode = int(record.get("episode", -1))
     if episode < 0:
         return None
-    conventional = day_dir / f"ep{episode:04d}.fm2"
+    conventional = pool_dir / f"ep{episode:04d}.fm2"
     if conventional.is_file():
         return conventional
     return None
@@ -196,14 +222,14 @@ def _materialize_clip_fm2(
     *,
     record: dict[str, Any],
     dest: Path,
-    day_dir: Path,
+    pool_dir: Path,
     embed_save_state_path: Path,
     inference_inputs_path: Path | None,
     game: str,
     mission: str,
 ) -> Path | None:
     """Записать self-contained FM2. Возвращает путь для overlay-sidecar (src|dest) или None."""
-    src = _resolve_source_fm2(record, day_dir)
+    src = _resolve_source_fm2(record, pool_dir)
     clip_guid = episode_fm2_guid(salt=dest.stem)
     if src is not None:
         _write_file_clone(src, dest)
@@ -227,80 +253,10 @@ def _materialize_clip_fm2(
     return None
 
 
-def _manifest_airtime_seconds(manifest_clips: list[dict[str, Any]], day_dir: Path) -> float:
+def _manifest_airtime_seconds(manifest_clips: list[dict[str, Any]], pool_dir: Path) -> float:
     if not manifest_clips:
         return 0.0
-    return measure_playlist_airtime({"clips": manifest_clips}, logs_dir=day_dir).seconds
-
-
-def _append_pad_clips(
-    *,
-    records: list[dict[str, Any]],
-    manifest_clips: list[dict[str, Any]],
-    created: dict[str, list[Path]],
-    day_dir: Path,
-    achievements_config: dict[str, Any],
-    embed_save_state_path: Path,
-    inference_inputs_path: Path | None,
-    game: str,
-    mission: str,
-    pad_to_seconds: float,
-) -> int:
-    """Добить плейлист клипами вне номинаций (после broadcast_order), пока airtime ≥ target."""
-    used_episodes = {int(c.get("episode", -1)) for c in manifest_clips}
-    pad_num = 0
-    clip_seq = len(manifest_clips)
-    paths = list(created.get(PAD_SLUG) or [])
-
-    candidates = sorted(
-        records,
-        key=lambda r: int(r.get("episode_frames", 0) or 0),
-        reverse=True,
-    )
-    for record in candidates:
-        if _manifest_airtime_seconds(manifest_clips, day_dir) >= pad_to_seconds:
-            break
-        episode = int(record.get("episode", -1))
-        if episode < 0 or episode in used_episodes:
-            continue
-
-        dest = day_dir / f"{PAD_IDX:02d}_{PAD_SLUG}_{pad_num + 1:03d}.fm2"
-        overlay_src = _materialize_clip_fm2(
-            record=record,
-            dest=dest,
-            day_dir=day_dir,
-            embed_save_state_path=embed_save_state_path,
-            inference_inputs_path=inference_inputs_path,
-            game=game,
-            mission=mission,
-        )
-        if overlay_src is None:
-            continue
-
-        overlay_path = _copy_overlay_sidecar(
-            overlay_src,
-            dest,
-            record=record,
-            config=achievements_config,
-        )
-        pad_num += 1
-        clip_seq += 1
-        used_episodes.add(episode)
-        paths.append(dest)
-        manifest_clips.append(
-            {
-                "idx": clip_seq,
-                "slug": PAD_SLUG,
-                "block_label": PAD_LABEL,
-                "episode": episode,
-                "fm2": dest.name,
-                "overlay": overlay_path.name,
-            }
-        )
-
-    if paths:
-        created[PAD_SLUG] = paths
-    return pad_num
+    return measure_playlist_airtime({"clips": manifest_clips}, logs_dir=pool_dir).seconds
 
 
 def build_playlist(
@@ -312,20 +268,41 @@ def build_playlist(
     game: str = "rushn_attack",
     mission: str = "m1",
     dedupe: bool = True,
-    pad_to_seconds: float | None = None,
+    model_version: str | None = None,
+    editorial: bool = False,
+    max_airtime_seconds: float | None = None,
+    max_clips: int | None = None,
+    max_per_slug: int | None = None,
 ) -> tuple[dict[str, list[Path]], Path | None, int]:
-    """Создать FM2-копии, overlay sidecar и logs/YYYYMMDD/playlist.json.
+    """Создать FM2-копии, overlay sidecar и logs/<model_version>/playlist.json.
 
-    pad_to_seconds: после блоков номинаций добить клипами (slug=pad), пока airtime ≥ N.
+    editorial=True: короткий пакет (editorial_order + лимиты airtime/clips).
+    Пул = каталог attempts.jsonl (обычно logs/genN/).
     """
+    from achievements.airtime import parse_airtime_hours
+
     achievements_config = config or load_achievements_config()
     records = evaluate_attempts_file(attempts_path, config=achievements_config)
-    date_prefix = utc_date_prefix()
-    day_dir = dated_day_dir(logs_dir)
-    cleanup_playlist_clips(logs_dir, date_prefix=date_prefix)
+    version = normalize_model_version(model_version or attempts_path.parent.name)
+    pool_dir = gen_pool_dir(logs_dir, version)
+    cleanup_playlist_clips(pool_dir)
 
     noms = _nomination_index(achievements_config)
-    broadcast = achievements_config.get("broadcast_order") or list(noms.keys())
+    clip_order = resolve_clip_order(achievements_config, editorial=editorial)
+    cfg_air_s, cfg_clips, cfg_per_slug = _editorial_limits(achievements_config)
+
+    limit_airtime_s = max_airtime_seconds
+    limit_clips = max_clips
+    limit_per_slug = max_per_slug if max_per_slug is not None else cfg_per_slug
+    if editorial:
+        if limit_airtime_s is None:
+            if cfg_air_s is not None:
+                limit_airtime_s = cfg_air_s
+            else:
+                limit_airtime_s = parse_airtime_hours(DEFAULT_EDITORIAL_MAX_AIRTIME) * 3600.0
+        if limit_clips is None:
+            limit_clips = cfg_clips if cfg_clips is not None else DEFAULT_EDITORIAL_MAX_CLIPS
+
     mission_root = mission_dir(game, mission)
     embed_save_state_path = mission_root / resolve_inference_reset_state(mission_root)
 
@@ -342,8 +319,12 @@ def build_playlist(
     manifest_clips: list[dict[str, Any]] = []
     clip_seq = 0
     seen_digests: set[str] = set()
+    used_episodes: set[int] = set()
+    stop_limits = False
 
-    for slug in broadcast:
+    for slug in clip_order:
+        if stop_limits:
+            break
         items = by_slug.get(slug) or []
         if not items:
             continue
@@ -354,11 +335,30 @@ def build_playlist(
         clip_num = 0
 
         for record in items:
-            dest = day_dir / f"{nom_idx:02d}_{slug}_{clip_num + 1:03d}.fm2"
+            if limit_clips is not None and clip_seq >= limit_clips:
+                stop_limits = True
+                break
+            if limit_per_slug is not None and clip_num >= limit_per_slug:
+                break
+            episode = int(record.get("episode", -1))
+            if episode >= 0 and episode in used_episodes:
+                continue
+
+            # Оценка до материализации: не превышать max airtime editorial
+            if limit_airtime_s is not None:
+                from achievements.airtime import estimate_clip_airtime_seconds
+
+                projected = _manifest_airtime_seconds(manifest_clips, pool_dir)
+                projected += estimate_clip_airtime_seconds(int(record.get("episode_frames", 0) or 0))
+                if manifest_clips and projected > limit_airtime_s + 1e-6:
+                    stop_limits = True
+                    break
+
+            dest = pool_dir / f"{nom_idx:02d}_{slug}_{clip_num + 1:03d}.fm2"
             overlay_src = _materialize_clip_fm2(
                 record=record,
                 dest=dest,
-                day_dir=day_dir,
+                pool_dir=pool_dir,
                 embed_save_state_path=embed_save_state_path,
                 inference_inputs_path=inference_inputs_path,
                 game=game,
@@ -382,43 +382,47 @@ def build_playlist(
                     continue
                 seen_digests.add(digest)
 
+            # Точный airtime после экспорта
+            trial_clip = {
+                "idx": clip_seq + 1,
+                "slug": slug,
+                "block_label": label,
+                "episode": episode if episode >= 0 else int(record.get("episode", 0)),
+                "fm2": dest.name,
+                "overlay": overlay_path.name,
+            }
+            if limit_airtime_s is not None and manifest_clips:
+                trial_seconds = _manifest_airtime_seconds(manifest_clips + [trial_clip], pool_dir)
+                if trial_seconds > limit_airtime_s + 1e-6:
+                    dest.unlink(missing_ok=True)
+                    overlay_path.unlink(missing_ok=True)
+                    stop_limits = True
+                    break
+
             clip_num += 1
             paths.append(dest)
             clip_seq += 1
-            manifest_clips.append(
-                {
-                    "idx": clip_seq,
-                    "slug": slug,
-                    "block_label": label,
-                    "episode": int(record.get("episode", 0)),
-                    "fm2": dest.name,
-                    "overlay": overlay_path.name,
-                }
-            )
+            if episode >= 0:
+                used_episodes.add(episode)
+            manifest_clips.append(trial_clip)
 
         if paths:
             created[slug] = paths
 
-    if pad_to_seconds is not None and pad_to_seconds > 0:
-        _append_pad_clips(
-            records=records,
-            manifest_clips=manifest_clips,
-            created=created,
-            day_dir=day_dir,
-            achievements_config=achievements_config,
-            embed_save_state_path=embed_save_state_path,
-            inference_inputs_path=inference_inputs_path,
-            game=game,
-            mission=mission,
-            pad_to_seconds=pad_to_seconds,
-        )
-
     manifest_path: Path | None = None
     if manifest_clips:
-        manifest_path = write_playlist_manifest(manifest_clips, day_dir, date_prefix=date_prefix)
+        manifest_path = write_playlist_manifest(
+            manifest_clips, pool_dir, model_version=version
+        )
+        if editorial:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            data["kind"] = "editorial"
+            manifest_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         write_playlist_launcher(manifest_path, game=game, mission=mission)
 
-    # Канон в logs/YYYYMMDD/: NN_slug_MMM.fm2 — сырые epNNNN убрать после сборки.
-    cleanup_episode_raw_fm2(logs_dir, date_prefix=date_prefix)
+    # Канон в logs/genN/: NN_slug_MMM.fm2 — сырые epNNNN убрать после сборки.
+    cleanup_episode_raw_fm2(pool_dir)
 
     return created, manifest_path, len(manifest_clips)

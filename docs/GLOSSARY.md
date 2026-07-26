@@ -11,13 +11,13 @@
 
 **Achievement** (достижение / номинация) — метка, которую система вешает на попытку модели после [inference](#inference): например трофей или «смерть» (в конфиге — эмодзи 🏆 / 💀). Правила отбора задаются в `config/achievements.yaml`; выбранные попытки попадают в теги `tags[]` и затем в клипы формата [FM2](#fm2) с именами вида `{idx}_{slug}_{seq}.fm2` для [editorial](#editorial)-пакета.
 
-**Целевой** пул кандидатов для номинаций — [пул поколения](#пул-поколения). Длина editorial-пакета измеряется как [airtime](#airtime) клипов; это не длина всего Twitch-слота (слот = editorial + live + [board](#broadcast-board)). Подробности форматов — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота); режиссура — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
+**Пул** кандидатов для номинаций — [пул поколения](#пул-поколения). Длина editorial-пакета измеряется как [airtime](#airtime) клипов; это не длина всего Twitch-слота (слот = editorial + live + [board](#broadcast-board)). Подробности форматов — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота); режиссура — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
 
 ### Airtime
 
 **Airtime** (эфирное время пакета клипов) — сколько реальных секунд займёт проигрывание editorial-плейлиста, если клипы идут подряд в realtime эмулятора (около 60 кадров [NES](#nes) в секунду). Считается как сумма длительностей клипов: для каждого клипа примерно `(число_кадров_FM2 + hold) / 60`, где `hold` — пауза показа кадра конца (по умолчанию связано с `show_until_frame`, часто 180 кадров), а число кадров FM2 связано с длиной эпизода и [frame skip](#frame-skip).
 
-В коде длину считает `achievements.airtime.measure_playlist_airtime`; результат пишется в поле `airtime` файла `playlist.json`. В целевой модели эфира ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) airtime — метрика **короткого editorial** (ориентир 8–15 мин), а не обязательство набить час плейлистом. Исторический флаг `--target-airtime` с дефолтом 1 ч и pad — наследие прежней схемы; снятие с режиссёрского дефолта — [TASK_HYBRID_BROADCAST](tasks/TASK_HYBRID_BROADCAST.md). Не путать с [пулом поколения](#пул-поколения) (откуда брать попытки).
+В коде длину считает `achievements.airtime.measure_playlist_airtime`; результат пишется в поле `airtime` файла `playlist.json`. В модели эфира ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) airtime — метрика **короткого editorial** (ориентир 8–15 мин). Сбор: `build_playlist --editorial` / `hybrid_episode_prep` (потолок `--max-airtime` / YAML `editorial.max_airtime`). Не путать с [пулом поколения](#пул-поколения) (откуда брать попытки).
 
 ### Broadcast board
 
@@ -101,7 +101,7 @@
 
 **Inference** (вывод / прогон модели) — режим, в котором уже обученная сеть только **играет**: вызывается `model.predict()`, веса **не** обновляются. Скрипт входа — `run_inference.py`. Попытки пишутся в лог пула; из них собирают [editorial](#editorial), а на эфире также возможен **live**-inference (см. [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)).
 
-**Целевой** пул кандидатов в номинации — [пул поколения](#пул-поколения). Длина editorial — [airtime](#airtime); длина Twitch-слота задаётся оператором (editorial + live + [board](#broadcast-board)).
+**Пул** кандидатов в номинации — [пул поколения](#пул-поколения). Длина editorial — [airtime](#airtime); длина Twitch-слота задаётся оператором (editorial + live + [board](#broadcast-board)).
 
 ### IPC
 
@@ -171,15 +171,15 @@
 
 ### Пул поколения
 
-**Пул поколения** — из каких попыток [inference](#inference) система выбирает кандидатов в [achievements](#achievement-inference) и материал [editorial](#editorial). Целевая раскладка: каталог `logs/genN/` в миссии (attempts, inputs, editorial playlist), согласованный с [поколением модели](#поколение-модели-genn) `models/genN.zip`. Сравнивать прогресс и номинации нужно между поколениями, а не между календарными датами.
+**Пул поколения** — из каких попыток [inference](#inference) система выбирает кандидатов в [achievements](#achievement-inference) и материал [editorial](#editorial). Раскладка: каталог `logs/genN/` в миссии (attempts, inputs, editorial playlist), согласованный с [поколением модели](#поколение-модели-genn) `models/genN.zip` (`model_version` = stem без `.zip`). Сравнивать прогресс и номинации нужно между поколениями, а не между календарными датами.
 
-Миграция с дневных логов — [TASK_GEN_LOG_POOL](tasks/TASK_GEN_LOG_POOL.md). Длина editorial — [airtime](#airtime).
+Длина editorial — [airtime](#airtime).
 
 ### Retention window (устарело)
 
 <a id="retention-window"></a>
 
-**Retention window** (устаревшее) — прежняя рамка пула: календарный день с полуночи **UTC+3**, логи в `logs/YYYYMMDD/`, фильтр строк по `timestamp`. В коде ещё может встречаться до миграции; в концепции эфира **не используется**. Замена — [пул поколения](#пул-поколения). История введения day-retention — [TASK_PLAYLIST_AIRTIME](tasks/archive/TASK_PLAYLIST_AIRTIME.md).
+**Retention window** (устаревшее) — прежняя рамка пула: календарный день с полуночи **UTC+3**, логи в `logs/YYYYMMDD/`, фильтр строк по `timestamp`. В коде и CLI **не используется**; замена — [пул поколения](#пул-поколения).
 
 ### Разделение политик
 

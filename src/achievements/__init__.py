@@ -1,6 +1,5 @@
 """Achievements pipeline для inference."""
 from achievements.airtime import (
-    DEFAULT_TARGET_AIRTIME_HOURS,
     PlaylistAirtime,
     estimate_clip_airtime_seconds,
     estimate_fm2_frames,
@@ -17,7 +16,6 @@ from achievements.evaluator import (
 )
 
 __all__ = [
-    "DEFAULT_TARGET_AIRTIME_HOURS",
     "PlaylistAirtime",
     "estimate_clip_airtime_seconds",
     "estimate_fm2_frames",

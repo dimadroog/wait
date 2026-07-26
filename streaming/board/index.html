@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WAIT Broadcast Board</title>
+  <style>
+    :root {
+      --bg0: #0b1020;
+      --bg1: #141c33;
+      --ink: #e8eefc;
+      --muted: #9aabc9;
+      --accent: #6ec8ff;
+      --warn: #f0b35a;
+      --ok: #7ddea2;
+      --line: rgba(255, 255, 255, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: radial-gradient(1200px 700px at 20% 0%, #1a2748 0%, var(--bg0) 55%);
+      color: var(--ink);
+      font-family: "Segoe UI", "IBM Plex Sans", sans-serif;
+    }
+    .wrap {
+      min-height: 100%;
+      padding: 48px 56px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 28px;
+    }
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 24px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 18px;
+    }
+    .brand {
+      font-size: 42px;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+    .mode {
+      font-size: 28px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 28px;
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px 28px;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .gen {
+      font-size: 64px;
+      font-weight: 700;
+      line-height: 1;
+      margin: 8px 0 18px;
+    }
+    .meta { color: var(--muted); font-size: 20px; line-height: 1.5; }
+    .meta strong { color: var(--ink); font-weight: 600; }
+    .delta-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 22px;
+    }
+    .delta-row:last-child { border-bottom: none; }
+    .pos { color: var(--ok); }
+    .neg { color: var(--warn); }
+    .reach {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 16px;
+      color: var(--muted);
+    }
+    .chip b { color: var(--ink); }
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 18px;
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
+    }
+    .err { color: var(--warn); font-size: 22px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topline">
+      <div class="brand">WAIT</div>
+      <div class="mode" id="mode">—</div>
+    </div>
+    <div class="grid">
+      <section class="card">
+        <h2>Поколение</h2>
+        <div class="gen" id="gen">—</div>
+        <div class="meta">
+          Миссия <strong id="mission">—</strong><br />
+          Граница CP <strong id="frontier">—</strong><br />
+          Стена <strong id="wall">—</strong>
+        </div>
+        <div class="reach" id="reach"></div>
+      </section>
+      <section class="card">
+        <h2>Дельта vs <span id="prev">genN−1</span></h2>
+        <div id="delta" class="meta">Нет данных предыдущего поколения</div>
+      </section>
+    </div>
+    <div class="foot">
+      <div id="support"></div>
+      <div id="updated"></div>
+    </div>
+  </div>
+  <script>
+    const MODE_LABELS = {
+      open: "Open",
+      editorial: "Editorial",
+      live: "Live",
+      close: "Close",
+      frontier_report: "Frontier"
+    };
+
+    function fmtPct(v) {
+      if (v == null || Number.isNaN(Number(v))) return "—";
+      return (Number(v) * 100).toFixed(0) + "%";
+    }
+
+    function fmtDelta(v) {
+      if (v == null || Number.isNaN(Number(v))) return "—";
+      const n = Number(v);
+      const sign = n > 0 ? "+" : "";
+      return sign + n;
+    }
+
+    function clsDelta(v) {
+      if (v == null) return "";
+      if (Number(v) > 0) return "pos";
+      if (Number(v) < 0) return "neg";
+      return "";
+    }
+
+    async function loadBoard() {
+      try {
+        const res = await fetch("./broadcast_board.json?ts=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        document.getElementById("mode").textContent = MODE_LABELS[data.mode] || data.mode || "—";
+        document.getElementById("gen").textContent = data.model_version || "—";
+        document.getElementById("mission").textContent = (data.game || "") + " / " + (data.mission || "");
+        const fr = (data.frontier && data.frontier.max_checkpoint);
+        document.getElementById("frontier").textContent = (fr == null || fr < 0) ? "—" : String(fr);
+        const wall = data.frontier && data.frontier.death_wall;
+        document.getElementById("wall").textContent = wall
+          ? (wall.death_room + " @" + wall.death_x_bucket + " (" + wall.count + ")")
+          : "—";
+
+        const reach = document.getElementById("reach");
+        reach.innerHTML = "";
+        const rc = (data.eval && data.eval.reach_cp) || {};
+        Object.keys(rc).sort((a, b) => Number(a) - Number(b)).forEach((k) => {
+          const chip = document.createElement("div");
+          chip.className = "chip";
+          chip.innerHTML = "CP≥" + k + " <b>" + fmtPct(rc[k]) + "</b>";
+          reach.appendChild(chip);
+        });
+
+        const prev = data.prev_model_version || "genN−1";
+        document.getElementById("prev").textContent = prev;
+        const deltaEl = document.getElementById("delta");
+        const d = data.delta || {};
+        if (!d.available) {
+          deltaEl.textContent = "Нет данных предыдущего поколения";
+        } else {
+          const f = d.frontier_cp || {};
+          const m = d.mission_clear_rate || {};
+          deltaEl.innerHTML =
+            '<div class="delta-row"><span>Frontier CP</span><span class="' + clsDelta(f.delta) + '">' +
+            (f.prev == null ? "—" : f.prev) + " → " + (f.curr == null ? "—" : f.curr) +
+            " (" + fmtDelta(f.delta) + ")</span></div>" +
+            '<div class="delta-row"><span>Clear rate</span><span class="' + clsDelta(m.delta) + '">' +
+            fmtPct(m.prev) + " → " + fmtPct(m.curr) + " (" + fmtDelta(m.delta) + ")</span></div>";
+        }
+
+        document.getElementById("support").textContent = data.support_line || "";
+        document.getElementById("updated").textContent = data.updated_at || "";
+      } catch (e) {
+        document.getElementById("delta").innerHTML =
+          '<div class="err">Нет broadcast_board.json — запустите build_broadcast_board.py</div>';
+      }
+    }
+
+    loadBoard();
+    setInterval(loadBoard, 2000);
+  </script>
+</body>
+</html>
