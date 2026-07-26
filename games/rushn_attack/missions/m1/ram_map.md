@@ -10,6 +10,7 @@
 | `0x0461` | `hp` | u8 | auto, confidence 0.86 |
 | `0x0017` | `lives` | u8 | auto, confidence 0.90 |
 | `0x01FB` | `checkpoint` | u8 | auto, confidence 0.90 |
+| `0x0030` | `stage` | u8 | manual: индекс секции m1 (routes ↔ `cp_gameplay*`) |
 
 ## Candidates (auto)
 

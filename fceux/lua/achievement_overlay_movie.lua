@@ -94,7 +94,7 @@ local function draw_overlay()
   if not overlay_cache or emu.framecount() > overlay_until_frame then
     return
   end
-  local y = 4
+  local y = 12
   if block_label ~= "" and emu.framecount() <= block_label_until then
     gui.text(8, y, block_label, "cyan")
     y = y + 12

@@ -86,7 +86,7 @@
 
 ```
 editorial: play_inference_fm2.py (короткий playlist) + FCEUX
-live:      run_inference --show-window (или эквивалент операторского live)
+live:      run_inference --live
 board:     OBS сцена без NES (HTML/JSON board)
 encode:    OBS NVENC 720p30 → Twitch
 ```
@@ -258,7 +258,7 @@ Live по возможности играет **на границе** (реле�
 
 После gate [ML §12](ML_CONCEPT.md#12-критерии-приёмки-ml); не блокируют приёмку ML.
 
-- [x] Каркас hybrid: короткий editorial (`--editorial` / `hybrid_episode_prep`) + live (`run_inference --show-window`) + Board (`streaming/board/`) — локально без Twitch ([TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md))
+- [x] Каркас hybrid: короткий editorial (`--editorial` / `hybrid_episode_prep`) + live (`run_inference --live`) + Board (`streaming/board/`) — локально без Twitch ([TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md))
 - [ ] OBS: 720p30 NVENC; сцены Game и Board (после gate ML / установка ПО)
 - [x] Lua HUD: slim (gen, CP, тег / смерть); карта миссии и CTA — на Board
 - [x] Board: поколение, граница/CP, смена режима; без агрессивного донат-CTA (макс. `support_line`)

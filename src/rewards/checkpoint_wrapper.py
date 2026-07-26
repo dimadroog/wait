@@ -35,17 +35,24 @@ def trigger_matches(
     if room is not None and _norm_room(ram.get("room", "")) != _norm_room(room):
         return False
 
-    y = int(ram.get("y", 0))
-    if "min_y" in trigger and y < int(trigger["min_y"]):
-        return False
-    if "max_y" in trigger and y > int(trigger["max_y"]):
-        return False
-
-    x = int(ram.get("x", 0))
-    if "min_x" in trigger and x < int(trigger["min_x"]):
-        return False
-    if "max_x" in trigger and x > int(trigger["max_x"]):
-        return False
+    # min_<field> / max_<field> для любых числовых ключей RAM (x, y, stage, …).
+    for key, bound in trigger.items():
+        if key in ("room", "flag", "requires_checkpoint"):
+            continue
+        if key.startswith("min_"):
+            field = key[4:]
+            try:
+                if int(ram.get(field, 0)) < int(bound):
+                    return False
+            except (TypeError, ValueError):
+                return False
+        elif key.startswith("max_"):
+            field = key[4:]
+            try:
+                if int(ram.get(field, 0)) > int(bound):
+                    return False
+            except (TypeError, ValueError):
+                return False
 
     return True
 

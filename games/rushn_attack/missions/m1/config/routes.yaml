@@ -1,25 +1,38 @@
 game: rushn_attack
 mission: '1'
+# Прогресс = RAM stage (0x0030), узлы ↔ head_save_states (cp_gameplay1… / boss).
+# cp_gameplay0 (stage=0) без платного CP.
 checkpoints:
 - id: 1
-  name: first_screen
-  trigger:
-    room: '0x0C'
-- id: 2
-  name: ladder
-  trigger:
-    room: '0x08'
-- id: 3
-  name: mid_mission
-  trigger:
-    room: '0x12'
-- id: 4
-  name: late_mission
+  name: after_second_ladder
   trigger:
     room: '0x00'
-    min_y: 60
+    min_stage: 1
+- id: 2
+  name: ladders_done_mines_start
+  trigger:
+    room: '0x00'
+    min_stage: 3
+    requires_checkpoint: 1
+- id: 3
+  name: after_red_enemy_ground
+  trigger:
+    room: '0x00'
+    min_stage: 6
+    requires_checkpoint: 2
+- id: 4
+  name: after_single_mine
+  trigger:
+    room: '0x00'
+    min_stage: 8
     requires_checkpoint: 3
 - id: 5
+  name: mission1_boss
+  trigger:
+    room: '0x00'
+    min_stage: 9
+    requires_checkpoint: 4
+- id: 6
   name: mission_clear
   trigger:
     flag: mission_complete

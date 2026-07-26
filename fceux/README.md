@@ -17,11 +17,12 @@ fceux/
 ├── portable/          # официальный zip целиком (exe, dll, palettes, …)
 ├── lua/               # скрипты проекта (bridge, record_logger)
 ├── profiles/          # режимы: record | train | inference
+├── operator/          # полный fceux.cfg для эфира (--live / GUI play)
 ├── runtime.yaml       # версия и путь к binary
 └── README.md
 ```
 
-**Не смешивать** `portable/` (дистрибутив FCEUX) и `lua/` (код проекта) — при обновлении эмулятора перезаписывается только `portable/`.
+**Не смешивать** `portable/` (дистрибутив FCEUX) и `lua/` (код проекта) — при обновлении эмулятора перезаписывается только `portable/`. Пресет показа — [`operator/`](operator/README.md): при `--live` целиком копируется в `portable/fceux.cfg`.
 
 ## Установка portable
 
@@ -40,10 +41,23 @@ https://github.com/TASEmulators/fceux/releases/download/v2.6.6/fceux-2.6.6-win64
 | Профиль | Lua | Turbo | Окно | Назначение |
 | ------- | --- | ----- | ---- | ---------- |
 | `record` | `lua/record_logger.lua` | выкл | да | Запись эталона, FM2 |
-| `train` | `lua/bridge.lua` | вкл | скрыто | PPO, N parallel env |
-| `inference` | `lua/bridge.lua` | выкл | да | Эфир, OBS capture |
+| `train` | `lua/bridge.lua` | вкл | headless | PPO, N parallel env |
+| `inference` | `lua/bridge.lua` | pool: вкл; Live: выкл | headless; Live: `--live` + `operator/fceux.cfg` | пул логов / эфир |
 
 Launcher (`src/env/`) читает `runtime.yaml` + `profiles/<mode>.yaml`.
+
+## Lua 5.1 (обязательно)
+
+Встроенный Lua у FCEUX win32/portable — **Lua 5.1**, не 5.2/5.3/5.4 и не LuaJIT с расширениями 5.2+. Писать и править `fceux/lua/*.lua` только с этим контрактом. Полный справочник паттернов 5.1: [www.lua.org/manual/5.1/manual.html#5.4.1](https://www.lua.org/manual/5.1/manual.html#5.4.1).
+
+| Ловушка | Почему ломает | Как правильно |
+| ------- | ------------- | ------------- |
+| Паттерн `(true\|false)` / любая «альтернатива» через `\|` | В patterns Lua 5.1 **нет** оператора `\|`; `\|` — обычный символ. Матч всегда пустой → флаги вроде `show_window` молча становятся `false` | Читать слово: `text:match('"show_window"%s*:%s*(%a+)') == "true"` (см. `bridge.lua`) |
+| `return (a, b, c)` в скобках | Скобки дают **одно** выражение; запятая внутри — syntax error (`')' expected near ','`) | `return a, b, c` без внешних скобок |
+| Синтаксис 5.2+ (`goto`, `\x`, bitops как в 5.3) | Скрипт не загрузится или упадёт в runtime | Только диалект 5.1 + API FCEUX (`emu.*`, `gui.*`, `savestate.*`) |
+| Молчаливый fail разбора JSON-конфига | Bool/`nil` превращаются в «выкл» без ошибки в Output Console | После смены ключей конфига сверять Python `config.json` и значения в Lua (или явный `error(...)`) |
+
+Типичный симптом ошибки с `\|` в bool: Live `--live`, в JSON `"show_window": true`, на [PPU](../docs/GLOSSARY.md#ppu) серый кадр (`setrenderplanes` остаются выключенными). Сначала проверить парсинг в Lua, не флаги запуска FCEUX.
 
 ## Согласованность
 

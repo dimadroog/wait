@@ -339,6 +339,7 @@ class FceuxBridge:
                     "frame_skip": self.frame_skip,
                     "ram_addrs": ram_hex,
                     "no_focus": self.no_focus,
+                    "show_window": self.show_window,
                     "obs_format": self.obs_format,
                 }
             ),
@@ -385,14 +386,17 @@ class FceuxBridge:
         env = os.environ.copy()
         env["WAIT_FCEUX_BRIDGE_CONFIG"] = str(config.resolve())
 
-        cmd = [
-            str(fceux),
-            "-noicon",
-            "1",
-            "-lua",
-            str(lua.resolve()),
-        ]
-        from fceux_launch import fceux_no_focus_cmdline, fceux_sound_off, win32_popen_kwargs
+        # Headless: -noicon + sound_off. Live (--live → show_window): операторский cfg, без -noicon.
+        cmd = [str(fceux)]
+        if not self.show_window:
+            cmd.extend(["-noicon", "1"])
+        cmd.extend(["-lua", str(lua.resolve())])
+        from fceux_launch import (
+            apply_operator_fceux_cfg,
+            fceux_no_focus_cmdline,
+            fceux_sound_off,
+            win32_popen_kwargs,
+        )
 
         if self.no_focus:
             cmd.extend(fceux_no_focus_cmdline())
@@ -413,7 +417,8 @@ class FceuxBridge:
         startup_timeout = self._startup_timeout(timeout)
         popen_kwargs = win32_popen_kwargs(show_window=self.show_window, no_focus=self.no_focus)
 
-        with fceux_sound_off(fceux.parent):
+        if self.show_window:
+            apply_operator_fceux_cfg(fceux.parent)
             self._proc = subprocess.Popen(
                 cmd,
                 cwd=str(self.staging),
@@ -421,6 +426,15 @@ class FceuxBridge:
                 **popen_kwargs,
             )
             self._wait_ready(startup_timeout)
+        else:
+            with fceux_sound_off(fceux.parent):
+                self._proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(self.staging),
+                    env=env,
+                    **popen_kwargs,
+                )
+                self._wait_ready(startup_timeout)
         self.request("PING", timeout=startup_timeout)
         if load_state is not None:
             _, key = self._resolve_state_path(load_state)

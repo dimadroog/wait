@@ -1,9 +1,10 @@
-"""Запуск FCEUX: профили, subprocess, headless sound-off."""
+"""Запуск FCEUX: профили, subprocess, headless sound-off, операторский cfg."""
 from __future__ import annotations
 
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -108,6 +109,26 @@ def _fceux_cfg_lock(fceux_dir: Path):
                 import fcntl
 
                 fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
+
+
+def operator_fceux_cfg_path() -> Path:
+    """Полный пресет эфира: fceux/operator/fceux.cfg."""
+    return repo_root() / "fceux" / "operator" / "fceux.cfg"
+
+
+def apply_operator_fceux_cfg(fceux_dir: Path) -> Path:
+    """Целиком заменить fceux_dir/fceux.cfg операторским пресетом (не merge ключей)."""
+    src = operator_fceux_cfg_path()
+    if not src.is_file():
+        raise FileNotFoundError(
+            f"Operator FCEUX preset not found: {src}. "
+            "See fceux/operator/README.md"
+        )
+    dest = Path(fceux_dir) / "fceux.cfg"
+    with _fceux_cfg_lock(fceux_dir):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+    return dest
 
 
 def ensure_fceux_sound_off(fceux_dir: Path) -> None:

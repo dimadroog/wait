@@ -1,5 +1,5 @@
--- IPC bridge: Python ↔ FCEUX
--- Конфиг: WAIT_FCEUX_BRIDGE_CONFIG → JSON (ipc_dir, frame_skip, ram_addrs)
+-- IPC bridge: Python ↔ FCEUX (Lua 5.1 only — see fceux/README.md § Lua 5.1)
+-- Конфиг: WAIT_FCEUX_BRIDGE_CONFIG → JSON (ipc_dir, frame_skip, ram_addrs, show_window)
 -- Протокол: ipc_dir/request.json → ipc_dir/response.json; ready.flag при старте
 
 local OBS_W, OBS_H = 84, 84
@@ -20,7 +20,9 @@ local function read_config()
 
   local ipc_dir = text:match('"ipc_dir"%s*:%s*"([^"]+)"')
   local frame_skip_s = text:match('"frame_skip"%s*:%s*(%d+)')
-  local no_focus_s = text:match('"no_focus"%s*:%s*(true|false)')
+  -- Lua 5.1 patterns: нет '|'. Ищем слово после ключа (true/false).
+  local no_focus_s = text:match('"no_focus"%s*:%s*(%a+)')
+  local show_window_s = text:match('"show_window"%s*:%s*(%a+)')
   local obs_format = text:match('"obs_format"%s*:%s*"([^"]+)"') or "gd"
   if not ipc_dir then
     error("Invalid bridge config: ipc_dir missing")
@@ -34,13 +36,27 @@ local function read_config()
     end
   end
 
-  return ipc_dir, tonumber(frame_skip_s) or 4, ram_addrs, no_focus_s == "true", obs_format
+  return ipc_dir,
+    tonumber(frame_skip_s) or 4,
+    ram_addrs,
+    no_focus_s == "true",
+    show_window_s == "true",
+    obs_format
 end
 
-local IPC_DIR, FRAME_SKIP, RAM_ADDRS, NO_FOCUS, OBS_FORMAT = read_config()
+local IPC_DIR, FRAME_SKIP, RAM_ADDRS, NO_FOCUS, SHOW_WINDOW, OBS_FORMAT = read_config()
 local REQ_PATH = IPC_DIR .. "/request.json"
 local RESP_PATH = IPC_DIR .. "/response.json"
 local READY_PATH = IPC_DIR .. "/ready.flag"
+
+-- Headless: planes off между кадрами (быстрее). Live (--show-window): PPU всегда виден.
+local function set_idle_render_planes()
+  if SHOW_WINDOW then
+    FCEU.setrenderplanes(true, true)
+  else
+    FCEU.setrenderplanes(false, false)
+  end
+end
 
 local save_slot = 9
 local save_handle = nil
@@ -258,7 +274,7 @@ local function capture_obs(seq, skip_advance)
     emu.frameadvance()
   end
   local shot = gui.gdscreenshot()
-  FCEU.setrenderplanes(false, false)
+  set_idle_render_planes()
   local f = io.open(path, "wb")
   if not f then
     error("Cannot open obs file: " .. path)
@@ -374,11 +390,10 @@ local function dispatch_immediate(req)
     local on = req.arg == "on" or req.arg == "1" or req.arg == "true"
     if on then
       FCEU.speedmode("nothrottle")
-      FCEU.setrenderplanes(false, false)
     else
       FCEU.speedmode("normal")
-      FCEU.setrenderplanes(true, true)
     end
+    set_idle_render_planes()
     write_response(req.seq, true, {cmd = "TURBO", on = on})
   elseif req.cmd == "CACHE" then
     local ok, err = pcall(cache_current_state, req.arg)
@@ -428,9 +443,30 @@ local function dispatch_immediate(req)
   end
 end
 
-FCEU.speedmode("nothrottle")
-FCEU.setrenderplanes(false, false)
+-- Live: normal + paint loadstate; headless: nothrottle (скорость train/pool).
+if SHOW_WINDOW then
+  FCEU.speedmode("normal")
+else
+  FCEU.speedmode("nothrottle")
+end
+set_idle_render_planes()
 write_ready()
+if SHOW_WINDOW then
+  -- Без frameadvance окно остаётся серым: busy-loop не качает WM_PAINT.
+  emu.frameadvance()
+end
+
+local function yield_ui_if_live()
+  if not SHOW_WINDOW then
+    return
+  end
+  pcall(function()
+    require("winapi")
+    if winapi.sleep then
+      winapi.sleep(1)
+    end
+  end)
+end
 
 while not should_quit do
   if stepping then
@@ -453,6 +489,8 @@ while not should_quit do
         dispatch_immediate(req)
         clear_request()
       end
+    else
+      yield_ui_if_live()
     end
   end
 end

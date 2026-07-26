@@ -499,19 +499,27 @@ def build_playthrough_artifacts(
     game_id: str,
     fm2: Path,
     frames: list[dict],
-    etalon_build: dict,
+    etalon_build: dict | None,
 ) -> tuple[list[dict], list[dict]]:
     addrs = load_ram_addresses(mission)
     rows = build_human_playthrough(frames, addrs)
-    n_segments = segment_count_from_etalon_build(etalon_build)
-    transition_rooms = transition_rooms_from_etalon_build(etalon_build)
-    start_rule = gameplay_start_rule_from_etalon_build(etalon_build)
     head_saves = load_head_save_states(mission)
     gameplay_frame = gameplay_start_frame_from_head_saves(head_saves)
-    if gameplay_frame is None:
-        gameplay_frame = gameplay_start_frame_from_rows(
-            rows, transition_rooms=transition_rooms, rule=start_rule
-        )
+    if etalon_build is None:
+        if gameplay_frame is None:
+            raise ValueError(
+                "etalon_build.yaml отсутствует: нужны head_save_states "
+                "(cp_gameplay0) в playthrough_manifest.yaml"
+            )
+        n_segments = 5
+    else:
+        n_segments = segment_count_from_etalon_build(etalon_build)
+        if gameplay_frame is None:
+            gameplay_frame = gameplay_start_frame_from_rows(
+                rows,
+                transition_rooms=transition_rooms_from_etalon_build(etalon_build),
+                rule=gameplay_start_rule_from_etalon_build(etalon_build),
+            )
     segments = plan_segments(
         len(frames), n_segments, gameplay_start_frame=gameplay_frame
     )
@@ -520,9 +528,11 @@ def build_playthrough_artifacts(
     config = mission / "config"
     write_human_jsonl(reference / "human_playthrough.jsonl", rows)
     fm2_rel = fm2.relative_to(mission).as_posix()
-    write_routes_yaml(
-        config / "routes.yaml", game_id, mission.name, segments, frames, addrs, etalon_build
-    )
+    # Без etalon_build не затираем ручной routes.yaml (канон CP после аудита).
+    if etalon_build is not None:
+        write_routes_yaml(
+            config / "routes.yaml", game_id, mission.name, segments, frames, addrs, etalon_build
+        )
     write_manifest_yaml(
         config / "playthrough_manifest.yaml",
         game_id=game_id,

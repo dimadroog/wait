@@ -133,9 +133,11 @@ wait/
 | ----- | ------- | --------- | --- | ----- | ---- |
 | Запись эталона | `profiles/record.yaml` | 1 | `record_logger.lua` | выкл | да |
 | Обучение | `profiles/train.yaml` | 4–8 | `bridge.lua` | вкл | headless |
-| Inference | `profiles/inference.yaml` | 1 | `bridge.lua` | вкл | headless (`--show-window`) |
+| Inference | `profiles/inference.yaml` | 1 | `bridge.lua` | pool: вкл; Live: выкл | headless; Live: `--live` + `fceux/operator/fceux.cfg` |
 
-Launcher: `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Override: `FCEUX_HOME`. Платформа: Windows 10; portable win64.
+Launcher: `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Override: `FCEUX_HOME`. Платформа: Windows 10; portable win64. Эфирный пресет GUI — [fceux/operator/](../fceux/operator/README.md) (полная подмена cfg при `--live`).
+
+Скрипты в `fceux/lua/` — только **Lua 5.1** (в patterns нет альтернативы `|`; множественный `return` без скобок). Зафиксировано в [fceux/README.md § Lua 5.1](../fceux/README.md#lua-51-обязательно).
 
 ---
 
@@ -169,7 +171,7 @@ CP, heuristics, профили наград — в `games/.../config/` (мисс
 В `src/` — только интерпретатор (`trigger_matches`, `mission_complete_heuristic`, `playthrough_build`, загрузчики YAML).
 
 **Плохо:** константы комнат, CP-имена или эвристики сборки эталона в `src/`.  
-**Хорошо:** `routes.yaml` (runtime CP); `etalon_build.yaml` + ключ в `game.yaml` (сборка эталона из FM2: transition_rooms, checkpoint_heuristics, `gameplay_start`, `rewards_default`).
+**Хорошо:** `routes.yaml` (runtime CP); ручные якоря `head_save_states` в манифесте. Опционально `etalon_build.yaml` + ключ в `game.yaml` — только если нужна автогенерация routes/эвристик при сборке эталона (без файла ядро не затирает `routes.yaml`).
 
 ### Именование в коде
 
@@ -224,7 +226,7 @@ Experiment-ветки — для проверки гипотез; в main и в 
 │
 ├─ Только для одной игры / миссии?
 │   ├─ Правила, CP, heuristics (runtime) → games/.../missions/.../config/*.yaml (Strategy)
-│   ├─ Heuristics / gameplay_start / rewards_default эталона → games/<game>/etalon_build.yaml
+│   ├─ (опц.) Heuristics сборки эталона → games/<game>/etalon_build.yaml; иначе head_save_states + routes.yaml
 │   ├─ Действия, lives, env-параметры → games/.../env_config.yaml
 │   ├─ Детектор фазы экрана (phase_id) → YAML + hooks в games/<game>/env/
 │   └─ Фабрика env, override hooks → games/<game>/env/__init__.py
@@ -246,7 +248,7 @@ Experiment-ветки — для проверки гипотез; в main и в 
 | Антипаттерн | Почему плохо | Вместо |
 | ----------- | ------------ | ------ |
 | `if game_id` в `src/` | Ядро раздувается с каждой игрой | YAML Strategy или hook в плагине |
-| Игровые room/CP-константы в `src/` | Нарушает Pluggable Core | `etalon_build.yaml` / `routes.yaml` в плагине |
+| Игровые room/CP-константы в `src/` | Нарушает Pluggable Core | `routes.yaml` / `head_save_states` (опц. `etalon_build.yaml`) в плагине |
 | Имена `phaseN_*`, `phaseN.yaml` в коде (roadmap) | Путает план ML и runtime | доменные имена (`etalon_build`, `playthrough`, …); не путать с [`phase_id`](GLOSSARY.md#фаза-экрана-phase_id) экрана |
 | Детектор title/cutscene/boss в `src/train/` | Игро-специфика в ядре | YAML/hooks плагина → нейтральный `phase_id`; ядро только выбирает голову |
 | Несколько `genN/*.zip` + bundle router как продуктовый путь | Ломает «поколение = один zip»; дубли train | Multi-head в одном `models/genN.zip` ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)) |

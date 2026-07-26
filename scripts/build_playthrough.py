@@ -53,7 +53,6 @@ def main() -> None:
     except (FileNotFoundError, ValueError) as e:
         raise SystemExit(str(e)) from e
 
-    etalon_build = load_etalon_build_config(game_id)
     head_saves = load_head_save_states(mission)
     timeout = max(args.timeout, count_fm2_frames(fm2) / 30.0 + 60.0)
 
@@ -84,6 +83,7 @@ def main() -> None:
         print("Done.")
         return
 
+    etalon_build = load_etalon_build_config(game_id)
     jsonl = ram_scout_jsonl_path(mission)
     if not jsonl.is_file():
         raise SystemExit(
@@ -92,11 +92,17 @@ def main() -> None:
 
     frames = load_frames(jsonl)
     print(f"Frames: {len(frames)} from {jsonl}")
+    if etalon_build is None:
+        print("No etalon_build.yaml — keep routes.yaml; anchors from head_save_states")
 
     rows, segments = build_playthrough_artifacts(mission, game_id, fm2, frames, etalon_build)
     head_saves = load_head_save_states(mission)
     gameplay_frame = gameplay_start_frame_from_head_saves(head_saves)
     if gameplay_frame is None:
+        if etalon_build is None:
+            raise SystemExit(
+                "gameplay start: нужны head_save_states или games/<id>/etalon_build.yaml"
+            )
         gameplay_frame = gameplay_start_frame_from_rows(
             rows,
             transition_rooms=transition_rooms_from_etalon_build(etalon_build),
@@ -104,7 +110,10 @@ def main() -> None:
         )
     print(f"Gameplay start frame: {gameplay_frame}")
     print("Wrote reference/human_playthrough.jsonl")
-    print("Wrote config/routes.yaml, config/playthrough_manifest.yaml")
+    if etalon_build is not None:
+        print("Wrote config/routes.yaml, config/playthrough_manifest.yaml")
+    else:
+        print("Wrote config/playthrough_manifest.yaml (routes.yaml unchanged)")
 
     if not args.skip_states:
         rom = resolve_rom(game_id)

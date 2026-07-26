@@ -10,14 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from etalon_build_config import (  # noqa: E402
     GameplayStartRule,
-    gameplay_start_rule_from_etalon_build,
     load_etalon_build_config,
     rewards_default_from_etalon_build,
-    transition_rooms_from_etalon_build,
 )
 from playthrough_build import (  # noqa: E402
     gameplay_start_frame_from_head_saves,
-    gameplay_start_frame_from_rows,
     head_save_state_plan,
     load_head_save_states,
     load_human_playthrough_rows,
@@ -26,38 +23,26 @@ from playthrough_build import (  # noqa: E402
 )
 
 
-def test_etalon_build_config_rushn_attack() -> None:
-    etalon_build = load_etalon_build_config("rushn_attack")
-    rooms = transition_rooms_from_etalon_build(etalon_build)
-    assert 0xFF in rooms
-    assert 0x00 not in rooms
-    assert etalon_build.get("segment_count") == 5
-    assert len(etalon_build.get("checkpoint_heuristics", [])) >= 1
-    rule = gameplay_start_rule_from_etalon_build(etalon_build)
-    assert rule.lives_min == 1 and rule.lives_max == 9
-    assert rule.require_input == "move_or_attack"
-    rewards = rewards_default_from_etalon_build(etalon_build)
+def test_rushn_attack_has_no_etalon_build() -> None:
+    """RnA: канон якорей — head_save_states; etalon_build.yaml не шумит."""
+    assert load_etalon_build_config("rushn_attack") is None
+
+
+def test_rewards_default_without_etalon_yaml() -> None:
+    rewards = rewards_default_from_etalon_build({})
     assert rewards["death_penalty"] == 40
 
 
-def test_gameplay_start_frame_m1_heuristic() -> None:
-    """Авто-эвристика etalon_build (может отличаться от ручного якоря 1243)."""
+def test_gameplay_start_frame_m1_from_head_saves() -> None:
+    """Старт геймплея m1 — ручной якорь cp_gameplay0 (не эвристика etalon_build)."""
     mission = Path(__file__).resolve().parents[1] / "games" / "rushn_attack" / "missions" / "m1"
-    etalon_build = load_etalon_build_config("rushn_attack")
+    heads = load_head_save_states(mission)
+    frame = gameplay_start_frame_from_head_saves(heads)
+    assert frame == 1243
     rows = load_human_playthrough_rows(mission / "reference" / "human_playthrough.jsonl")
-    rule = gameplay_start_rule_from_etalon_build(etalon_build)
-    frame = gameplay_start_frame_from_rows(
-        rows,
-        transition_rooms=transition_rooms_from_etalon_build(etalon_build),
-        rule=rule,
-    )
-    assert frame == 1250
     start = rows[frame - 1]
     assert 1 <= int(start["lives"]) <= 9
-    assert "right" in str(start.get("action", "")).lower()
-    assert int(str(start["room"]), 16) not in transition_rooms_from_etalon_build(
-        etalon_build
-    )
+    assert str(start["room"]).upper() == "0X00"
 
 
 def test_m1_head_save_states_manual_anchors() -> None:

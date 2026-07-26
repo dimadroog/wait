@@ -36,14 +36,16 @@ class GameplayStartRule:
                 raise ValueError("etalon_build.gameplay_start: lives_min > lives_max")
 
 
-def load_etalon_build_config(game_id: str) -> dict:
+def load_etalon_build_config(game_id: str) -> dict | None:
+    """Опциональный YAML сборки эталона.
+
+    Нет файла / ключа — ``None``: якоря ``head_save_states`` + ручной ``routes.yaml``.
+    """
     game_yaml = load_yaml(game_dir(game_id) / "game.yaml")
-    rel = game_yaml.get("etalon_build_config", "etalon_build.yaml")
+    rel = game_yaml.get("etalon_build_config") or "etalon_build.yaml"
     path = game_dir(game_id) / rel
     if not path.is_file():
-        raise FileNotFoundError(
-            f"Etalon build config not found: {path} (set etalon_build_config in game.yaml)"
-        )
+        return None
     return load_yaml(path)
 
 
