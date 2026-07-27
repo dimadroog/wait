@@ -55,15 +55,23 @@ def write_sidecar(
     return path
 
 
-def validate_sidecar_n_envs(sidecar: dict[str, Any], n_envs: int) -> None:
+def note_n_envs_change(sidecar: dict[str, Any] | None, n_envs: int) -> str | None:
+    """Сообщение при смене --n-envs на resume; None если менять нечего.
+
+    ``n_envs`` — hardware-ключ (число параллельных сред), не инвариант поколения.
+    Sidecar поле ``n_envs`` = последний прогон; hard-fail при смене не делаем.
+    """
+    if not sidecar:
+        return None
     saved = sidecar.get("n_envs")
     if saved is None:
-        return
-    if int(saved) != n_envs:
-        raise SystemExit(
-            f"resume: n_envs mismatch — sidecar={saved}, cli={n_envs}. "
-            "Используйте тот же --n-envs или --no-resume для нового прогона."
-        )
+        return None
+    if int(saved) == int(n_envs):
+        return None
+    return (
+        f"resume: n_envs sidecar={int(saved)} -> cli={int(n_envs)} "
+        "(hardware; timesteps unchanged)"
+    )
 
 
 def resolve_target_timesteps(cli_timesteps: int, sidecar: dict[str, Any] | None) -> int:

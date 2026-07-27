@@ -406,7 +406,7 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 | `--save-state`, `--reward-profile`, `--game`, `--mission` | |
 | `--death-mode` | `life_lost` \| `game_over` (default из `env_config.yaml`; H3) |
 
-Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--model-out` продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается.
+Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--model-out` продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается. Смена `--n-envs` на resume разрешена (hardware-ключ; sidecar обновляет `n_envs` последнего прогона, timesteps не сбрасываются).
 
 ---
 

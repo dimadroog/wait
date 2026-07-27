@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from train.checkpointing import resolve_target_timesteps
+from train.checkpointing import note_n_envs_change, resolve_target_timesteps
 from train.rollout_metrics import RolloutMetricsCallback, host_memory_mb
 
 
@@ -14,6 +14,20 @@ def test_resolve_target_keeps_sidecar_when_cli_lower() -> None:
 
 def test_resolve_target_without_sidecar() -> None:
     assert resolve_target_timesteps(50_000, None) == 50_000
+
+
+def test_note_n_envs_change_none_when_same_or_missing() -> None:
+    assert note_n_envs_change(None, 2) is None
+    assert note_n_envs_change({}, 2) is None
+    assert note_n_envs_change({"n_envs": 6}, 6) is None
+
+
+def test_note_n_envs_change_message_on_mismatch() -> None:
+    msg = note_n_envs_change({"n_envs": 6}, 2)
+    assert msg is not None
+    assert "sidecar=6" in msg
+    assert "cli=2" in msg
+    assert "hardware" in msg
 
 
 def test_host_memory_mb_keys() -> None:
