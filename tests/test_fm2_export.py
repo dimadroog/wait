@@ -1,6 +1,7 @@
 """Unit tests for FM2 export and embedded savestate."""
 from __future__ import annotations
 
+import json
 import sys
 import time
 from pathlib import Path
@@ -223,6 +224,69 @@ def test_refresh_fm2_embedded_savestate_from_gameplay_fc0(
     assert blob is not None
     assert blob[FCS_MOVIE_GUID_OFFSET : FCS_MOVIE_GUID_OFFSET + 36] == clip_guid.encode()
     assert len(blob) == gameplay_fc0.stat().st_size
+
+
+def test_select_episode_input_rows_splits_duplicate_episode_numbers() -> None:
+    from fm2_export import select_episode_input_rows
+
+    rows = [
+        {"episode": 1, "step": 0, "action": "a", "timestamp": "2026-07-27T05:00:00Z"},
+        {"episode": 1, "step": 1, "action": "a", "timestamp": "2026-07-27T05:00:01Z"},
+        {"episode": 1, "step": 0, "action": "b", "timestamp": "2026-07-27T05:10:00Z"},
+        {"episode": 1, "step": 1, "action": "b", "timestamp": "2026-07-27T05:10:01Z"},
+        {"episode": 1, "step": 2, "action": "b", "timestamp": "2026-07-27T05:10:02Z"},
+    ]
+    last = select_episode_input_rows(rows, episode=1)
+    assert [r["action"] for r in last] == ["b", "b", "b"]
+    matched = select_episode_input_rows(
+        rows, episode=1, until_timestamp="2026-07-27T05:00:01.500Z"
+    )
+    assert [r["action"] for r in matched] == ["a", "a"]
+
+
+def test_export_fm2_uses_last_segment_not_concat(
+    tmp_path: Path, gameplay_fc0: Path
+) -> None:
+    from fm2_export import DEFAULT_FRAME_SKIP, export_fm2
+
+    jsonl = tmp_path / "inference_inputs.jsonl"
+    lines = []
+    for step in range(3):
+        lines.append(
+            json.dumps(
+                {
+                    "episode": 1,
+                    "step": step,
+                    "frame": step,
+                    "action": "left",
+                    "timestamp": f"2026-07-27T04:00:0{step}Z",
+                }
+            )
+        )
+    for step in range(5):
+        lines.append(
+            json.dumps(
+                {
+                    "episode": 1,
+                    "step": step,
+                    "frame": 100 + step,
+                    "action": "right",
+                    "timestamp": f"2026-07-27T05:00:0{step}Z",
+                }
+            )
+        )
+    jsonl.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out = tmp_path / "clip.fm2"
+    n = export_fm2(
+        jsonl,
+        out,
+        episode=1,
+        save_state_path=gameplay_fc0,
+        until_timestamp="2026-07-27T05:00:04Z",
+    )
+    assert n == 5 * DEFAULT_FRAME_SKIP
+    body = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln.startswith("|")]
+    assert len(body) == 5 * DEFAULT_FRAME_SKIP
 
 
 def test_embed_export_timing_and_size(gameplay_fc0: Path, tmp_path: Path) -> None:

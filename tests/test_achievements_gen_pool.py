@@ -42,6 +42,30 @@ def _write_attempts(path: Path, rows: list[dict]) -> None:
     path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
 
 
+def test_evaluate_records_top_k_skips_zero_frames() -> None:
+    rows = [
+        {
+            "episode_id": "empty",
+            "episode_reward": 999.0,
+            "episode_frames": 0,
+        },
+        {
+            "episode_id": "ok",
+            "episode_reward": 10.0,
+            "episode_frames": 100,
+        },
+        {
+            "episode_id": "ok2",
+            "episode_reward": 9.0,
+            "episode_frames": 50,
+        },
+    ]
+    out = {r["episode_id"]: r for r in evaluate_records(rows, _POOL_CONFIG)}
+    assert "episode_reward" not in out["empty"]["tags"]
+    assert "episode_reward" in out["ok"]["tags"]
+    assert "episode_reward" in out["ok2"]["tags"]
+
+
 def test_evaluate_records_top_k_deja_vu_new_record_within_pool() -> None:
     """Базовая логика номинаций на пуле поколения."""
     rows = [

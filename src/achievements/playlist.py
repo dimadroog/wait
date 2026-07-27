@@ -246,6 +246,7 @@ def _materialize_clip_fm2(
             save_state_path=embed_save_state_path,
             game_id=game,
             mission_id=mission,
+            until_timestamp=str(record.get("timestamp") or "") or None,
         )
         remap_fm2_guid(dest, clip_guid)
         refresh_fm2_embedded_savestate(dest, embed_save_state_path, guid=clip_guid)
@@ -293,7 +294,7 @@ def build_playlist(
 
     limit_airtime_s = max_airtime_seconds
     limit_clips = max_clips
-    limit_per_slug = max_per_slug if max_per_slug is not None else cfg_per_slug
+    limit_per_slug = max_per_slug
     if editorial:
         if limit_airtime_s is None:
             if cfg_air_s is not None:
@@ -302,6 +303,8 @@ def build_playlist(
                 limit_airtime_s = parse_airtime_hours(DEFAULT_EDITORIAL_MAX_AIRTIME) * 3600.0
         if limit_clips is None:
             limit_clips = cfg_clips if cfg_clips is not None else DEFAULT_EDITORIAL_MAX_CLIPS
+        if limit_per_slug is None:
+            limit_per_slug = cfg_per_slug
 
     mission_root = mission_dir(game, mission)
     embed_save_state_path = mission_root / resolve_inference_reset_state(mission_root)
@@ -319,7 +322,7 @@ def build_playlist(
     manifest_clips: list[dict[str, Any]] = []
     clip_seq = 0
     seen_digests: set[str] = set()
-    used_episodes: set[int] = set()
+    used_attempts: set[tuple[int, str]] = set()
     stop_limits = False
 
     for slug in clip_order:
@@ -341,7 +344,8 @@ def build_playlist(
             if limit_per_slug is not None and clip_num >= limit_per_slug:
                 break
             episode = int(record.get("episode", -1))
-            if episode >= 0 and episode in used_episodes:
+            attempt_key = (episode, str(record.get("timestamp") or ""))
+            if episode >= 0 and attempt_key in used_attempts:
                 continue
 
             # Оценка до материализации: не превышать max airtime editorial
@@ -403,7 +407,7 @@ def build_playlist(
             paths.append(dest)
             clip_seq += 1
             if episode >= 0:
-                used_episodes.add(episode)
+                used_attempts.add(attempt_key)
             manifest_clips.append(trial_clip)
 
         if paths:

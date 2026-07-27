@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -295,14 +296,83 @@ def build_empty_fm2(
     return num_frames
 
 
+def _parse_input_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def select_episode_input_rows(
+    rows: list[dict[str, Any]],
+    *,
+    episode: int | None = None,
+    until_timestamp: str | None = None,
+) -> list[dict[str, Any]]:
+    """Строки одной попытки из jsonl.
+
+    При повторном episode=N в keep-пуле режет по сегментам (step==0) и берёт
+    сегмент по until_timestamp (конец попытки) либо последний сегмент.
+    """
+    filtered = (
+        list(rows) if episode is None else [r for r in rows if int(r.get("episode", -1)) == episode]
+    )
+    if not filtered:
+        return []
+
+    segments: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    for row in filtered:
+        try:
+            step = int(row.get("step", -1))
+        except (TypeError, ValueError):
+            step = -1
+        if step == 0 and current:
+            segments.append(current)
+            current = []
+        current.append(row)
+    if current:
+        segments.append(current)
+    if len(segments) == 1:
+        return segments[0]
+
+    target = _parse_input_timestamp(until_timestamp)
+    if target is not None:
+        best: list[dict[str, Any]] | None = None
+        best_abs: float | None = None
+        for seg in segments:
+            end_ts = _parse_input_timestamp(seg[-1].get("timestamp"))
+            if end_ts is None:
+                continue
+            delta = (target - end_ts).total_seconds()
+            # Сегмент, закончившийся после attempt, не наш.
+            if delta < -2.0:
+                continue
+            score = abs(delta)
+            if best_abs is None or score < best_abs:
+                best = seg
+                best_abs = score
+        if best is not None:
+            return best
+    return segments[-1]
+
+
 def iter_episode_frames(
     rows: list[dict[str, Any]],
     *,
     episode: int | None = None,
     frame_skip: int = DEFAULT_FRAME_SKIP,
+    until_timestamp: str | None = None,
 ) -> Iterator[str]:
-    filtered = rows if episode is None else [r for r in rows if int(r.get("episode", -1)) == episode]
-    for row in filtered:
+    selected = select_episode_input_rows(
+        rows, episode=episode, until_timestamp=until_timestamp
+    )
+    for row in selected:
         action = str(row.get("action", ""))
         for _ in range(frame_skip):
             yield fm2_frame_line(action)
@@ -331,6 +401,7 @@ def export_fm2(
     save_state_path: Path,
     game_id: str = "rushn_attack",
     mission_id: str = "m1",
+    until_timestamp: str | None = None,
 ) -> int:
     """jsonl → self-contained .fm2; возвращает число FM2-кадров."""
     tmpl = template or default_fm2_template(game_id, mission_id)
@@ -338,7 +409,14 @@ def export_fm2(
     if not rows:
         raise ValueError(f"No rows in {jsonl_path}")
 
-    frame_lines = list(iter_episode_frames(rows, episode=episode, frame_skip=frame_skip))
+    frame_lines = list(
+        iter_episode_frames(
+            rows,
+            episode=episode,
+            frame_skip=frame_skip,
+            until_timestamp=until_timestamp,
+        )
+    )
     if not frame_lines:
         raise ValueError(f"No frames for episode={episode!r} in {jsonl_path}")
 

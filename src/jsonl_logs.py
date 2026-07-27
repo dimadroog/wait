@@ -77,3 +77,20 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def next_episode_number(attempts_path: Path) -> int:
+    """Следующий номер попытки в пуле поколения (max(episode)+1; пустой пул → 1).
+
+    При keep-логах нумерация не должна сбрасываться: иначе несколько прогонов
+    делят episode=1 и export/playlist склеивают чужие сегменты.
+    """
+    if not attempts_path.is_file():
+        return 1
+    max_ep = 0
+    for row in iter_jsonl(attempts_path):
+        try:
+            max_ep = max(max_ep, int(row.get("episode", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+    return max_ep + 1

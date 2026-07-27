@@ -52,6 +52,21 @@ def _minimal_config() -> dict:
     }
 
 
+def test_next_episode_number_continues_pool(tmp_path: Path) -> None:
+    from jsonl_logs import next_episode_number
+
+    path = tmp_path / "attempts.jsonl"
+    assert next_episode_number(path) == 1
+    path.write_text(
+        "\n".join(
+            json.dumps({"episode": n, "episode_reward": 1.0}) for n in (1, 2, 5)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert next_episode_number(path) == 6
+
+
 def test_build_playlist_fm2_manifest() -> None:
     logs = repo_root() / "tmp" / "smoke" / "playlist_fm2" / "logs"
     if logs.exists():
@@ -171,6 +186,52 @@ def test_build_playlist_clones_conventional_ep_fm2() -> None:
     assert (day / clip["fm2"]).is_file()
     assert clip["fm2"] != ep_copy.name
     assert not ep_copy.exists()  # raw ep cleaned after playlist build
+
+
+def test_build_playlist_non_editorial_keeps_top_k_clips() -> None:
+    """Полный плейлист не режет top_k лимитом editorial.max_per_slug."""
+    logs = repo_root() / "tmp" / "smoke" / "playlist_topk" / "logs"
+    if logs.exists():
+        shutil.rmtree(logs)
+    day = logs / _GEN
+    day.mkdir(parents=True)
+    inputs = day / "inputs.jsonl"
+    rows = []
+    for ep in (1, 2, 3):
+        for i in range(4):
+            # Разный action → разные FM2 digest (без dedupe-схлопывания).
+            action = ["right", "left", "A"][ep - 1]
+            rows.append(json.dumps({"episode": ep, "step": i, "action": action}))
+    inputs.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    attempts = day / "attempts.jsonl"
+    attempt_rows = [
+        {
+            "episode": i,
+            "episode_reward": float(100 - i),
+            "episode_frames": 4,
+            "max_checkpoint": 2,
+            "died": False,
+            "tags": ["episode_reward"],
+            "inference_inputs_ref": inputs.name,
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "model_version": _GEN,
+        }
+        for i in range(1, 4)
+    ]
+    attempts.write_text("\n".join(json.dumps(r) for r in attempt_rows) + "\n", encoding="utf-8")
+    config = _minimal_config()
+    config["editorial"] = {"max_per_slug": 1, "max_clips": 1}
+    _, manifest_path, clip_count = build_playlist(
+        attempts,
+        logs,
+        config=config,
+        inference_inputs_path=inputs,
+        dedupe=False,
+        editorial=False,
+    )
+    assert clip_count == 3
+    assert manifest_path
+    assert len(json.loads(manifest_path.read_text(encoding="utf-8"))["clips"]) == 3
 
 
 def test_build_playlist_dedupes_identical_fm2() -> None:

@@ -152,7 +152,14 @@ def evaluate_records(
         slug = str(nom["slug"])
         k = int(nom.get("k", 3))
         field = str(nom.get("field", "episode_reward"))
-        ranked = sorted(out, key=lambda r: float(r.get(field, 0)), reverse=True)
+        eligible = []
+        for record in out:
+            frames = record.get("episode_frames")
+            # Явный 0 — битая/пустая попытка; отсутствие поля — ок (юнит-тесты).
+            if frames is not None and int(frames) <= 0:
+                continue
+            eligible.append(record)
+        ranked = sorted(eligible, key=lambda r: float(r.get(field, 0)), reverse=True)
         top_ids = {id(r) for r in ranked[:k]}
         for record in out:
             if id(record) in top_ids:

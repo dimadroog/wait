@@ -26,7 +26,7 @@ from fceux_launch import load_fceux_profile  # noqa: E402
 from fm2_export import export_episode_fm2_from_steps, write_fm2_sidecar  # noqa: E402
 from inference_input_logger import InferenceInputLogger  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
-from jsonl_logs import gen_pool_dir, load_jsonl, normalize_model_version  # noqa: E402
+from jsonl_logs import gen_pool_dir, load_jsonl, next_episode_number, normalize_model_version  # noqa: E402
 from project_paths import mission_dir, repo_root  # noqa: E402
 from train.phase_aware_ppo import PhaseAwarePPO  # noqa: E402
 from train.phase_heads import (  # noqa: E402
@@ -258,6 +258,7 @@ def run_inference(args: argparse.Namespace) -> None:
     pool_dir = gen_pool_dir(logs_dir, model_version)
     batch_size = max(1, int(args.episodes))
     dedupe = not args.playlist_no_dedupe
+    next_ep = next_episode_number(attempt_logger.log_path)
 
     env = make_env(
         args.game,
@@ -270,7 +271,6 @@ def run_inference(args: argparse.Namespace) -> None:
     )
 
     try:
-        next_ep = 1
         for offset in range(batch_size):
             _run_one_episode(
                 env=env,
