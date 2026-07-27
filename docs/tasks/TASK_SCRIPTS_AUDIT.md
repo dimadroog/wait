@@ -1,6 +1,6 @@
 # TASK_SCRIPTS_AUDIT — аудит публичного CLI + гигиена Pluggable Core
 
-**Статус:** done (приёмка G1–G13 2026-07-27; merge в main — по решению оператора)  
+**Статус:** done (влито в `main` 2026-07-27, merge `3f91600`)  
 **Приоритет:** high  
 **Ветка:** `task/scripts-audit` — проработку этой задачи выполнять только в этой ветке.  
 **Зависит от:** безопасный контракт train `model-in`/`model-out` (done на `main`: continue / from_ancestor / scratch)  
