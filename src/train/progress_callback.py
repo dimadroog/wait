@@ -9,10 +9,10 @@ class TrainProgressPctCallback(BaseCallback):
 
     ``progress_pct = 100 * (num_timesteps - start) / (target - start)``.
 
-    При ``reset_num_timesteps`` (новый PPO или ``--model-in``) передавайте
+    При ``reset_num_timesteps`` (scratch / from_ancestor) передавайте
     ``start_timesteps=0`` и ``target_timesteps=remaining``, чтобы шкала была
     0→100% по бюджету текущего прогона, а не по абсолютной цели CLI.
-    При ``--resume`` — ``start`` = текущий счётчик, ``target`` = абсолютная цель.
+    При continue того же model-out — ``start`` = текущий счётчик, ``target`` = абсолютная цель.
     """
 
     def __init__(self, target_timesteps: int, *, start_timesteps: int = 0):
