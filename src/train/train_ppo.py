@@ -28,9 +28,10 @@ from train.checkpointing import (  # noqa: E402
     LatestCheckpointCallback,
     atomic_save_model,
     checkpoint_zip_path,
-    read_sidecar,
     note_n_envs_change,
+    read_sidecar,
     resolve_target_timesteps,
+    resolve_train_model_mode,
     write_sidecar,
 )
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_clean_preflight  # noqa: E402
@@ -119,7 +120,7 @@ def _resolve_model_path(path: str | None, mission: Path) -> Path | None:
 
 
 def _configure_smoke(args: argparse.Namespace, mission: Path) -> str | None:
-    """Smoke: model zip в tmp/smoke/<session>/; без runs/ и resume."""
+    """Smoke: model zip в tmp/smoke/<session>/; без runs/; quarantine overwrite ok."""
     if not args.smoke:
         return None
     session = (args.smoke_session or "train_smoke").strip() or "train_smoke"
@@ -129,7 +130,7 @@ def _configure_smoke(args: argparse.Namespace, mission: Path) -> str | None:
         if explicit and mission.resolve() in explicit.resolve().parents:
             print(f"smoke: ignore --model-out under mission ({explicit})")
     args.model_out = str(smoke_dir / "model.zip")
-    args.resume = False
+    args.overwrite_model_out = True
     args.no_intermediate_models = True
     args.latest_model = False
     print(f"smoke: session={session} model={args.model_out}")
@@ -200,8 +201,10 @@ def train(args: argparse.Namespace) -> Path:
         )
 
         model_in = _resolve_model_path(args.model_in, mission)
-        resuming = False
-        skip_bc = False
+        overwrite = bool(getattr(args, "overwrite_model_out", False))
+        mode = resolve_train_model_mode(model_out, model_in, overwrite=overwrite)
+        continuing = mode == "continue"
+        skip_bc = continuing
         heads_spec = load_policy_heads_spec(args.game)
         if heads_spec:
             print(
@@ -233,7 +236,9 @@ def train(args: argparse.Namespace) -> Path:
             loaded._phase_step_counts = {}
             return loaded
 
-        if args.resume and model_out.is_file():
+        load_cls = PhaseAwarePPO if heads_spec else PPO
+
+        if mode == "continue":
             sidecar = read_sidecar(model_out)
             if sidecar:
                 note = note_n_envs_change(sidecar, args.n_envs)
@@ -243,21 +248,19 @@ def train(args: argparse.Namespace) -> Path:
                 target_timesteps = resolve_target_timesteps(target_timesteps, sidecar)
                 if target_timesteps > prev_target:
                     print(
-                        f"resume: raising target_timesteps {prev_target} -> {target_timesteps} (CLI)"
+                        f"continue: raising target_timesteps {prev_target} -> {target_timesteps} (CLI)"
                     )
-            print(f"resume model {model_out}  target={target_timesteps}")
-            load_cls = PhaseAwarePPO if heads_spec else PPO
+            print(f"continue model {model_out}  target={target_timesteps}")
             model = load_cls.load(str(model_out.with_suffix("")), env=vec_env, device="cpu")
             model = _attach_heads_spec(model)
             model.learning_rate = args.learning_rate
-            resuming = True
-            skip_bc = True
-        elif model_in and model_in.is_file():
-            print(f"load model {model_in}")
-            load_cls = PhaseAwarePPO if heads_spec else PPO
+        elif mode == "from_ancestor":
+            assert model_in is not None
+            print(f"from_ancestor load {model_in} -> {model_out}")
             model = load_cls.load(str(model_in.with_suffix("")), env=vec_env, device="cpu")
             model = _attach_heads_spec(model)
             model.learning_rate = args.learning_rate
+            model.num_timesteps = 0
         elif heads_spec is not None:
             action_strings = load_game_action_strings(args.game)
             mask_table = build_action_mask_table(heads_spec, action_strings)
@@ -352,9 +355,8 @@ def train(args: argparse.Namespace) -> Path:
         if args.rollout_gc:
             callbacks.append(RolloutGcCallback())
         if not args.no_progress_pct:
-            # При reset_num_timesteps (не resume) счётчик идёт с 0 по remaining —
-            # progress_pct должен закрывать этот бюджет, а не абсолютный CLI target.
-            if resuming:
+            # continue: абсолютная шкала; from_ancestor/scratch: 0→100% по remaining.
+            if continuing:
                 progress_start = int(model.num_timesteps)
                 progress_target = target_timesteps
             else:
@@ -382,7 +384,7 @@ def train(args: argparse.Namespace) -> Path:
         print(
             f"train: game={args.game} mission={args.mission} "
             f"n_envs={args.n_envs} remaining={remaining}/{target_timesteps} "
-            f"save_state={save_state} resume={resuming}"
+            f"save_state={save_state} mode={mode}"
         )
         if recycle_every > 0:
             print(
@@ -420,7 +422,7 @@ def train(args: argparse.Namespace) -> Path:
                             death_mode=args.death_mode,
                         )
                         model.set_env(vec_env)
-                    reset_ts = (not resuming) and chunk_i == 0
+                    reset_ts = (not continuing) and chunk_i == 0
                     learn_with_stall_watchdog(
                         model,
                         vec_env,
@@ -520,13 +522,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="terminated: life_lost|game_over (default: games/.../env_config.yaml)",
     )
     p.add_argument("--reward-profile", default="default")
-    p.add_argument("--model-in", default=None, help="загрузить .zip (относительно миссии или абсолютный)")
-    p.add_argument("--model-out", default=None, help="сохранить .zip (default: models/gen0.zip)")
     p.add_argument(
-        "--resume",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="продолжить model_out + sidecar (default: on)",
+        "--model-in",
+        default=None,
+        help="предок .zip для нового model-out (from_ancestor; нельзя = model-out)",
+    )
+    p.add_argument(
+        "--model-out",
+        default=None,
+        help="артефакт поколения .zip (default: models/gen0.zip); существует → continue",
+    )
+    p.add_argument(
+        "--overwrite-model-out",
+        action="store_true",
+        help="разрешить заменить существующий model-out (scratch или from_ancestor)",
     )
     p.add_argument(
         "--latest-model",
@@ -576,7 +585,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--session-wall-timeout",
         type=float,
         default=0.0,
-        help="H6: abort learn по wall-clock сессии, с (default 0=off; resume из model zip)",
+        help="H6: abort learn по wall-clock сессии, с (default 0=off; continue из model zip)",
     )
     p.add_argument(
         "--recycle-every-timesteps",

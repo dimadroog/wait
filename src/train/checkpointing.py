@@ -5,7 +5,7 @@ import json
 import signal
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
@@ -56,7 +56,7 @@ def write_sidecar(
 
 
 def note_n_envs_change(sidecar: dict[str, Any] | None, n_envs: int) -> str | None:
-    """Сообщение при смене --n-envs на resume; None если менять нечего.
+    """Сообщение при смене --n-envs на continue; None если менять нечего.
 
     ``n_envs`` — hardware-ключ (число параллельных сред), не инвариант поколения.
     Sidecar поле ``n_envs`` = последний прогон; hard-fail при смене не делаем.
@@ -69,15 +69,63 @@ def note_n_envs_change(sidecar: dict[str, Any] | None, n_envs: int) -> str | Non
     if int(saved) == int(n_envs):
         return None
     return (
-        f"resume: n_envs sidecar={int(saved)} -> cli={int(n_envs)} "
+        f"continue: n_envs sidecar={int(saved)} -> cli={int(n_envs)} "
         "(hardware; timesteps unchanged)"
     )
 
 
-def resolve_target_timesteps(cli_timesteps: int, sidecar: dict[str, Any] | None) -> int:
-    """CLI может поднять target при resume; понижение sidecar не делается молча.
+TrainModelMode = Literal["continue", "from_ancestor", "scratch"]
 
-    Если CLI < sidecar target — оставляем sidecar (безопасный resume до прежней цели).
+
+def _paths_same_zip(a: Path, b: Path) -> bool:
+    return checkpoint_zip_path(a).resolve() == checkpoint_zip_path(b).resolve()
+
+
+def resolve_train_model_mode(
+    model_out: Path,
+    model_in: Path | None,
+    *,
+    overwrite: bool = False,
+) -> TrainModelMode:
+    """Выбрать continue / from_ancestor / scratch или SystemExit при опасной комбинации.
+
+    Не трогает файлы на диске — только читает ``is_file()``.
+    """
+    out = checkpoint_zip_path(model_out)
+    out_exists = out.is_file()
+    has_in = model_in is not None
+
+    if has_in:
+        assert model_in is not None
+        in_path = checkpoint_zip_path(model_in)
+        if not in_path.is_file():
+            raise SystemExit(f"model-in not found: {in_path}")
+        if _paths_same_zip(out, in_path):
+            raise SystemExit(
+                f"model-in and model-out are the same file ({out}). "
+                "Omit --model-in to continue this generation."
+            )
+        if out_exists and not overwrite:
+            raise SystemExit(
+                f"model-out already exists: {out}. "
+                "Omit --model-in to continue, choose another --model-out, "
+                "or pass --overwrite-model-out to replace from --model-in."
+            )
+        return "from_ancestor"
+
+    if out_exists and not overwrite:
+        return "continue"
+
+    if out_exists and overwrite:
+        return "scratch"
+
+    return "scratch"
+
+
+def resolve_target_timesteps(cli_timesteps: int, sidecar: dict[str, Any] | None) -> int:
+    """CLI может поднять target при continue; понижение sidecar не делается молча.
+
+    Если CLI < sidecar target — оставляем sidecar (безопасный continue до прежней цели).
     Если CLI > sidecar — поднимаем цель (продолжить обучение / dual train+measure).
     """
     if not sidecar:

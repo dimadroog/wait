@@ -140,7 +140,7 @@
 **Команда (оба прогона):**
 
 ```bash
-./.venv/Scripts/python.exe src/train/train_ppo.py --smoke --timesteps 4096 --no-bc --no-resume \
+./.venv/Scripts/python.exe src/train/train_ppo.py --smoke --timesteps 4096 --no-bc \
   --smoke-session h2_cmp_n{N} --n-envs {4|6}
 ```
 

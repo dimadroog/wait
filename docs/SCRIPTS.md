@@ -384,12 +384,12 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 | `--task` | `tasks/train_task.json` |
 | `--timesteps` | total steps (default 500000) |
 | `--n-envs` | parallel FCEUX (default **8**; через `train_local.sh` → **6**) |
-| `--model-in` / `--model-out` | load/save `.zip` (default out: `models/gen0.zip`) |
-| `--resume` / `--no-resume` | sidecar `.train.json` (default on) |
+| `--model-in` / `--model-out` | предок / артефакт поколения (default out: `models/gen0.zip`) |
+| `--overwrite-model-out` | явно заменить существующий `model-out` (scratch или from_ancestor) |
 | `--latest-model` / `--no-latest-model` | `models/latest.zip` (default on) |
 | `--latest-every` | latest.zip каждые N rollout (default **5**, H5; `1` = каждый) |
 | `--recycle-every-timesteps` | H4: пересоздать FCEUX/vec каждые N steps (`0`=off) |
-| `--session-wall-timeout` | H6: abort по wall-clock сессии, с (`0`=off); resume из model zip |
+| `--session-wall-timeout` | H6: abort по wall-clock сессии, с (`0`=off; continue из model zip) |
 | `--save-every` | каждые N steps (default 50000) |
 | `--bc-epochs` / `--bc-demo` / `--no-bc` | BC warm-start |
 | `--rollout-gc` / `--no-rollout-gc` | `gc.collect` после rollout (default on) |
@@ -406,7 +406,28 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 | `--save-state`, `--reward-profile`, `--game`, `--mission` | |
 | `--death-mode` | `life_lost` \| `game_over` (default из `env_config.yaml`; H3) |
 
-Resume: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--model-out` продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается. Смена `--n-envs` на resume разрешена (hardware-ключ; sidecar обновляет `n_envs` последнего прогона, timesteps не сбрасываются).
+**Режимы model-out (безопасно по умолчанию):**
+
+| Ситуация | Режим |
+| -------- | ----- |
+| `model-out` есть, `--model-in` нет | **continue** — добор того же поколения (timesteps из sidecar/zip, без повторного BC) |
+| `--model-in` → другой новый `model-out` | **from_ancestor** — веса предка, счётчик поколения с 0; BC по флагам |
+| `model-out` нет, `--model-in` нет | **scratch** — новая сеть |
+| `model-out` уже есть и нужен replace | только с **`--overwrite-model-out`** (иначе `SystemExit`) |
+| `--model-in` = `--model-out` | отказ — для continue уберите `--model-in` |
+
+```bash
+# continue gen0
+./scripts/train_local.sh --model-out models/gen0.zip --timesteps 1700000 --no-bc
+
+# новое поколение от предка (gen1 ещё не существует)
+./scripts/train_local.sh --model-in models/gen0.zip --model-out models/gen1.zip --timesteps 300000 --bc-epochs 5
+
+# явно затереть out
+./scripts/train_local.sh --model-out models/gen1.zip --overwrite-model-out --no-bc --timesteps 10000
+```
+
+Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--model-out` (без `--model-in`) продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается. Смена `--n-envs` на continue разрешена (hardware-ключ; sidecar обновляет `n_envs` последнего прогона, timesteps не сбрасываются).
 
 ---
 
