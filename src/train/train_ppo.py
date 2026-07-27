@@ -29,8 +29,8 @@ from train.checkpointing import (  # noqa: E402
     atomic_save_model,
     checkpoint_zip_path,
     read_sidecar,
+    note_n_envs_change,
     resolve_target_timesteps,
-    validate_sidecar_n_envs,
     write_sidecar,
 )
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_clean_preflight  # noqa: E402
@@ -236,7 +236,9 @@ def train(args: argparse.Namespace) -> Path:
         if args.resume and model_out.is_file():
             sidecar = read_sidecar(model_out)
             if sidecar:
-                validate_sidecar_n_envs(sidecar, args.n_envs)
+                note = note_n_envs_change(sidecar, args.n_envs)
+                if note:
+                    print(note)
                 prev_target = int(sidecar.get("target_timesteps", target_timesteps))
                 target_timesteps = resolve_target_timesteps(target_timesteps, sidecar)
                 if target_timesteps > prev_target:
