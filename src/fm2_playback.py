@@ -1,12 +1,20 @@
-"""FM2 playback helpers: playmovie argv + regression probes (G0)."""
+"""FM2 playback helpers: staging, playmovie argv, operator play, probes (G0)."""
 from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+import time
 from pathlib import Path
 
 from fceux_launch import run_fceux_movie
-from project_paths import parse_fm2_rom_basename, repo_root
+from fm2_export import (
+    episode_fm2_guid,
+    refresh_fm2_embedded_savestate,
+    remap_fm2_guid,
+)
+from inference_states import resolve_inference_reset_state
+from project_paths import mission_dir, parse_fm2_rom_basename, repo_root
 
 
 def fceux_playmovie_argv(
@@ -24,15 +32,89 @@ def fceux_playmovie_argv(
     ]
 
 
+def reset_staging_dir(staging: Path) -> Path:
+    """Очистить и создать каталог staging для FCEUX cwd."""
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    return staging
+
+
+def stage_rom(rom: Path, staging: Path, rom_base: str) -> Path:
+    """Скопировать ROM под имена, которые ищет FM2 / FCEUX."""
+    staged_rom = staging / rom_base
+    for name in (rom_base, rom_base + ".nes", rom.name):
+        shutil.copy2(rom, staging / name)
+    return staged_rom
+
+
 def _stage_fm2_rom(fm2: Path, rom: Path, staging: Path) -> tuple[Path, Path]:
     staging.mkdir(parents=True, exist_ok=True)
     staged_fm2 = staging / fm2.name
     shutil.copy2(fm2, staged_fm2)
     rom_base = parse_fm2_rom_basename(fm2)
-    staged_rom = staging / rom_base
-    for name in (rom_base, rom_base + ".nes", rom.name):
-        shutil.copy2(rom, staging / name)
+    staged_rom = stage_rom(rom, staging, rom_base)
     return staged_fm2, staged_rom
+
+
+def resolve_mission_relative_path(path: Path, game: str, mission: str) -> Path:
+    """Абсолютный путь: как есть; иначе mission_dir / path, иначе path.resolve()."""
+    if path.is_absolute():
+        return path.resolve()
+    candidate = mission_dir(game, mission) / path
+    return candidate.resolve() if candidate.is_file() else path.resolve()
+
+
+def inference_reset_fc0(game: str, mission: str) -> Path:
+    mdir = mission_dir(game, mission)
+    return mdir / resolve_inference_reset_state(mdir)
+
+
+def prepare_playback_fm2(
+    fm2: Path,
+    dest: Path,
+    *,
+    guid_salt: str,
+    game: str,
+    mission: str,
+    refresh_embed: bool = True,
+) -> Path:
+    """Скопировать FM2 в dest; опционально обновить GUID + embedded savestate."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(fm2, dest)
+    if refresh_embed:
+        clip_guid = episode_fm2_guid(salt=guid_salt)
+        remap_fm2_guid(dest, clip_guid)
+        refresh_fm2_embedded_savestate(
+            dest, inference_reset_fc0(game, mission), guid=clip_guid
+        )
+    return dest
+
+
+def wait_fceux_process(
+    proc: subprocess.Popen,
+    *,
+    done_flag: Path | None = None,
+    timeout: float,
+) -> None:
+    """Ждать FCEUX до exit / done_flag; при таймауте terminate → TimeoutError."""
+    deadline = time.time() + timeout
+    while proc.poll() is None:
+        if done_flag is not None and done_flag.is_file():
+            time.sleep(0.3)
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            return
+        if time.time() > deadline:
+            proc.terminate()
+            raise TimeoutError(f"FCEUX timeout ({timeout:.0f}s)")
+        time.sleep(0.2)
+    if proc.returncode not in (0, None):
+        raise RuntimeError(f"FCEUX exited with code {proc.returncode}")
 
 
 def probe_movie_playback(

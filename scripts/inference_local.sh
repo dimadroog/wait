@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Inference + FM2 + playlist: preflight cleanup → run_inference → опц. эфир.
+# Дефолты game/mission — только config/workspace.yaml (резолв в Python), не хардкод в shell.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,8 +28,8 @@ for arg in "$@"; do
   esac
 done
 
-GAME="rushn_attack"
-MISSION="m1"
+GAME=""
+MISSION=""
 MODEL=""
 MODEL_VERSION=""
 idx=0
@@ -67,9 +68,31 @@ if [[ ${#ARGS[@]} -eq 0 ]]; then
 fi
 # --model default: gen0.zip (run_inference)
 
+resolve_game_mission() {
+  "$PY" -c "
+import sys
+sys.path.insert(0, 'src')
+from project_paths import resolve_game_mission
+g, m = resolve_game_mission(sys.argv[1] or None, sys.argv[2] or None)
+print(g)
+print(m)
+" "${GAME}" "${MISSION}"
+}
+
+if [[ "$SKIP_PREFLIGHT" == true && "$WIPE_GEN_LOGS" == true ]]; then
+  echo "inference: error: --wipe-gen-logs нельзя с --skip-preflight (wipe выполняется в preflight)" >&2
+  exit 1
+fi
+
 if [[ "$SKIP_PREFLIGHT" == false ]]; then
   echo "inference: preflight (keep gen logs by default; staging/bridge) ..."
-  PRE_ARGS=(--game "$GAME" --mission "$MISSION")
+  PRE_ARGS=()
+  if [[ -n "$GAME" ]]; then
+    PRE_ARGS+=(--game "$GAME")
+  fi
+  if [[ -n "$MISSION" ]]; then
+    PRE_ARGS+=(--mission "$MISSION")
+  fi
   if [[ -n "$MODEL" ]]; then
     PRE_ARGS+=(--model "$MODEL")
   fi
@@ -86,9 +109,13 @@ if [[ "$SKIP_PREFLIGHT" == false ]]; then
   "$PY" scripts/inference_preflight.py "${PRE_ARGS[@]}"
 fi
 
-"$PY" src/stream/run_inference.py --skip-preflight --game "$GAME" --mission "$MISSION" "${ARGS[@]}"
+# ARGS уже может содержать --game/--mission; не дублируем хардкодом RnA.
+"$PY" src/stream/run_inference.py --skip-preflight "${ARGS[@]}"
 
 if [[ "$PLAY" == true ]]; then
+  mapfile -t GM < <(resolve_game_mission)
+  GAME="${GM[0]}"
+  MISSION="${GM[1]}"
   RESOLVE_MODEL="${MODEL:-gen0.zip}"
   GEN_DIR="$("$PY" -c "
 import sys

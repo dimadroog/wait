@@ -16,6 +16,8 @@ _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "src"))
 
 from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
     artifact_quarantine_dir,
     cleanup_artifact_quarantine,
     default_model_zip,
@@ -39,6 +41,7 @@ from train.multi_head_policy import MultiHeadActorCriticPolicy  # noqa: E402
 from train.phase_aware_ppo import PhaseAwarePPO  # noqa: E402
 from train.phase_heads import (  # noqa: E402
     build_action_mask_table,
+    evaluate_phase_head_gate,
     load_game_action_strings,
     load_policy_heads_spec,
 )
@@ -89,25 +92,80 @@ def _reward_overrides_from_task(task: dict[str, Any]) -> dict[str, Any] | None:
     return overrides
 
 
-def apply_task_defaults(args: argparse.Namespace, task: dict[str, Any], mission: Path) -> None:
+# Поля task JSON ↔ CLI-флаги (явный argv побеждает task).
+_TASK_FIELD_CLI_FLAGS: dict[str, tuple[str, ...]] = {
+    "model_in": ("--model-in",),
+    "model_out": ("--model-out",),
+    "save_state": ("--save-state",),
+    "reward_profile": ("--reward-profile",),
+    "timesteps": ("--timesteps",),
+    "learning_rate": ("--learning-rate",),
+    "bc_epochs": ("--bc-epochs",),
+    "bc_demo": ("--bc-demo",),
+}
+
+
+def cli_explicit_fields(argv: list[str] | None = None) -> frozenset[str]:
+    """Какие task-поля заданы явно в argv (не argparse default)."""
+    args_list = sys.argv[1:] if argv is None else argv
+    found: set[str] = set()
+    for field, flags in _TASK_FIELD_CLI_FLAGS.items():
+        for flag in flags:
+            for token in args_list:
+                if token == flag or token.startswith(f"{flag}="):
+                    found.add(field)
+                    break
+    return frozenset(found)
+
+
+def apply_task_defaults(
+    args: argparse.Namespace,
+    task: dict[str, Any],
+    mission: Path,
+    *,
+    cli_explicit: frozenset[str] | None = None,
+) -> None:
+    """Подставить поля task только если CLI их не задал (CLI > task).
+
+    ``checkpoint_in`` / ``checkpoint_out`` — deprecated aliases ``model_in`` / ``model_out``.
+    """
+    explicit = cli_explicit if cli_explicit is not None else frozenset()
+
+    if task.get("checkpoint_in") and not task.get("model_in"):
+        print(
+            "warning: task checkpoint_in deprecated; use model_in",
+            file=sys.stderr,
+        )
+    if task.get("checkpoint_out") and not task.get("model_out"):
+        print(
+            "warning: task checkpoint_out deprecated; use model_out",
+            file=sys.stderr,
+        )
+
     model_in = task.get("model_in") or task.get("checkpoint_in")
     model_out = task.get("model_out") or task.get("checkpoint_out")
+
+    def _fill(field: str, value: Any) -> None:
+        if field in explicit:
+            return
+        setattr(args, field, value)
+
     if model_in:
-        args.model_in = str(mission / model_in)
+        _fill("model_in", str(mission / model_in))
     if model_out:
-        args.model_out = str(mission / model_out)
+        _fill("model_out", str(mission / model_out))
     if task.get("save_state"):
-        args.save_state = str(task["save_state"])
+        _fill("save_state", str(task["save_state"]))
     if task.get("reward_profile"):
-        args.reward_profile = str(task["reward_profile"])
+        _fill("reward_profile", str(task["reward_profile"]))
     if task.get("ppo_timesteps"):
-        args.timesteps = int(task["ppo_timesteps"])
+        _fill("timesteps", int(task["ppo_timesteps"]))
     if task.get("learning_rate"):
-        args.learning_rate = float(task["learning_rate"])
+        _fill("learning_rate", float(task["learning_rate"]))
     if task.get("bc_epochs") is not None:
-        args.bc_epochs = int(task["bc_epochs"])
+        _fill("bc_epochs", int(task["bc_epochs"]))
     if task.get("demo_segment"):
-        args.bc_demo = str(mission / task["demo_segment"])
+        _fill("bc_demo", str(mission / task["demo_segment"]))
 
 
 def _resolve_model_path(path: str | None, mission: Path) -> Path | None:
@@ -167,12 +225,13 @@ def train(args: argparse.Namespace) -> Path:
     smoke_session: str | None = None
     try:
         task: dict[str, Any] = {}
+        explicit = cli_explicit_fields()
         if args.task:
             task_path = Path(args.task)
             if not task_path.is_absolute():
                 task_path = repo_root() / task_path
             task = load_train_task(task_path)
-            apply_task_defaults(args, task, mission)
+            apply_task_defaults(args, task, mission, cli_explicit=explicit)
 
         smoke_session = _configure_smoke(args, mission)
 
@@ -230,7 +289,7 @@ def train(args: argparse.Namespace) -> Path:
             loaded._rollout_heads = None
             loaded._heads_flat = None
             loaded._isolation_counts = {
-                "gameplay_on_title_intro": 0,
+                "forbidden_steps": 0,
                 "total_steps": 0,
             }
             loaded._phase_step_counts = {}
@@ -245,10 +304,20 @@ def train(args: argparse.Namespace) -> Path:
                 if note:
                     print(note)
                 prev_target = int(sidecar.get("target_timesteps", target_timesteps))
-                target_timesteps = resolve_target_timesteps(target_timesteps, sidecar)
+                target_timesteps = resolve_target_timesteps(
+                    target_timesteps,
+                    sidecar,
+                    allow_reduce=bool(getattr(args, "allow_reduce_target", False)),
+                    cli_timesteps_explicit="timesteps" in explicit,
+                )
                 if target_timesteps > prev_target:
                     print(
                         f"continue: raising target_timesteps {prev_target} -> {target_timesteps} (CLI)"
+                    )
+                elif target_timesteps < prev_target:
+                    print(
+                        f"continue: reducing target_timesteps {prev_target} -> {target_timesteps} "
+                        "(--allow-reduce-target)"
                     )
             print(f"continue model {model_out}  target={target_timesteps}")
             model = load_cls.load(str(model_out.with_suffix("")), env=vec_env, device="cpu")
@@ -463,35 +532,31 @@ def train(args: argparse.Namespace) -> Path:
                         reason=abort_reason,
                     )
 
-        if isinstance(model, PhaseAwarePPO):
+        if isinstance(model, PhaseAwarePPO) and heads_spec is not None:
             counts = getattr(model, "_isolation_counts", {}) or {}
-            bad = int(counts.get("gameplay_on_title_intro", 0))
+            bad = int(counts.get("forbidden_steps", 0))
             total = int(counts.get("total_steps", 0))
-            ok = bad == 0 and total > 0
             phase_counts = getattr(model, "_phase_step_counts", {}) or {}
             phase_bits = " ".join(
                 f"{k}={v}" for k, v in sorted(phase_counts.items(), key=lambda kv: (-kv[1], kv[0]))
             )
-            reached_gameplay = int(phase_counts.get("gameplay", 0)) > 0
-            print(
-                f"phase-head isolation: ok={ok} "
-                f"gameplay_on_title_intro={bad}/{total} "
-                f"(expect 0 bad when phase->head routing is correct)"
+            ok, gate_errors = evaluate_phase_head_gate(
+                forbidden_steps=bad,
+                total_steps=total,
+                phase_step_counts=phase_counts,
+                spec=heads_spec,
             )
             print(
-                f"phase-head coverage: reached_gameplay={reached_gameplay} "
+                f"phase-head isolation: ok={ok and bad == 0} "
+                f"forbidden_steps={bad}/{total} "
+                f"(rules from env_config.policy_heads.isolation)"
+            )
+            print(
+                f"phase-head coverage: required={list(heads_spec.required_phases)} "
                 f"steps_by_phase[{phase_bits or 'none'}]"
             )
-            if not ok and total > 0:
-                raise SystemExit(
-                    "phase-head isolation failed: gameplay head was active "
-                    f"on title/intro steps ({bad}/{total})"
-                )
-            if not reached_gameplay and total > 0:
-                raise SystemExit(
-                    "phase-head pilot failed: never reached phase_id=gameplay "
-                    f"(steps_by_phase[{phase_bits or 'none'}])"
-                )
+            if not ok:
+                raise SystemExit("; ".join(gate_errors))
 
         return checkpoint_zip_path(model_out)
     finally:
@@ -502,10 +567,14 @@ def train(args: argparse.Namespace) -> Path:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="PPO train (CPU, FCEUX env)")
-    p.add_argument("--game", default="rushn_attack")
-    p.add_argument("--mission", default="m1")
+    add_game_mission_arguments(p)
     p.add_argument("--task", help="tasks/train_task.json (finetune / overrides)")
     p.add_argument("--timesteps", type=int, default=500_000)
+    p.add_argument(
+        "--allow-reduce-target",
+        action="store_true",
+        help="continue: разрешить CLI --timesteps ниже sidecar target_timesteps",
+    )
     p.add_argument("--n-envs", type=int, default=8)
     p.add_argument("--n-steps", type=int, default=128)
     p.add_argument("--batch-size", type=int, default=256)
@@ -625,6 +694,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    apply_resolved_game_mission(args)
     train(args)
 
 

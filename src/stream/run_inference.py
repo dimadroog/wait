@@ -26,8 +26,19 @@ from fceux_launch import load_fceux_profile  # noqa: E402
 from fm2_export import export_episode_fm2_from_steps, write_fm2_sidecar  # noqa: E402
 from inference_input_logger import InferenceInputLogger  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
-from jsonl_logs import gen_pool_dir, load_jsonl, next_episode_number, normalize_model_version  # noqa: E402
-from project_paths import mission_dir, repo_root  # noqa: E402
+from jsonl_logs import (  # noqa: E402
+    gen_pool_dir,
+    load_jsonl,
+    next_episode_number,
+    normalize_model_version,
+    require_consistent_model_version,
+)
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    mission_dir,
+    repo_root,
+)
 from train.phase_aware_ppo import PhaseAwarePPO  # noqa: E402
 from train.phase_heads import (  # noqa: E402
     load_policy_heads_spec,
@@ -201,7 +212,14 @@ def run_inference(args: argparse.Namespace) -> None:
     except FileNotFoundError as exc:
         raise SystemExit(str(exc)) from exc
 
+    require_consistent_model_version(model=args.model, model_version=args.model_version)
     model_version = normalize_model_version(args.model_version or model_path.stem)
+
+    if args.skip_preflight and getattr(args, "wipe_gen_logs", False):
+        raise SystemExit(
+            "--wipe-gen-logs нельзя с --skip-preflight "
+            "(wipe в preflight; уберите --skip-preflight или wipe)"
+        )
 
     if not args.skip_preflight:
         from inference_preflight import require_inference_preflight  # noqa: WPS433
@@ -254,7 +272,7 @@ def run_inference(args: argparse.Namespace) -> None:
     logs_dir = mission / "logs"
     attempt_logger = AttemptLogger(logs_dir, model_version=model_version)
     input_logger = InferenceInputLogger(logs_dir, model_version=model_version)
-    achievements_cfg = load_achievements_config()
+    achievements_cfg = load_achievements_config(game_id=args.game)
     pool_dir = gen_pool_dir(logs_dir, model_version)
     batch_size = max(1, int(args.episodes))
     dedupe = not args.playlist_no_dedupe
@@ -306,8 +324,7 @@ def run_inference(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Local PPO inference")
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--model", default="gen0.zip", help="models/gen0.zip или имя файла")
     parser.add_argument(
         "--episodes",
@@ -350,6 +367,7 @@ def main() -> None:
         help="перед сбором удалить logs/<model_version>/ (default: keep + учесть airtime)",
     )
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
     run_inference(args)
 
 

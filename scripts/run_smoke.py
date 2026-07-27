@@ -18,6 +18,8 @@ _SCRIPTS = _REPO / "scripts"
 sys.path.insert(0, str(_REPO / "src"))
 
 from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
     cleanup_artifact_quarantine,
     cleanup_mission_smoke_models,
     find_stray_smoke_artifacts,
@@ -28,15 +30,17 @@ from train.env_factory import cleanup_bridge_sessions  # noqa: E402
 SUITE_NAMES = ("bridge", "env", "parallel", "stress")
 
 
-def _suite_commands() -> dict[str, list[str]]:
+def _suite_commands(game: str, mission: str) -> dict[str, list[str]]:
     """Команды smoke: python + script + args (относительно _REPO)."""
     py = sys.executable
+    gm = ["--game", game, "--mission", mission]
     return {
-        "bridge": [py, str(_SCRIPTS / "smoke_bridge.py")],
-        "env": [py, str(_SCRIPTS / "smoke_env.py"), "--steps", "20"],
+        "bridge": [py, str(_SCRIPTS / "smoke_bridge.py"), *gm],
+        "env": [py, str(_SCRIPTS / "smoke_env.py"), *gm, "--steps", "20"],
         "parallel": [
             py,
             str(_SCRIPTS / "test_parallel_env.py"),
+            *gm,
             "--n-envs",
             "8",
             "--cycles",
@@ -47,6 +51,7 @@ def _suite_commands() -> dict[str, list[str]]:
         "stress": [
             py,
             str(_SCRIPTS / "stress_e2e_gate.py"),
+            *gm,
             "--quick",
         ],
     }
@@ -75,15 +80,17 @@ def _run_suite(name: str, cmd: Sequence[str]) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Unified smoke tests (bridge, env, parallel, stress)")
+    add_game_mission_arguments(parser)
     parser.add_argument(
         "--suite",
         default=",".join(SUITE_NAMES),
         help=f"comma-separated subset (default: all). choices: {', '.join(SUITE_NAMES)}",
     )
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     suites = _parse_suites(args.suite)
-    commands = _suite_commands()
+    commands = _suite_commands(args.game, args.mission)
 
     cleanup_bridge_sessions("train_")
     cleanup_bridge_sessions("bench_")
@@ -98,7 +105,7 @@ def main() -> None:
         cleanup_bridge_sessions("train_")
         cleanup_bridge_sessions("bench_")
         cleanup_artifact_quarantine("smoke")
-        mission = mission_dir("rushn_attack", "m1")
+        mission = mission_dir(args.game, args.mission)
         removed = cleanup_mission_smoke_models(mission)
         if removed:
             print(f"removed stray models: {[str(p) for p in removed]}")

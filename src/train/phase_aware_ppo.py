@@ -26,7 +26,7 @@ class PhaseAwarePPO(PPO):
         self._last_phase_ids: list[str | None] = []
         self._rollout_heads: np.ndarray | None = None
         self._heads_flat: np.ndarray | None = None
-        self._isolation_counts = {"gameplay_on_title_intro": 0, "total_steps": 0}
+        self._isolation_counts = {"forbidden_steps": 0, "total_steps": 0}
         self._phase_step_counts: dict[str, int] = {}
         super().__init__(*args, **kwargs)
 
@@ -80,8 +80,8 @@ class PhaseAwarePPO(PPO):
                 phase_key = str(p) if p else "none"
                 self._phase_step_counts[phase_key] = self._phase_step_counts.get(phase_key, 0) + 1
                 hid = self.heads_spec.heads[int(phase_idxs[i])]
-                if hid == "gameplay" and p in ("title", "intro"):
-                    self._isolation_counts["gameplay_on_title_intro"] += 1
+                if self.heads_spec.is_forbidden_pair(hid, p):
+                    self._isolation_counts["forbidden_steps"] += 1
 
             with th.no_grad():
                 from stable_baselines3.common.utils import obs_as_tensor
@@ -150,17 +150,19 @@ class PhaseAwarePPO(PPO):
         callback.on_rollout_end()
 
         self._rollout_heads = np.stack(head_rows, axis=0)
-        bad = self._isolation_counts["gameplay_on_title_intro"]
+        bad = self._isolation_counts["forbidden_steps"]
         total = max(self._isolation_counts["total_steps"], 1)
-        self.logger.record("train/gameplay_head_on_title_intro_steps", bad)
+        self.logger.record("train/phase_head_forbidden_steps", bad)
         self.logger.record("train/phase_head_isolation_ok", float(bad == 0))
         self.logger.record("train/phase_head_steps", total)
         for phase_key, n in self._phase_step_counts.items():
             self.logger.record(f"train/phase_steps/{phase_key}", n)
-        self.logger.record(
-            "train/phase_reached_gameplay",
-            float(self._phase_step_counts.get("gameplay", 0) > 0),
-        )
+        if self.heads_spec is not None:
+            for phase in self.heads_spec.required_phases:
+                self.logger.record(
+                    f"train/phase_reached/{phase}",
+                    float(self._phase_step_counts.get(phase, 0) > 0),
+                )
         if hasattr(self.policy, "clear_batch_heads"):
             self.policy.clear_batch_heads()
         return True

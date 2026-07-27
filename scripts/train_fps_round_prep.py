@@ -16,7 +16,14 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
-from project_paths import artifact_quarantine_dir, default_model_zip, mission_dir, repo_root  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    artifact_quarantine_dir,
+    default_model_zip,
+    mission_dir,
+    repo_root,
+)
 
 PRIMARY = "gen0.zip"
 
@@ -34,13 +41,12 @@ def _sha256(path: Path, limit: int = 2_000_000) -> str:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Prep FPS dual train+measure (no train)")
-    p.add_argument("--game", default="rushn_attack")
-    p.add_argument("--mission", default="m1")
+    add_game_mission_arguments(p)
     p.add_argument(
         "--target-timesteps",
         type=int,
         default=100_000,
-        help="цель для resume gen0 (default 100k)",
+        help="цель для continue gen0 (default 100k)",
     )
     p.add_argument(
         "--session",
@@ -48,6 +54,7 @@ def main() -> int:
         help="id сессии metrics в tmp/bench/ (default: fps_r6_YYYYMMDD)",
     )
     args = p.parse_args()
+    apply_resolved_game_mission(args)
 
     mission = mission_dir(args.game, args.mission)
     models_dir = mission / "models"

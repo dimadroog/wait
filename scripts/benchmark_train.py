@@ -22,7 +22,13 @@ from stable_baselines3.common.callbacks import BaseCallback
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
-from project_paths import artifact_quarantine_dir, mission_dir, repo_root  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    artifact_quarantine_dir,
+    mission_dir,
+    repo_root,
+)
 from train.checkpointing import InterruptHandler, atomic_save_model, checkpoint_zip_path  # noqa: E402
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, preflight_bridge_sessions  # noqa: E402
 from train.learn_watchdog import (  # noqa: E402
@@ -312,8 +318,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="PPO e2e train benchmark (tmp/bench only)")
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--save-state", default=None)
     parser.add_argument("--session", default="train_e2e", help="tmp/bench/<session>/")
     parser.add_argument("--n-envs", type=int, default=8)
@@ -349,6 +354,7 @@ def main() -> None:
         help="abort learn по wall-clock сессии, с (default 3600; 0=off)",
     )
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     if args.timesteps is not None:
         args.mode = "custom"

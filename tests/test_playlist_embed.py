@@ -226,6 +226,8 @@ def test_build_playlist_non_editorial_keeps_top_k_clips() -> None:
         logs,
         config=config,
         inference_inputs_path=inputs,
+        game="rushn_attack",
+        mission="m1",
         dedupe=False,
         editorial=False,
     )
@@ -266,6 +268,8 @@ def test_build_playlist_dedupes_identical_fm2() -> None:
         logs,
         config=_minimal_config(),
         inference_inputs_path=inputs,
+        game="rushn_attack",
+        mission="m1",
         dedupe=True,
     )
     assert clip_count == 1

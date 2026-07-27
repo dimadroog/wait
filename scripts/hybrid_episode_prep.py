@@ -15,7 +15,12 @@ from achievements.playlist import (  # noqa: E402
     build_playlist,
 )
 from jsonl_logs import gen_log_path, resolve_default_model_version  # noqa: E402
-from project_paths import mission_dir, repo_root  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    mission_dir,
+    repo_root,
+)
 from stream.broadcast_board import (  # noqa: E402
     build_broadcast_board,
     default_board_paths,
@@ -29,8 +34,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Prep hybrid episode: editorial playlist + board JSON + operator steps"
     )
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--model", default=None)
     parser.add_argument("--model-version", default=None)
     parser.add_argument(
@@ -47,6 +51,7 @@ def main() -> None:
     parser.add_argument("--no-support-line", action="store_true")
     parser.add_argument("--no-dedupe", action="store_true")
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     mission = mission_dir(args.game, args.mission)
     logs = mission / "logs"

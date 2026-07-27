@@ -1,4 +1,5 @@
 # Номинации пилота Rush'n Attack — docs/GAME_RUSHN_ATTACK.md §5; pipeline — ML_CONCEPT §8
+# Путь: games/rushn_attack/achievements.yaml (плагин); см. game.yaml → achievements.
 # Пул кандидатов — поколение модели (logs/genN/), не календарный день.
 # Слои: story (каркас editorial/board), honesty (доверие), secondary (B-roll, не наполнители слота).
 
@@ -87,6 +88,9 @@ nominations:
     field: episode_reward
     k: 3
     order: desc
+    playlist_sort:
+      field: episode_reward
+      order: desc
 
   - idx: 7
     slug: ladder_ouch
@@ -109,3 +113,6 @@ nominations:
     condition:
       died: true
       max_episode_frames: 3
+    playlist_sort:
+      field: episode_frames
+      order: asc

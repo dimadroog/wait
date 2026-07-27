@@ -132,8 +132,6 @@ class MultiHeadActorCriticPolicy(ActorCriticCnnPolicy):
         mean_actions = self._logits_from_latent(latent_pi)
         return self.action_dist.proba_distribution(action_logits=mean_actions)
 
-    def gameplay_head_unused_on_phases(
-        self, phase_ids: list[str | None], gameplay_head: str = "gameplay"
-    ) -> bool:
-        """Проверка для тестов: ни один phase не мапится на вызов без set — helper noop."""
-        return gameplay_head in self.head_ids
+    def has_head(self, head_id: str) -> bool:
+        """Есть ли голова с данным id (имя задаёт манифест плагина)."""
+        return head_id in self.head_ids

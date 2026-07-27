@@ -12,15 +12,18 @@ sys.path.insert(0, str(_REPO / "src"))
 from fm2_export import default_fm2_template, export_fm2  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
 from jsonl_logs import gen_log_path, resolve_default_model_version  # noqa: E402
-from project_paths import mission_dir  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    mission_dir,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Export inference_inputs.jsonl to self-contained FM2"
     )
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--model", default=None, help="models/genN.zip (для stem пула)")
     parser.add_argument("--model-version", default=None, help="имя пула logs/<version>/")
     parser.add_argument(
@@ -42,6 +45,7 @@ def main() -> None:
         help="путь к .fc0 для embed (default: save_states/cp_gameplay0.fc0)",
     )
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     mission = mission_dir(args.game, args.mission)
     if args.input:

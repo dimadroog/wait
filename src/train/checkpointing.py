@@ -122,11 +122,22 @@ def resolve_train_model_mode(
     return "scratch"
 
 
-def resolve_target_timesteps(cli_timesteps: int, sidecar: dict[str, Any] | None) -> int:
-    """CLI может поднять target при continue; понижение sidecar не делается молча.
+def resolve_target_timesteps(
+    cli_timesteps: int,
+    sidecar: dict[str, Any] | None,
+    *,
+    allow_reduce: bool = False,
+    cli_timesteps_explicit: bool = True,
+) -> int:
+    """CLI может поднять target при continue; понижение — только явно.
 
-    Если CLI < sidecar target — оставляем sidecar (безопасный continue до прежней цели).
-    Если CLI > sidecar — поднимаем цель (продолжить обучение / dual train+measure).
+    - Нет sidecar → CLI.
+    - CLI > sidecar → поднять цель.
+    - CLI == sidecar → без изменений.
+    - CLI < sidecar и ``cli_timesteps_explicit`` → SystemExit, пока нет
+      ``allow_reduce`` (оператор думал «укоротил», цель иначе не падает).
+    - CLI < sidecar и флаг timesteps **не** был в argv → оставить sidecar
+      (дефолт argparse не считается намерением укоротить).
     """
     if not sidecar:
         return int(cli_timesteps)
@@ -134,7 +145,17 @@ def resolve_target_timesteps(cli_timesteps: int, sidecar: dict[str, Any] | None)
     cli = int(cli_timesteps)
     if cli > saved:
         return cli
-    return saved
+    if cli == saved:
+        return saved
+    if not cli_timesteps_explicit:
+        return saved
+    if allow_reduce:
+        return cli
+    raise SystemExit(
+        f"CLI --timesteps={cli} < sidecar target_timesteps={saved}; "
+        "оставьте без --timesteps (добор до sidecar), поднимите цель, "
+        "или передайте --allow-reduce-target"
+    )
 
 
 def atomic_save_model(model: PPO, checkpoint: Path) -> Path:

@@ -15,13 +15,16 @@ from achievements.evaluator import (  # noqa: E402
     write_tagged_attempts,
 )
 from jsonl_logs import gen_log_path, resolve_default_model_version  # noqa: E402
-from project_paths import mission_dir  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    mission_dir,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate achievements for attempts log")
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--model", default=None, help="models/genN.zip (для stem пула)")
     parser.add_argument("--model-version", default=None, help="имя пула logs/<version>/")
     parser.add_argument(
@@ -29,8 +32,13 @@ def main() -> None:
         default=None,
         help="путь к attempts.jsonl (default: logs/<model_version>/attempts.jsonl)",
     )
-    parser.add_argument("--config", default=None, help="config/achievements.yaml")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="явный path к achievements.yaml (иначе games/<game>/ из game.yaml)",
+    )
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     mission = mission_dir(args.game, args.mission)
     if args.attempts:
@@ -44,7 +52,11 @@ def main() -> None:
         raise SystemExit(f"Attempts log not found: {attempts}")
 
     cfg_path = Path(args.config) if args.config else None
-    config = load_achievements_config(cfg_path) if cfg_path else load_achievements_config()
+    config = (
+        load_achievements_config(cfg_path)
+        if cfg_path
+        else load_achievements_config(game_id=args.game)
+    )
     records = evaluate_attempts_file(attempts, config=config)
     write_tagged_attempts(attempts, records)
 

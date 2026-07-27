@@ -23,8 +23,10 @@ from playthrough_build import (  # noqa: E402
     save_state_plan,
 )
 from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    clear_save_state_files,
     count_fm2_frames,
-    resolve_mission_fm2,
+    resolve_cli_mission_fm2,
     ram_scout_jsonl_path,
     resolve_rom,
     save_states_dir,
@@ -36,8 +38,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build playthrough etalon from FM2 + ram_scout logs")
     parser.add_argument(
         "fm2",
-        help="путь к FM2: games/<game>/missions/<mission>/reference/<file>.fm2",
+        nargs="?",
+        default=None,
+        help=(
+            "путь к FM2 от корня репо: games/<game>/missions/<mission>/reference/<file>.fm2; "
+            "если опущен — clear.fm2 из workspace"
+        ),
     )
+    add_game_mission_arguments(parser)
     parser.add_argument("--timeout", type=float, default=600.0, help="секунд на FCEUX (save states)")
     parser.add_argument("--skip-states", action="store_true", help="не создавать save states")
     parser.add_argument("--skip-demos", action="store_true", help="не создавать reference/demos_for_bc/seg_*.npz")
@@ -46,10 +54,22 @@ def main() -> None:
         action="store_true",
         help="только пересобрать save_states из head_save_states (без routes/jsonl)",
     )
+    parser.add_argument(
+        "--replace-states",
+        action="store_true",
+        help="удалить все save_states/*.fc0 перед записью (иначе только слоты плана)",
+    )
+    parser.add_argument(
+        "--force-demos",
+        action="store_true",
+        help="разрешить stub demos поверх non-stub (record_demos)",
+    )
     args = parser.parse_args()
 
     try:
-        fm2, game_id, mission = resolve_mission_fm2(args.fm2)
+        fm2, game_id, mission = resolve_cli_mission_fm2(
+            args.fm2, game=args.game, mission=args.mission
+        )
     except (FileNotFoundError, ValueError) as e:
         raise SystemExit(str(e)) from e
 
@@ -67,8 +87,9 @@ def main() -> None:
         print(f"Gameplay start frame (head_save_states): {gp}")
         print(f"Saving {len(plan)} head save state(s)...")
         states = save_states_dir(mission)
-        for old in states.glob("*.fc0"):
-            old.unlink()
+        for old in clear_save_state_files(
+            states, plan, replace_all=bool(args.replace_states)
+        ):
             print(f"  removed {old.name}")
         rom = resolve_rom(game_id)
         save_fm2_states(
@@ -119,8 +140,10 @@ def main() -> None:
         rom = resolve_rom(game_id)
         plan = save_state_plan(segments, gameplay_start_frame=gameplay_frame, head_save_states=head_saves)
         states = save_states_dir(mission)
-        for old in states.glob("*.fc0"):
-            old.unlink()
+        for old in clear_save_state_files(
+            states, plan, replace_all=bool(args.replace_states)
+        ):
+            print(f"  removed {old.name}")
         save_fm2_states(
             mission,
             fm2,
@@ -132,9 +155,9 @@ def main() -> None:
         )
 
     if not args.skip_demos:
-        from segment_playthrough import build_demos  # noqa: E402
+        from playthrough_build import build_demos  # noqa: E402
 
-        build_demos(mission)
+        build_demos(mission, force=bool(args.force_demos))
         print("Wrote reference/demos_for_bc/seg_*.npz")
 
     print("Done.")

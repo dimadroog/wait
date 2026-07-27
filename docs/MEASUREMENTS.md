@@ -1,6 +1,6 @@
 # Замеры производительности train
 
-Сводка метрик bridge IPC и end-to-end PPO. Источники: этапы **1.5–1.9** BACKLOG, прогоны `scripts/benchmark_bridge.py` и `scripts/benchmark_train.py`. CLI — [SCRIPTS.md](SCRIPTS.md).
+Сводка метрик bridge IPC и end-to-end PPO. Источники: этапы **1.5–1.9** BACKLOG, прогоны `scripts/benchmark_bridge.py` и `scripts/benchmark_train.py`. CLI — [SCRIPTS.md](SCRIPTS.md) (только актуальные флаги train/inference).
 
 **Эталон для финального прогона [5.0]:** вердикт **1.9** (2026-07-09) — без регрессии по e2e и bridge.
 
@@ -190,7 +190,7 @@
 
 План и команды: [TASK_TRAIN_FPS_DEGRADATION.md § R6](tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md#раунд-r6--dual-trainmeasure-2026-07-17).
 
-**Условия:** i7-3770 / 16 GB; R6.1 — `train_ppo --smoke` ×4096, preflight между; R6.2 — resume `m1_v0_n6` → 100116 steps, `--rollout-metrics`. Канон после rename: `models/gen0.zip` (бывший `m1_v0_n6`).  
+**Условия:** i7-3770 / 16 GB; R6.1 — `train_ppo --smoke` ×4096, preflight между; R6.2 — continue `m1_v0_n6` → 100116 steps, `--rollout-metrics`. Канон после rename: `models/gen0.zip` (бывший `m1_v0_n6`).  
 JSONL: `tmp/bench/fps_r6_ab_n{4,6,8}/rollouts.jsonl`, `tmp/bench/fps_r6_20260717/rollouts.jsonl`.
 
 | Метрика | R6.1 n=4 | R6.1 n=6 | R6.1 n=8 | R6.2 long n=6 |
@@ -235,20 +235,20 @@ JSONL: `tmp/bench/fps_r6_ab_n{4,6,8}/rollouts.jsonl`, `tmp/bench/fps_r6_20260717
 ### H4 — FCEUX recycle (2026-07-18)
 
 **Код:** `--recycle-every-timesteps N` — segmented learn: `close` vec → `cleanup_bridge_sessions('train_')` → `build_vec_env` → `model.set_env` → следующий chunk. Default **`0` (off)**.  
-**Ops (без флага):** между длинными сессиями — `train_preflight` + resume `checkpoint_out` / `latest.zip`.  
+**Ops (без флага):** между длинными сессиями — `train_preflight` + **continue** того же `--model-out` (без `--model-in`); `models/latest.zip` — зеркало по `--latest-every`.  
 **R6.2:** при `n_envs=6` деградации mid-session не было (`wall_late/early=0.28`) — recycle нужен, если wall растёт при стабильной RAM.
 
 ### H6 — лимит сессии (2026-07-18)
 
-**Код:** `--session-wall-timeout SEC` (default `0`=off) → abort + save; продолжить resume.  
+**Код:** `--session-wall-timeout SEC` (default `0`=off) → abort + save; продолжить **continue** того же `--model-out`.  
 **Рекомендации i7-3770 / 16 GB:**
 
 | Ситуация | Практика |
 | -------- | -------- |
 | Длинный train (>2–3 ч) | `train_preflight` перед стартом; при подозрении на H1 — reboot |
 | Gate / benchmark серии | preflight **между** прогонами; 2-й gate подряд без cleanup не эталон |
-| Опц. авто-пауза | `--session-wall-timeout 14400` (4 ч) → resume |
-| Mid-session FCEUX stale | `--recycle-every-timesteps 50000` или ручной resume |
+| Опц. авто-пауза | `--session-wall-timeout 14400` (4 ч) → continue `model-out` |
+| Mid-session FCEUX stale | `--recycle-every-timesteps 50000` или ручной continue |
 
 ### Закрытие задачи — smoke H3+H4 (2026-07-18)
 

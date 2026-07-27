@@ -1,11 +1,12 @@
 """Пути репозитория wait/."""
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Any, Iterator, Literal
 
 import yaml
 
@@ -13,6 +14,7 @@ ARTIFACT_KINDS = frozenset({"smoke", "bench"})
 ScoutScope = Literal["shell", "mission"]
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+_GAME_MISSION_HELP = "default: config/workspace.yaml; иначе обязателен CLI"
 
 
 def repo_root() -> Path:
@@ -22,6 +24,73 @@ def repo_root() -> Path:
 def load_yaml(path: Path) -> dict:
     with path.open(encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def workspace_config_path() -> Path:
+    """Путь к конфигу рабочей области (дефолты game/mission для CLI)."""
+    return repo_root() / "config" / "workspace.yaml"
+
+
+def load_workspace(path: Path | None = None) -> dict:
+    """Прочитать workspace.yaml. Нет файла → {}. Не смотрит Path.cwd()."""
+    cfg = path if path is not None else workspace_config_path()
+    if not cfg.is_file():
+        return {}
+    data = load_yaml(cfg)
+    return data if isinstance(data, dict) else {}
+
+
+def _nonempty_str(value: object | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def resolve_game_mission(
+    game: str | None = None,
+    mission: str | None = None,
+    *,
+    workspace_path: Path | None = None,
+) -> tuple[str, str]:
+    """CLI > workspace.yaml > SystemExit. cwd не влияет на выбор плагина."""
+    ws = load_workspace(workspace_path)
+    resolved_game = _nonempty_str(game) or _nonempty_str(ws.get("game"))
+    resolved_mission = _nonempty_str(mission) or _nonempty_str(ws.get("mission"))
+    missing: list[str] = []
+    if not resolved_game:
+        missing.append("game")
+    if not resolved_mission:
+        missing.append("mission")
+    if missing:
+        cfg = workspace_path if workspace_path is not None else workspace_config_path()
+        raise SystemExit(
+            f"Не заданы {', '.join(missing)}: укажите --game/--mission "
+            f"или заполните {cfg.as_posix()}"
+        )
+    return resolved_game, resolved_mission
+
+
+def add_game_mission_arguments(parser: argparse.ArgumentParser) -> None:
+    """--game / --mission с default=None (резолв через apply_resolved_game_mission)."""
+    parser.add_argument("--game", default=None, help=f"game id ({_GAME_MISSION_HELP})")
+    parser.add_argument("--mission", default=None, help=f"mission id ({_GAME_MISSION_HELP})")
+
+
+def apply_resolved_game_mission(
+    args: Any,
+    *,
+    workspace_path: Path | None = None,
+) -> tuple[str, str]:
+    """Записать args.game / args.mission из CLI или workspace; вернуть пару."""
+    game, mission = resolve_game_mission(
+        getattr(args, "game", None),
+        getattr(args, "mission", None),
+        workspace_path=workspace_path,
+    )
+    args.game = game
+    args.mission = mission
+    return game, mission
 
 
 def game_dir(game_id: str) -> Path:
@@ -77,6 +146,7 @@ def _safe_round_id(round_id: str) -> str:
 
 
 def _normalize_fm2_path(fm2_arg: str | Path) -> Path:
+    """Абсолютный путь к FM2; относительный — всегда от repo_root(), не от cwd."""
     p = Path(fm2_arg)
     if not p.is_absolute():
         p = repo_root() / p
@@ -92,7 +162,7 @@ def resolve_mission_fm2(fm2_arg: str | Path) -> tuple[Path, str, Path]:
     """FM2 → (файл, game_id, каталог миссии).
 
     Ожидаемый layout: games/<game>/missions/<mission>/reference/<file>.fm2
-    Относительные пути — от корня репозитория.
+    Относительные пути — от корня репозитория (не Path.cwd()).
     """
     p, game_id, scope, mission = resolve_reference_fm2(fm2_arg)
     if scope != "mission" or mission is None:
@@ -100,6 +170,89 @@ def resolve_mission_fm2(fm2_arg: str | Path) -> tuple[Path, str, Path]:
             "FM2 path must be games/<game>/missions/<mission>/reference/<file>.fm2"
         )
     return p, game_id, mission
+
+
+def _assert_fm2_matches_explicit_cli(
+    game_id: str,
+    scope: ScoutScope,
+    mission: Path | None,
+    *,
+    game: str | None,
+    mission_id: str | None,
+) -> None:
+    """Явные --game/--mission должны совпадать с layout FM2; workspace сюда не подставлять."""
+    cli_game = _nonempty_str(game)
+    cli_mission = _nonempty_str(mission_id)
+    if cli_game and cli_game != game_id:
+        raise SystemExit(
+            f"--game {cli_game!r} не совпадает с игрой FM2 {game_id!r} "
+            "(scope по пути файла, не по cwd)"
+        )
+    if cli_mission:
+        if scope != "mission" or mission is None:
+            raise SystemExit(
+                f"--mission {cli_mission!r} задан, но FM2 — shell-layout "
+                f"(games/<game>/reference/), без миссии"
+            )
+        if mission.name != cli_mission:
+            raise SystemExit(
+                f"--mission {cli_mission!r} не совпадает с миссией FM2 {mission.name!r}"
+            )
+
+
+def resolve_cli_reference_fm2(
+    fm2_arg: str | Path | None,
+    *,
+    game: str | None = None,
+    mission: str | None = None,
+    default_fm2_name: str = "clear.fm2",
+    workspace_path: Path | None = None,
+) -> tuple[Path, str, ScoutScope, Path | None]:
+    """Scout/entry: scope по пути FM2, иначе workspace mission + default_fm2_name.
+
+    - Относительный FM2 — от ``repo_root()``, не от ``Path.cwd()``.
+    - Явные ``--game``/``--mission`` при переданном FM2 только проверяют совпадение.
+    - Без FM2: ``resolve_game_mission`` → ``missions/<m>/reference/<default_fm2_name>``.
+    - ``cwd=`` у subprocess FCEUX (staging) сюда не относится.
+    """
+    if fm2_arg is not None and str(fm2_arg).strip():
+        fm2, game_id, scope, mission_path = resolve_reference_fm2(fm2_arg)
+        _assert_fm2_matches_explicit_cli(
+            game_id, scope, mission_path, game=game, mission_id=mission
+        )
+        return fm2, game_id, scope, mission_path
+
+    resolved_game, resolved_mission = resolve_game_mission(
+        game, mission, workspace_path=workspace_path
+    )
+    default_path = (
+        mission_dir(resolved_game, resolved_mission) / "reference" / default_fm2_name
+    )
+    return resolve_reference_fm2(default_path)
+
+
+def resolve_cli_mission_fm2(
+    fm2_arg: str | Path | None,
+    *,
+    game: str | None = None,
+    mission: str | None = None,
+    default_fm2_name: str = "clear.fm2",
+    workspace_path: Path | None = None,
+) -> tuple[Path, str, Path]:
+    """Как resolve_cli_reference_fm2, но только mission-layout."""
+    fm2, game_id, scope, mission_path = resolve_cli_reference_fm2(
+        fm2_arg,
+        game=game,
+        mission=mission,
+        default_fm2_name=default_fm2_name,
+        workspace_path=workspace_path,
+    )
+    if scope != "mission" or mission_path is None:
+        raise SystemExit(
+            "Нужен mission FM2: games/<game>/missions/<mission>/reference/<file>.fm2 "
+            "(или опустите путь — возьмётся clear.fm2 из workspace)"
+        )
+    return fm2, game_id, mission_path
 
 
 def resolve_reference_fm2(
@@ -110,6 +263,8 @@ def resolve_reference_fm2(
     Допустимые layout:
     - mission: games/<game>/missions/<mission>/reference/<file>.fm2
     - shell:   games/<game>/reference/<file>.fm2
+
+    Относительные пути — от корня репозитория, не от cwd.
     """
     p = _normalize_fm2_path(fm2_arg)
 
@@ -251,6 +406,39 @@ def default_model_zip(mission: Path, generation: int = 0) -> Path:
 def save_states_dir(mission: Path) -> Path:
     """Каталог FCEUX save states миссии (cp_<head><i>.fc0)."""
     return mission / "save_states"
+
+
+def clear_save_state_files(
+    states_dir: Path,
+    plan: list[dict],
+    *,
+    replace_all: bool = False,
+) -> list[Path]:
+    """Удалить .fc0 перед пересъёмкой: слоты плана, или все при replace_all.
+
+    Без ``replace_all`` чужие `.fc0` (не из plan) сохраняются.
+    """
+    states_dir.mkdir(parents=True, exist_ok=True)
+    planned = {str(entry.get("file", "")) for entry in plan if entry.get("file")}
+    removed: list[Path] = []
+    if replace_all:
+        targets = sorted(states_dir.glob("*.fc0"))
+    else:
+        targets = [states_dir / name for name in sorted(planned) if name]
+    for path in targets:
+        if path.is_file():
+            path.unlink()
+            removed.append(path)
+    if not replace_all:
+        extras = [p for p in states_dir.glob("*.fc0") if p.name not in planned]
+        if extras:
+            names = ", ".join(p.name for p in extras[:8])
+            more = "" if len(extras) <= 8 else f" (+{len(extras) - 8})"
+            print(
+                f"  keep {len(extras)} non-plan .fc0 ({names}{more}); "
+                "pass --replace-states to wipe all"
+            )
+    return removed
 
 
 def demos_for_bc_dir(mission: Path) -> Path:
