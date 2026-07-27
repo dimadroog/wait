@@ -206,7 +206,7 @@ FCEUX, FM2, OBS (этап B) — за адаптером с узким API.
 ### 5. `scripts/` — Facade, без бизнес-логики
 
 Скрипт: argv → вызов `src/`. Логика в модулях `src/`, не в 200 строках CLI.  
-Толстые scripts и план выноса — [TASK_SCRIPTS_AUDIT § G8](tasks/TASK_SCRIPTS_AUDIT.md#g8--план-переноса-толстых-scripts-2026-07-27).
+Толстые scripts и план выноса — [TASK_SCRIPTS_AUDIT § G8](tasks/archive/TASK_SCRIPTS_AUDIT.md#g8--план-переноса-толстых-scripts-2026-07-27).
 
 ### 6. Расширение игры — Template Method
 

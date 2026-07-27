@@ -1,20 +1,21 @@
 # TASK_SCRIPTS_AUDIT — аудит публичного CLI + гигиена Pluggable Core
 
-**Статус:** done (влито в `main` 2026-07-27, merge `3f91600`)  
+**Статус:** done  
+**Закрыто:** 2026-07-27 — workspace CLI, Pluggable Core hygiene, thin facades; G1–G13; merge `3f91600` в `main`.  
 **Приоритет:** high  
-**Ветка:** `task/scripts-audit` — проработку этой задачи выполнять только в этой ветке.  
+**Ветка:** `task/scripts-audit`  
 **Зависит от:** безопасный контракт train `model-in`/`model-out` (done на `main`: continue / from_ancestor / scratch)  
 **Файлы:** `docs/SCRIPTS.md`, `docs/DESIGN.md`, `docs/GLOSSARY.md`, `.cursor/rules/pluggable-core.mdc`, `.cursor/rules/` (новые mdc при необходимости), `config/workspace.yaml` (новый), `src/project_paths.py` (или тонкий `cli_defaults`), `scripts/*`, `src/train/*`, `src/stream/*`, `src/achievements/*`, `src/fm2_playback.py`, `src/playthrough_build.py`, `games/<id>/achievements.yaml` (бывш. корневой `config/achievements.yaml`)  
-**Контекст в чат:** этот файл + [SCRIPTS.md](../SCRIPTS.md) + [DESIGN.md](../DESIGN.md) + [pluggable-core.mdc](../../.cursor/rules/pluggable-core.mdc)
+**Контекст в чат:** этот файл + [SCRIPTS.md](../../SCRIPTS.md) + [DESIGN.md](../../DESIGN.md) + [pluggable-core.mdc](../../../.cursor/rules/pluggable-core.mdc)
 
-Каркас: [TASK_BLANK.md](TASK_BLANK.md)
+Каркас: [TASK_BLANK.md](../TASK_BLANK.md)
 
 ### Цель
 
 1. Убрать CLI-ловушки того же класса, что бывший `--resume` / молчаливый wipe: опасные дефолты, silent override, dual paths shell↔Python, docs-only флаги.  
 2. Ввести **один** источник дефолтов игра/миссия (`config/workspace.yaml`); убрать id плагина из argparse ядра; выровнять scout и прочие скрипты (без cwd-как-контекста).  
 3. Закрыть **серые зоны Pluggable Core**, куда агент пролезает без `if game_id`: словарь фаз пилота в train, PPU-эвристики, achievements вне `games/`, толстые `scripts/`.  
-4. Усилить [pluggable-core.mdc](../../.cursor/rules/pluggable-core.mdc) и [DESIGN.md](../DESIGN.md); при необходимости выделить отдельные alwaysApply/globs mdc.
+4. Усилить [pluggable-core.mdc](../../../.cursor/rules/pluggable-core.mdc) и [DESIGN.md](../../DESIGN.md); при необходимости выделить отдельные alwaysApply/globs mdc.
 
 Принцип: скрипт либо отказывается, либо делает ожидаемо; ядро не «знает» Rush'n Attack даже через удобный default.
 
@@ -35,7 +36,7 @@ CLI --game / --mission (если заданы) — побеждают
 - **Антискоуп:** угадывание по `Path.cwd()` / walk-up к `games/…/missions/…`.  
 - Scout: scope по пути FM2 + флаги/workspace; технический `cwd=` subprocess FCEUX ≠ выбор плагина.
 
-Статья в [GLOSSARY](../GLOSSARY.md) (при реализации): «конфиг рабочей области» — `config/workspace.yaml`; не путать с плагином `games/<id>/` и с `fceux/runtime.yaml`.
+Статья в [GLOSSARY](../../GLOSSARY.md) (при реализации): «конфиг рабочей области» — `config/workspace.yaml`; не путать с плагином `games/<id>/` и с `fceux/runtime.yaml`.
 
 ---
 
@@ -203,7 +204,7 @@ Train model-io (continue / from_ancestor / scratch) — **уже done**, не п
 
 **Критерий «толстый»:** в `scripts/` есть бизнес-логика (доменные функции/классы, не только argv→`src`), обычно ≥~120 строк **или** импорт *из* `scripts/` другими модулями.
 
-**Цель:** `scripts/` = Facade (DESIGN §5); публичный CLI не менять без [регистрации в SCRIPTS](../DESIGN.md#регистрация-скриптов-в-scriptsmd).
+**Цель:** `scripts/` = Facade (DESIGN §5); публичный CLI не менять без [регистрации в SCRIPTS](../../DESIGN.md#регистрация-скриптов-в-scriptsmd).
 
 #### Инвентарь
 
