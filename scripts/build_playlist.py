@@ -15,13 +15,16 @@ from achievements.playlist import (  # noqa: E402
     build_playlist,
 )
 from jsonl_logs import gen_log_path, resolve_default_model_version  # noqa: E402
-from project_paths import mission_dir  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    mission_dir,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build inference playlist by achievement nominations")
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--model", default=None, help="models/genN.zip (для stem пула)")
     parser.add_argument("--model-version", default=None, help="имя пула logs/<version>/")
     parser.add_argument("--attempts", default=None)
@@ -49,6 +52,7 @@ def main() -> None:
         help="макс. клипов на номинацию (editorial default 1)",
     )
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     mission = mission_dir(args.game, args.mission)
     logs = mission / "logs"

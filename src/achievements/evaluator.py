@@ -8,12 +8,39 @@ from pathlib import Path
 from typing import Any
 
 from jsonl_logs import load_jsonl
-from project_paths import load_yaml, repo_root
+from project_paths import game_dir, load_yaml
 
 
-def load_achievements_config(path: Path | None = None) -> dict[str, Any]:
-    cfg_path = path or repo_root() / "config" / "achievements.yaml"
-    return load_yaml(cfg_path)
+def achievements_config_path(game_id: str) -> Path:
+    """Путь к YAML номинаций плагина: game.yaml → achievements, иначе achievements.yaml."""
+    root = game_dir(game_id)
+    game_yaml = root / "game.yaml"
+    rel = "achievements.yaml"
+    if game_yaml.is_file():
+        meta = load_yaml(game_yaml)
+        rel = str(meta.get("achievements") or rel)
+    path = root / rel
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"achievements config not found for game_id={game_id!r}: {path}"
+        )
+    return path
+
+
+def load_achievements_config(
+    path: Path | None = None,
+    *,
+    game_id: str | None = None,
+) -> dict[str, Any]:
+    """Загрузить номинации: явный path, иначе games/<game_id>/… (обязателен game_id)."""
+    if path is not None:
+        return load_yaml(path)
+    if not game_id:
+        raise ValueError(
+            "load_achievements_config: укажите game_id=… или path=… "
+            "(корневой config/achievements.yaml удалён; конфиг в плагине)"
+        )
+    return load_yaml(achievements_config_path(game_id))
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -72,9 +99,11 @@ def _append_tag(record: dict[str, Any], slug: str) -> None:
 def evaluate_records(
     records: list[dict[str, Any]],
     config: dict[str, Any] | None = None,
+    *,
+    game_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Вернуть копии записей с заполненным tags[]."""
-    achievements_config = config or load_achievements_config()
+    achievements_config = config or load_achievements_config(game_id=game_id)
     out = [dict(r) for r in records]
     for record in out:
         record["tags"] = []
@@ -172,8 +201,9 @@ def evaluate_attempts_file(
     attempts_path: Path,
     *,
     config: dict[str, Any] | None = None,
+    game_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    achievements_config = config or load_achievements_config()
+    achievements_config = config or load_achievements_config(game_id=game_id)
     records = load_jsonl(attempts_path)
     return evaluate_records(records, achievements_config)
 
@@ -185,8 +215,13 @@ def write_tagged_attempts(attempts_path: Path, records: list[dict[str, Any]]) ->
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def tier_for_slug(slug: str, config: dict[str, Any] | None = None) -> str:
-    achievements_config = config or load_achievements_config()
+def tier_for_slug(
+    slug: str,
+    config: dict[str, Any] | None = None,
+    *,
+    game_id: str | None = None,
+) -> str:
+    achievements_config = config or load_achievements_config(game_id=game_id)
     for nom in achievements_config.get("nominations") or []:
         if nom.get("slug") == slug:
             return str(nom.get("tier", "gold"))
@@ -197,10 +232,11 @@ def overlay_payload(
     record: dict[str, Any],
     *,
     config: dict[str, Any] | None = None,
+    game_id: str | None = None,
     show_frames: int = 180,
 ) -> dict[str, Any]:
     """JSON sidecar для Lua HUD (slim: gen, CP, тег, смерть)."""
-    achievements_config = config or load_achievements_config()
+    achievements_config = config or load_achievements_config(game_id=game_id)
     noms = _nomination_by_slug(achievements_config)
     achievements = []
     for slug in record.get("tags") or []:

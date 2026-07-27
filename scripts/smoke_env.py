@@ -9,14 +9,17 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from attempt_logger import AttemptLogger  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    mission_dir,
+)
 from env import make_env  # noqa: E402
-from project_paths import mission_dir  # noqa: E402
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Smoke test game env (random agent)")
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--save-state", default=None, help="save_states/cp_gameplay0.fc0 относительно миссии")
     parser.add_argument("--session", default="smoke_env", help="FCEUX bridge session id")
@@ -28,6 +31,7 @@ def main() -> None:
     )
     parser.add_argument("--log", action="store_true", help="append logs/attempts.jsonl")
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     mission = mission_dir(args.game, args.mission)
     default_rel = "save_states/cp_gameplay0.fc0"

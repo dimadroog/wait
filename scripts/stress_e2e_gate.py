@@ -33,7 +33,7 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from fceux_bridge import FceuxBridge  # noqa: E402
-from project_paths import artifact_quarantine_dir, mission_dir  # noqa: E402
+from project_paths import add_game_mission_arguments, apply_resolved_game_mission, artifact_quarantine_dir, mission_dir  # noqa: E402
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, preflight_bridge_sessions  # noqa: E402
 from train.session_report import SCHEMA_VERSION, host_info, parse_failure_rank, phase_record  # noqa: E402
 from train.thread_limits import configure_train_threads  # noqa: E402
@@ -516,8 +516,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="E2E gate stress (IPC thin spots) without full benchmark_train"
     )
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--save-state", default=None)
     parser.add_argument("--n-envs", type=int, default=GATE_N_ENVS)
     parser.add_argument("--frame-skip", type=int, default=4)
@@ -539,6 +538,7 @@ def main() -> None:
     parser.add_argument("--no-fail-fast", action="store_false", dest="fail_fast")
     parser.add_argument("--json-out", default=None, help="default: tmp/smoke/stress_e2e/report.json")
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     if not args.quick and not args.full:
         args.quick = True

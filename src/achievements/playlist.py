@@ -27,13 +27,25 @@ DEFAULT_EDITORIAL_MAX_CLIPS = 12
 DEFAULT_EDITORIAL_MAX_PER_SLUG = 1
 
 
-def _sort_key_for_slug(slug: str, record: dict[str, Any]) -> tuple:
-    if slug == "episode_reward":
-        return (-float(record.get("episode_reward", 0)),)
-    if slug == "fastest_death":
-        return (int(record.get("episode_frames", 999)),)
-    ts = str(record.get("timestamp", ""))
-    return (ts,)
+def _sort_key_for_slug(
+    slug: str,
+    record: dict[str, Any],
+    *,
+    nomination: dict[str, Any] | None = None,
+) -> tuple:
+    """Ключ сортировки клипов: playlist_sort / field+order из YAML номинации."""
+    nom = nomination or {}
+    sort = nom.get("playlist_sort") if isinstance(nom.get("playlist_sort"), dict) else {}
+    field = sort.get("field") or nom.get("field")
+    order = str(sort.get("order") or nom.get("order") or "asc").lower()
+    if field:
+        raw = record.get(str(field), 0)
+        try:
+            num = float(raw)
+        except (TypeError, ValueError):
+            num = 0.0
+        return (-num,) if order == "desc" else (num,)
+    return (str(record.get("timestamp", "")),)
 
 
 def _nomination_index(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -135,9 +147,12 @@ def write_overlay_clip(
     *,
     record: dict[str, Any],
     config: dict[str, Any] | None = None,
+    game_id: str | None = None,
 ) -> Path:
     """Записать .overlay.json без save_state (sidecar к FM2)."""
-    payload = overlay_payload(record, config=config or load_achievements_config())
+    payload = overlay_payload(
+        record, config=config, game_id=game_id if config is None else None
+    )
     payload.pop("save_state", None)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".tmp")
@@ -266,8 +281,8 @@ def build_playlist(
     *,
     config: dict[str, Any] | None = None,
     inference_inputs_path: Path | None = None,
-    game: str = "rushn_attack",
-    mission: str = "m1",
+    game: str,
+    mission: str,
     dedupe: bool = True,
     model_version: str | None = None,
     editorial: bool = False,
@@ -277,12 +292,13 @@ def build_playlist(
 ) -> tuple[dict[str, list[Path]], Path | None, int]:
     """Создать FM2-копии, overlay sidecar и logs/<model_version>/playlist.json.
 
+    game/mission обязательны (конфиг номинаций — из плагина games/<game>/).
     editorial=True: короткий пакет (editorial_order + лимиты airtime/clips).
     Пул = каталог attempts.jsonl (обычно logs/genN/).
     """
     from achievements.airtime import parse_airtime_hours
 
-    achievements_config = config or load_achievements_config()
+    achievements_config = config or load_achievements_config(game_id=game)
     records = evaluate_attempts_file(attempts_path, config=achievements_config)
     version = normalize_model_version(model_version or attempts_path.parent.name)
     pool_dir = gen_pool_dir(logs_dir, version)
@@ -316,7 +332,8 @@ def build_playlist(
                 by_slug[slug].append(record)
 
     for slug, items in by_slug.items():
-        items.sort(key=lambda r: _sort_key_for_slug(slug, r))
+        nom = noms.get(slug)
+        items.sort(key=lambda r, s=slug, n=nom: _sort_key_for_slug(s, r, nomination=n))
 
     created: dict[str, list[Path]] = {}
     manifest_clips: list[dict[str, Any]] = []

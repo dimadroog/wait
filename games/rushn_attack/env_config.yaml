@@ -53,6 +53,7 @@ screen_phases:
 # title — жать start; intro — только noop;
 # gameplay / bossfight — все действия кроме start (чтобы не ловить паузу в уровне).
 # Детектор bossfight — later.
+# isolation: ядро только читает forbid/required_phases (без литералов RnA в train).
 policy_heads:
   default_head: gameplay
   heads: [title, intro, gameplay, bossfight]
@@ -66,4 +67,10 @@ policy_heads:
     intro: [""]
     gameplay: ["", "left", "right", "down", "up", "right+up", "left+up", "A", "B"]
     bossfight: ["", "left", "right", "down", "up", "right+up", "left+up", "A", "B"]
-
+  isolation:
+    forbid:
+      - head: gameplay
+        phases: [title, intro]
+      - head: bossfight
+        phases: [title, intro]
+    required_phases: [gameplay]

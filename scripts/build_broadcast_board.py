@@ -10,7 +10,11 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from jsonl_logs import resolve_default_model_version  # noqa: E402
-from project_paths import mission_dir  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    mission_dir,
+)
 from stream.broadcast_board import (  # noqa: E402
     DEFAULT_SUPPORT_LINE,
     build_broadcast_board,
@@ -25,8 +29,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build broadcast_board.json for hybrid episode (OBS board)"
     )
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--model", default=None, help="models/genN.zip")
     parser.add_argument("--model-version", default=None)
     parser.add_argument(
@@ -51,6 +54,7 @@ def main() -> None:
         help="путь JSON (default: logs/<gen>/broadcast_board.json + streaming/board/)",
     )
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     mission = mission_dir(args.game, args.mission)
     logs = mission / "logs"

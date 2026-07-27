@@ -61,7 +61,7 @@
 | Путь | Содержимое |
 | ---- | ---------- |
 | `docs/` | Концепция |
-| `config/achievements.yaml` | Номинации achievements (текущая игра) |
+| `config/workspace.yaml` | Дефолты game/mission оператора ([глоссарий](GLOSSARY.md#конфиг-рабочей-области-workspace)); не путать с плагином |
 | `src/` | Общий bridge, env, rewards, train, inference |
 | `scripts/` | CLI |
 | `fceux/lua/`, `fceux/profiles/`, `fceux/runtime.yaml`, `fceux/README.md` | Контракт эмулятора |
@@ -97,10 +97,11 @@
 
 ```
 wait/
-├── config/achievements.yaml
+├── config/workspace.yaml    # дефолты game/mission (оператор)
 ├── docs/                    # README (вход), ML, STREAMING, DESIGN, GAME_*
 ├── games/<game_id>/
-│   ├── game.yaml
+│   ├── game.yaml            # + achievements: path к YAML номинаций
+│   ├── achievements.yaml    # номинации / editorial (плагин)
 │   ├── env_config.yaml
 │   ├── env/
 │   ├── rom/
@@ -190,6 +191,8 @@ CP, heuristics, профили наград — в `games/.../config/` (мисс
 **Плохо:** `if game_id == "rushn_attack": ...` в ядре.  
 **Хорошо:** правило в YAML плагина; ядро читает и интерпретирует.
 
+Отсутствие `if game_id` **не** достаточно: словарь фаз пилота в train, PPU-пороги, argparse-дефолты `rushn_attack`/`m1`, номинации вне `games/<id>/` — тоже нарушения Pluggable Core. См. [антипаттерны](#антипаттерны) и [контракт game/mission](#контракт-game--mission).
+
 ### 3. Награды — только Decorator
 
 `BaseNesEnv.step()` возвращает `reward=0.0`. Награда — в `CheckpointRewardWrapper`.  
@@ -202,7 +205,8 @@ FCEUX, FM2, OBS (этап B) — за адаптером с узким API.
 
 ### 5. `scripts/` — Facade, без бизнес-логики
 
-Скрипт: argv → вызов `src/`. Логика в модулях `src/`, не в 200 строках CLI.
+Скрипт: argv → вызов `src/`. Логика в модулях `src/`, не в 200 строках CLI.  
+Толстые scripts и план выноса — [TASK_SCRIPTS_AUDIT § G8](tasks/TASK_SCRIPTS_AUDIT.md#g8--план-переноса-толстых-scripts-2026-07-27).
 
 ### 6. Расширение игры — Template Method
 
@@ -229,17 +233,46 @@ Experiment-ветки — для проверки гипотез; в main и в 
 │   ├─ (опц.) Heuristics сборки эталона → games/<game>/etalon_build.yaml; иначе head_save_states + routes.yaml
 │   ├─ Действия, lives, env-параметры → games/.../env_config.yaml
 │   ├─ Детектор фазы экрана (phase_id) → YAML + hooks в games/<game>/env/
+│   ├─ Словарь фаз / isolation / required heads → env_config / policy_heads плагина (не src/train)
+│   ├─ Номинации achievements, пороги PPU/RAM одной игры → games/<id>/… (не корневой config/)
 │   └─ Фабрика env, override hooks → games/<game>/env/__init__.py
 │
 ├─ Общий для всех игр?
 │   ├─ Новый внешний процесс / протокол → src/*_bridge.py (Adapter)
 │   ├─ Обвязка поведения env → src/rewards/ или wrapper (Decorator)
 │   ├─ Общий алгоритм env → src/env/base_nes_env.py (Template Method)
-│   ├─ Multi-head policy / phase→head → src/train/ (Multi-head Policy)
+│   ├─ Multi-head policy / phase→head (чтение манифеста) → src/train/ (Multi-head Policy)
 │   └─ Train / inference / export → src/train/, src/stream/, src/
 │
-└─ Точка входа / smoke / benchmark → scripts/ (Facade)
+├─ Дефолт «какая игра / миссия сейчас»?
+│   └─ config/workspace.yaml (+ общий хелпер резолва) — не литерал в src/, не cwd
+│
+└─ Точка входа / smoke / benchmark → scripts/ (Facade; резолв game/mission в Python)
 ```
+
+---
+
+<a id="контракт-game--mission"></a>
+
+## Контракт game / mission
+
+**Один** источник дефолтов — [конфиг рабочей области](GLOSSARY.md#конфиг-рабочей-области-workspace) (`config/workspace.yaml`). Не гибрид «cwd + yaml + хардкод».
+
+```text
+CLI --game / --mission (если заданы) — побеждают
+  → иначе поля из config/workspace.yaml
+    → иначе SystemExit: укажите флаги или заполните workspace
+```
+
+- В `src/**` argparse: `default=None` для game/mission; заполнение только через общий хелпер.
+- Явные флаги — осознанный override оператора.
+- **Запрещено:** угадывание по `Path.cwd()` / walk-up к `games/…/missions/…`.
+- Scout: scope по пути FM2 + флаги/workspace ([`resolve_cli_reference_fm2`](../src/project_paths.py)); технический `cwd=` subprocess FCEUX ≠ выбор плагина.
+- Относительные пути FM2 — от корня репозитория, не от `Path.cwd()`.
+- Multi-head isolation / required phases — только `env_config.policy_heads.isolation` плагина; ядро не хардкодит пары вроде title/intro↔gameplay.
+- Shell-обёртки (`*.sh`) — passthrough argv; резолв только в Python.
+
+Регрессия Pluggable Core (по возможности в CI): `rg 'if game_id\s*==' src/` → пусто; нет новых room/pose-литералов пилота в `src/`.
 
 ---
 
@@ -248,7 +281,12 @@ Experiment-ветки — для проверки гипотез; в main и в 
 | Антипаттерн | Почему плохо | Вместо |
 | ----------- | ------------ | ------ |
 | `if game_id` в `src/` | Ядро раздувается с каждой игрой | YAML Strategy или hook в плагине |
+| `default="rushn_attack"` / `"m1"` в argparse `src/**` | Ядро «знает» пилот без `if game_id` | Workspace + хелпер; `default=None` |
+| Словарь фаз/isolation пилота зашит в `src/train` | Другая игра ломает gate | Контракт в YAML плагина; ядро читает |
 | Игровые room/CP-константы в `src/` | Нарушает Pluggable Core | `routes.yaml` / `head_save_states` (опц. `etalon_build.yaml`) в плагине |
+| Игровые пороги PPU/RAM в `src/` вне конфига плагина | Эвристики пилота в каркасе | YAML/hook плагина |
+| Номинации / routes-числа одной игры в корневом `config/` | Обход плагина | `games/<id>/…` или путь из `game.yaml` |
+| Угадывание game/mission по cwd | Dual canon, ложный контекст | [Контракт game/mission](#контракт-game--mission) |
 | Имена `phaseN_*`, `phaseN.yaml` в коде (roadmap) | Путает план ML и runtime | доменные имена (`etalon_build`, `playthrough`, …); не путать с [`phase_id`](GLOSSARY.md#фаза-экрана-phase_id) экрана |
 | Детектор title/cutscene/boss в `src/train/` | Игро-специфика в ядре | YAML/hooks плагина → нейтральный `phase_id`; ядро только выбирает голову |
 | Несколько `genN/*.zip` + bundle router как продуктовый путь | Ломает «поколение = один zip»; дубли train | Multi-head в одном `models/genN.zip` ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)) |
@@ -380,7 +418,9 @@ Smoke и benchmark **не засоряют** `games/`. Временный выв
 
 Правила для агента (Cursor, `alwaysApply`):
 
-- [.cursor/rules/pluggable-core.mdc](../.cursor/rules/pluggable-core.mdc) — ядро без игровой специфики; куда класть код
+- [.cursor/rules/pluggable-core.mdc](../.cursor/rules/pluggable-core.mdc) — ядро без игровой специфики; серые зоны (pilot defaults, phase vocabulary, PPU, cwd); куда класть код
+- [Контракт game/mission](#контракт-game--mission) — workspace; без cwd-гибрида
+- [GLOSSARY: конфиг рабочей области](GLOSSARY.md#конфиг-рабочей-области-workspace)
 - [.cursor/rules/artifact-hygiene.mdc](../.cursor/rules/artifact-hygiene.mdc) — карантин smoke/benchmark-артефактов
 - [.cursor/rules/agent-communication.mdc](../.cursor/rules/agent-communication.mdc) — язык ответов, ясность, опора на [GLOSSARY.md](GLOSSARY.md)
 

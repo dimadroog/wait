@@ -5,6 +5,7 @@ rom_file: rom/rushn_attack.nes
 env_class: RushnAttackEnv
 env_package: env
 env_config: env_config.yaml
+achievements: achievements.yaml
 emulator:
   runtime: fceux/runtime.yaml
   lua_bridge: fceux/lua/bridge.lua

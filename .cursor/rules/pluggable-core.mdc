@@ -13,6 +13,19 @@ alwaysApply: true
 - **Плагин:** `games/<game_id>/` — ROM, env-пакет, `env_config.yaml`, миссии, YAML маршрутов и эвристик.
 - В ядре **запрещено:** `if game_id == "…"`, захардкоженные комнаты / CP / эвристики конкретной игры (в т.ч. Rush'n Attack).
 - **Хорошо:** правило в YAML плагина (`routes.yaml`, `etalon_build.yaml`, `env_config.yaml`) или hook в `games/<id>/env/`; ядро только читает и интерпретирует.
+- **Важно:** отсутствие `if game_id` **не** означает чистоту ядра. Серые зоны ниже — тоже нарушения.
+
+## Расширенные запреты (серые зоны)
+
+| Запрет | Смысл | Куда вместо |
+| ------ | ----- | ----------- |
+| Строковые дефолты id игры/миссии в `src/**` (`default="rushn_attack"`, `"m1"` и аналоги) | Ядро «знает» пилот | [Конфиг рабочей области](docs/GLOSSARY.md#конфиг-рабочей-области-workspace) / обязательный CLI; в argparse — `default=None` |
+| Словарь фаз/голов конкретной игры в train-ядре (`"title"\|"intro"\|"gameplay"` как hard isolation / required phases) | Схема пилота без `if game_id` | YAML плагина (`env_config` / policy_heads); ядро только интерпретирует |
+| Игровые пороги PPU/RAM (эвристики title, room id) в `src/` вне чтения конфига | Пороги пилота в каркасе | YAML/hook плагина |
+| Правила номинаций, routes-подобные числа одной игры в корневом `config/` | Обход плагина | `games/<id>/…` (или путь из `game.yaml`); ядро грузит через плагин |
+| Угадывание game/mission по `Path.cwd()` / walk-up к `games/…` | Dual canon, ложный контекст | CLI > workspace > отказ ([DESIGN](docs/DESIGN.md#контракт-game--mission)) |
+
+Дефолт «какая игра сейчас» → только `config/workspace.yaml` или явные `--game`/`--mission`, **не** литерал в `src/` и не cwd.
 
 ## Куда класть новый код
 

@@ -10,7 +10,7 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from demo_record import record_demos  # noqa: E402
-from project_paths import resolve_mission_fm2  # noqa: E402
+from project_paths import add_game_mission_arguments, resolve_cli_mission_fm2  # noqa: E402
 
 
 def main() -> None:
@@ -19,8 +19,13 @@ def main() -> None:
     )
     parser.add_argument(
         "fm2",
-        help="путь к FM2 (для определения миссии): games/.../reference/<file>.fm2",
+        nargs="?",
+        default=None,
+        help=(
+            "путь к FM2 от корня репо (для миссии); если опущен — clear.fm2 из workspace"
+        ),
     )
+    add_game_mission_arguments(parser)
     parser.add_argument(
         "--segment",
         action="append",
@@ -45,7 +50,9 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        _fm2, game_id, mission = resolve_mission_fm2(args.fm2)
+        _fm2, game_id, mission = resolve_cli_mission_fm2(
+            args.fm2, game=args.game, mission=args.mission
+        )
     except (FileNotFoundError, ValueError) as e:
         raise SystemExit(str(e)) from e
 

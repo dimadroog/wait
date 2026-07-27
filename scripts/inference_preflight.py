@@ -10,14 +10,14 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from inference_preflight import require_inference_preflight, require_playback_preflight  # noqa: E402
+from project_paths import add_game_mission_arguments, apply_resolved_game_mission  # noqa: E402
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Preflight before inference or playback (gen logs kept by default)"
     )
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--model", default=None, help="models/genN.zip (для stem пула)")
     parser.add_argument("--model-version", default=None, help="имя пула logs/<version>/")
     parser.add_argument(
@@ -35,6 +35,7 @@ def main() -> None:
     if args.playback_only:
         require_playback_preflight()
     else:
+        apply_resolved_game_mission(args)
         require_inference_preflight(
             game=args.game,
             mission=args.mission,

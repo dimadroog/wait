@@ -17,6 +17,23 @@ def normalize_model_version(value: str | Path) -> str:
     return name
 
 
+def require_consistent_model_version(
+    *,
+    model: str | Path | None = None,
+    model_version: str | None = None,
+) -> None:
+    """G3: --model и --model-version с разным stem → SystemExit."""
+    if model is None or not model_version:
+        return
+    stem_model = normalize_model_version(model)
+    stem_version = normalize_model_version(model_version)
+    if stem_model != stem_version:
+        raise SystemExit(
+            f"--model stem {stem_model!r} != --model-version {stem_version!r}; "
+            "уберите один флаг или выровняйте имена (иначе logs/genN/ чужой)"
+        )
+
+
 def resolve_default_model_version(
     mission: Path,
     *,
@@ -24,6 +41,7 @@ def resolve_default_model_version(
     model_version: str | None = None,
 ) -> str:
     """--model-version → stem(--model) → stem(models/latest.zip); иначе ошибка."""
+    require_consistent_model_version(model=model, model_version=model_version)
     if model_version:
         return normalize_model_version(model_version)
     if model is not None:

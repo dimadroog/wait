@@ -20,7 +20,12 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from fceux_bridge import FceuxBridge, bridge_load_lock  # noqa: E402
-from project_paths import artifact_quarantine_dir, mission_dir  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    artifact_quarantine_dir,
+    mission_dir,
+)
 
 
 @dataclass
@@ -413,8 +418,7 @@ def run_benchmark(args: argparse.Namespace) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="FCEUX bridge IPC baseline benchmark")
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--save-state", default=None)
     parser.add_argument("--frame-skip", type=int, default=4)
     parser.add_argument("--n-envs", type=int, default=8, help="parallel FCEUX for aggregate throughput")
@@ -433,6 +437,7 @@ def main() -> None:
     parser.add_argument("--gate-vec-cycles", type=int, default=128, help="vec cycles for gate rollout projection")
     parser.add_argument("--json-out", default=None, help="write report JSON (default: tmp/bench/)")
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     out_path: Path | None = None
     if args.json_out:

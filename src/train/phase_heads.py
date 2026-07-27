@@ -14,6 +14,14 @@ from project_paths import game_dir, load_yaml
 
 
 @dataclass(frozen=True)
+class IsolationForbidRule:
+    """Запрет: head_id не должен быть активен на phase_id из phases."""
+
+    head: str
+    phases: frozenset[str]
+
+
+@dataclass(frozen=True)
 class PolicyHeadsSpec:
     """Манифест голов из YAML плагина (env_config.policy_heads)."""
 
@@ -22,6 +30,9 @@ class PolicyHeadsSpec:
     phase_to_head: dict[str, str]
     # head_id → разрешённые action strings; None/отсутствует = все действия
     action_masks: dict[str, tuple[str, ...] | None] = field(default_factory=dict)
+    # Правила isolation / coverage — только из YAML плагина (не литералы RnA в train).
+    isolation_forbid: tuple[IsolationForbidRule, ...] = ()
+    required_phases: tuple[str, ...] = ()
 
     def head_id_for_phase(self, phase_id: str | None) -> str:
         if not phase_id:
@@ -41,6 +52,16 @@ class PolicyHeadsSpec:
             )
             return self.default_head
         return mapped
+
+    def is_forbidden_pair(self, head_id: str, phase_id: str | None) -> bool:
+        """True если YAML isolation.forbid запрещает эту пару head↔phase."""
+        if not phase_id or not self.isolation_forbid:
+            return False
+        phase = str(phase_id)
+        for rule in self.isolation_forbid:
+            if head_id == rule.head and phase in rule.phases:
+                return True
+        return False
 
     def allowed_action_indices(
         self, head_id: str, action_strings: Sequence[str]
@@ -101,12 +122,73 @@ def parse_policy_heads_spec(raw: dict[str, Any]) -> PolicyHeadsSpec:
             action_masks[key] = tuple(str(x) for x in val)
         else:
             raise ValueError(f"action_masks[{key!r}] must be list or null")
+
+    isolation_forbid, required_phases = _parse_isolation(raw, heads)
     return PolicyHeadsSpec(
         default_head=default_head,
         heads=heads,
         phase_to_head=phase_to_head,
         action_masks=action_masks,
+        isolation_forbid=isolation_forbid,
+        required_phases=required_phases,
     )
+
+
+def _parse_isolation(
+    raw: dict[str, Any], heads: tuple[str, ...]
+) -> tuple[tuple[IsolationForbidRule, ...], tuple[str, ...]]:
+    iso = raw.get("isolation")
+    if iso is None:
+        return (), ()
+    if not isinstance(iso, dict):
+        raise ValueError("policy_heads.isolation must be a mapping")
+    forbid_raw = iso.get("forbid") or []
+    if not isinstance(forbid_raw, list):
+        raise ValueError("policy_heads.isolation.forbid must be a list")
+    rules: list[IsolationForbidRule] = []
+    for i, item in enumerate(forbid_raw):
+        if not isinstance(item, dict):
+            raise ValueError(f"isolation.forbid[{i}] must be a mapping")
+        head = str(item.get("head") or "").strip()
+        phases_raw = item.get("phases") or []
+        if not head:
+            raise ValueError(f"isolation.forbid[{i}].head is required")
+        if head not in heads:
+            raise ValueError(
+                f"isolation.forbid[{i}].head={head!r} not in heads={heads}"
+            )
+        if not isinstance(phases_raw, (list, tuple)) or not phases_raw:
+            raise ValueError(f"isolation.forbid[{i}].phases must be a non-empty list")
+        rules.append(
+            IsolationForbidRule(head=head, phases=frozenset(str(p) for p in phases_raw))
+        )
+    required_raw = iso.get("required_phases") or []
+    if not isinstance(required_raw, (list, tuple)):
+        raise ValueError("policy_heads.isolation.required_phases must be a list")
+    required = tuple(str(p) for p in required_raw)
+    return tuple(rules), required
+
+
+def evaluate_phase_head_gate(
+    *,
+    forbidden_steps: int,
+    total_steps: int,
+    phase_step_counts: dict[str, int],
+    spec: PolicyHeadsSpec,
+) -> tuple[bool, list[str]]:
+    """Проверка isolation/required после learn. Возвращает (ok, сообщения об ошибках)."""
+    errors: list[str] = []
+    if spec.isolation_forbid and total_steps > 0 and forbidden_steps > 0:
+        errors.append(
+            f"phase-head isolation failed: forbidden head↔phase pairs "
+            f"({forbidden_steps}/{total_steps})"
+        )
+    for phase in spec.required_phases:
+        if total_steps > 0 and int(phase_step_counts.get(phase, 0)) <= 0:
+            errors.append(
+                f"phase-head coverage failed: never reached phase_id={phase!r}"
+            )
+    return (len(errors) == 0), errors
 
 
 def load_game_action_strings(game_id: str) -> tuple[str, ...]:

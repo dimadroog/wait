@@ -1,0 +1,5 @@
+# Дефолты game/mission для CLI, когда --game / --mission не переданы.
+# Контракт: docs/DESIGN.md#контракт-game--mission · GLOSSARY «конфиг рабочей области».
+# Не путать с games/<id>/ (плагин) и fceux/runtime.yaml.
+game: rushn_attack
+mission: m1

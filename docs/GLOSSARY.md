@@ -9,7 +9,7 @@
 
 ### Achievement (inference)
 
-**Achievement** (достижение / номинация) — метка, которую система вешает на попытку модели после [inference](#inference): например трофей или «смерть» (в конфиге — эмодзи 🏆 / 💀). Правила отбора задаются в `config/achievements.yaml`; выбранные попытки попадают в теги `tags[]` и затем в клипы формата [FM2](#fm2) с именами вида `{idx}_{slug}_{seq}.fm2` для [editorial](#editorial)-пакета.
+**Achievement** (достижение / номинация) — метка, которую система вешает на попытку модели после [inference](#inference): например трофей или «смерть» (в конфиге — эмодзи 🏆 / 💀). Правила отбора задаются YAML номинаций **плагина** (`games/<game_id>/achievements.yaml` или путь из `game.yaml` → `achievements`); выбранные попытки попадают в теги `tags[]` и затем в клипы формата [FM2](#fm2) с именами вида `{idx}_{slug}_{seq}.fm2` для [editorial](#editorial)-пакета.
 
 **Пул** кандидатов для номинаций — [пул поколения](#пул-поколения). Длина editorial-пакета измеряется как [airtime](#airtime) клипов; это не длина всего Twitch-слота (слот = editorial + live + [board](#broadcast-board)). Подробности форматов — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота); режиссура — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
 
@@ -33,7 +33,7 @@
 
 Это не замена [дообучению](#doobuchenie) и не сам цикл [PPO](#ppo). Цель — дать модели более осмысленный старт (в том числе атака и уклонение, если они есть в демонстрациях), после чего уже идёт обычное обучение с наградой.
 
-Данные лежат в `reference/demos_for_bc/seg_*.npz` и должны содержать **настоящие** кадры (`obs_stub: false`). Файлы-заглушки из `segment_playthrough` (нулевые картинки) модуль клонирования пропускает. Кадры пишутся скриптом `scripts/record_demos.py`. Код: `src/train/bc_pretrain.py`; вызывается из `train_ppo`, если заданы ненулевые [эпохи клонирования](#эпохи-клонирования) (`--bc-epochs`; по умолчанию `0` — шаг выключен).
+Данные лежат в `reference/demos_for_bc/seg_*.npz` и должны содержать **настоящие** кадры (`obs_stub: false`). Файлы-заглушки из `playthrough_build.build_demos` / CLI `segment_playthrough` (нулевые картинки) модуль клонирования пропускает. Кадры пишутся скриптом `scripts/record_demos.py`. Код: `src/train/bc_pretrain.py`; вызывается из `train_ppo`, если заданы ненулевые [эпохи клонирования](#эпохи-клонирования) (`--bc-epochs`; по умолчанию `0` — шаг выключен).
 
 ### Поколение модели (`genN`)
 
@@ -50,6 +50,17 @@
 ### Editorial
 
 **Editorial** (editorial-пакет) — короткий кураторский плейлист клипов [FM2](#fm2) одного [поколения](#поколение-модели-genn) для начала hybrid-эфира: высокий сигнал, мало клипов (ориентир 8–15 мин [airtime](#airtime)). Не заполняет весь Twitch-слот; тело эфира — live-inference. Режиссура — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
+
+### Конфиг рабочей области (`workspace`)
+
+<a id="конфиг-рабочей-области-workspace"></a>
+<a id="workspace"></a>
+
+**Конфиг рабочей области** — файл `config/workspace.yaml` в корне репозитория: какие `game` и `mission` считать контекстом по умолчанию для CLI (train, inference, smoke, scout и т.п.), когда оператор не передал `--game` / `--mission`.
+
+Резолв зафиксирован в [DESIGN.md](DESIGN.md#контракт-game--mission): явные флаги CLI побеждают; иначе поля из workspace; иначе отказ (`SystemExit`), а не угадывание. **Не** источник дефолтов: литералы в `src/**` argparse и текущий каталог процесса (`Path.cwd()` / walk-up к `games/…`).
+
+Не путать с плагином игры `games/<game_id>/` (ROM, env, миссии, YAML маршрутов) и с `fceux/runtime.yaml` (профиль эмулятора). Workspace отвечает только на вопрос «какая игра/миссия сейчас у оператора», не на правила самой игры.
 
 ### CP
 
@@ -180,7 +191,7 @@
 | **shell** | `games/<game>/reference/*.fm2` (title, game over) | `games/<game>/reference/scout/<round>/` | вручную в `env_config.yaml` |
 | **mission** | `games/<game>/missions/<m>/reference/*.fm2` (обычно `clear.fm2`) | плоский `missions/<m>/reference/scout/` + `ram_resolve.json` / `ram_map.md` | конфиги миссии / [эталон](#etalon) |
 
-Shell-раунд **не** перезаписывает scout и `ram_resolve` миссии. Id раунда — флаг `--round` (по умолчанию stem имени FM2). См. [SCRIPTS.md § ram_scout](SCRIPTS.md#ram_scoutpy), [DESIGN.md](DESIGN.md) (дерево `games/<id>/reference/`).
+Shell-раунд **не** перезаписывает scout и `ram_resolve` миссии. Id раунда — флаг `--round` (по умолчанию stem имени FM2). Путь FM2 (или `clear.fm2` из [workspace](#конфиг-рабочей-области-workspace)) задаёт scope; **не** текущий каталог процесса и не `cwd=` у FCEUX (это staging). См. [SCRIPTS.md § ram_scout](SCRIPTS.md#ram_scoutpy), [DESIGN.md](DESIGN.md#контракт-game--mission).
 
 ### Пул поколения
 

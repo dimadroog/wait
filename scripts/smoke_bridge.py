@@ -2,6 +2,7 @@
 """Smoke test: Python ↔ FCEUX bridge IPC."""
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -9,13 +10,30 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from fceux_bridge import FceuxBridge  # noqa: E402
-from project_paths import resolve_mission_fm2  # noqa: E402
+from project_paths import (  # noqa: E402
+    add_game_mission_arguments,
+    apply_resolved_game_mission,
+    mission_dir,
+    resolve_mission_fm2,
+)
 
 
 def main() -> None:
-    fm2 = "games/rushn_attack/missions/m1/reference/clear.fm2"
-    if len(sys.argv) > 1:
-        fm2 = sys.argv[1]
+    parser = argparse.ArgumentParser(description="Smoke test FCEUX bridge IPC")
+    parser.add_argument(
+        "fm2",
+        nargs="?",
+        default=None,
+        help="path to FM2 (default: reference/clear.fm2 under workspace mission)",
+    )
+    add_game_mission_arguments(parser)
+    args = parser.parse_args()
+
+    if args.fm2:
+        fm2 = args.fm2
+    else:
+        game, mission_id = apply_resolved_game_mission(args)
+        fm2 = str(mission_dir(game, mission_id) / "reference" / "clear.fm2")
 
     _, game_id, mission = resolve_mission_fm2(fm2)
     state = mission / "save_states" / "cp_gameplay1.fc0"

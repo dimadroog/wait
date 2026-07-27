@@ -82,8 +82,8 @@ def warn_portable_movies_pollution(*, label: str = "preflight") -> None:
 
 def require_inference_preflight(
     *,
-    game: str = "rushn_attack",
-    mission: str = "m1",
+    game: str,
+    mission: str,
     model_version: str | None = None,
     model: str | None = None,
     clean_logs: bool = False,

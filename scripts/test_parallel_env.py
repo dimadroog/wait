@@ -15,12 +15,12 @@ _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "src"))
 
 from train.env_factory import build_vec_env, cleanup_bridge_sessions  # noqa: E402
+from project_paths import add_game_mission_arguments, apply_resolved_game_mission  # noqa: E402
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Parallel SubprocVecEnv IPC stress (BACKLOG 1.9)")
-    parser.add_argument("--game", default="rushn_attack")
-    parser.add_argument("--mission", default="m1")
+    add_game_mission_arguments(parser)
     parser.add_argument("--n-envs", type=int, default=8)
     parser.add_argument("--save-state", default="save_states/cp_gameplay0.fc0")
     parser.add_argument("--cycles", type=int, default=30, help="step rounds on all envs")
@@ -31,6 +31,7 @@ def main() -> None:
         help="force vec.reset() every N cycles (0 = only initial reset)",
     )
     args = parser.parse_args()
+    apply_resolved_game_mission(args)
 
     cleanup_bridge_sessions("train_")
     n = args.n_envs

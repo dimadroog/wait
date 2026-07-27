@@ -63,7 +63,9 @@ def test_require_inference_preflight_keeps_logs_by_default(tmp_path: Path, capsy
     with patch("inference_preflight.repo_root", return_value=tmp_path):
         with patch("inference_preflight.mission_dir", return_value=mission):
             with patch("inference_preflight.require_clean_preflight") as require_clean:
-                require_inference_preflight(model_version="gen0", label="test")
+                require_inference_preflight(
+                    game="rushn_attack", mission="m1", model_version="gen0", label="test"
+                )
     assert kept.is_file()
     require_clean.assert_called_once()
     out = capsys.readouterr().out
@@ -82,7 +84,11 @@ def test_require_inference_preflight_wipe_gen_logs(tmp_path: Path) -> None:
         with patch("inference_preflight.mission_dir", return_value=mission):
             with patch("inference_preflight.require_clean_preflight") as require_clean:
                 require_inference_preflight(
-                    model_version="gen0", clean_logs=True, label="test"
+                    game="rushn_attack",
+                    mission="m1",
+                    model_version="gen0",
+                    clean_logs=True,
+                    label="test",
                 )
     assert not pool.exists()
     require_clean.assert_called_once()
@@ -125,4 +131,6 @@ def test_require_inference_preflight_aborts_on_orphans(tmp_path: Path) -> None:
         with patch("inference_preflight.mission_dir", return_value=mission):
             with patch("inference_preflight.require_clean_preflight", side_effect=SystemExit(1)):
                 with pytest.raises(SystemExit):
-                    require_inference_preflight(clean_logs=False, model_version="latest")
+                    require_inference_preflight(
+                        game="x", mission="m1", clean_logs=False, model_version="latest"
+                    )

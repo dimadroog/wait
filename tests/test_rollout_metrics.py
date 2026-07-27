@@ -8,8 +8,26 @@ def test_resolve_target_raises_when_cli_higher() -> None:
     assert resolve_target_timesteps(100_000, {"target_timesteps": 20_000}) == 100_000
 
 
-def test_resolve_target_keeps_sidecar_when_cli_lower() -> None:
-    assert resolve_target_timesteps(10_000, {"target_timesteps": 20_000}) == 20_000
+def test_resolve_target_keeps_sidecar_when_cli_default_not_explicit() -> None:
+    assert (
+        resolve_target_timesteps(
+            10_000,
+            {"target_timesteps": 20_000},
+            cli_timesteps_explicit=False,
+        )
+        == 20_000
+    )
+
+
+def test_resolve_target_exits_when_explicit_cli_lower() -> None:
+    import pytest
+
+    with pytest.raises(SystemExit, match="allow-reduce-target"):
+        resolve_target_timesteps(
+            10_000,
+            {"target_timesteps": 20_000},
+            cli_timesteps_explicit=True,
+        )
 
 
 def test_resolve_target_without_sidecar() -> None:

@@ -74,7 +74,7 @@
 ## Карточки
 
 Шаблон: **назначение** → команда → вход/выход → флаги (частые сверху).  
-Общие `--game` / `--mission` (default `rushn_attack` / `m1`) у многих скриптов ниже не дублируются, если нет особого смысла.
+Общие `--game` / `--mission`: если флаги опущены — из [`config/workspace.yaml`](../config/workspace.yaml) ([глоссарий](GLOSSARY.md#конфиг-рабочей-области-workspace)); иначе отказ. У многих карточек ниже не дублируются.
 
 ---
 
@@ -110,23 +110,33 @@
 
 ### `ram_scout.py`
 
+Фасад: argv → `ram_scout.run_ram_scout` (`src/ram_scout.py`).  
 [Раунд разведки RAM](GLOSSARY.md#раунд-разведки-ram): FM2 → сырой scout.  
 **Mission** (`games/<game>/missions/<m>/reference/*.fm2`) → плоский `reference/scout/`, затем `config/ram_resolve.json` + `ram_map.md`.  
 **Shell** (`games/<game>/reference/*.fm2`) → `reference/scout/<round>/` только (якоря вручную в `env_config.yaml`).
 
+Контекст: **scope по пути FM2** (или `clear.fm2` из [workspace](GLOSSARY.md#конфиг-рабочей-области-workspace), если путь опущен). Относительные пути — от корня репозитория. Не `cd` в миссию и не угадывание по cwd. Технический `cwd=` subprocess FCEUX — каталог staging ROM/FM2, **не** выбор плагина.
+
+По умолчанию mission пишет только сырой scout/candidates; `ram_resolve` / `ram_map` — только с явным `--write-ram-map`.
+
 ```bash
-# mission (эталон clear)
+# mission (эталон clear) — явный путь
 ./.venv/Scripts/python.exe scripts/ram_scout.py games/rushn_attack/missions/m1/reference/clear.fm2
+# то же + запись resolve/map
+./.venv/Scripts/python.exe scripts/ram_scout.py games/rushn_attack/missions/m1/reference/clear.fm2 --write-ram-map
+# то же через workspace (config/workspace.yaml), без позиционного FM2
+./.venv/Scripts/python.exe scripts/ram_scout.py
 # shell (game over; не трогает mission scout / ram_resolve)
 ./.venv/Scripts/python.exe scripts/ram_scout.py games/rushn_attack/reference/game_over_to_attract.fm2
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `fm2` | shell или mission layout (см. выше) |
+| `fm2` | shell или mission layout (опционально; default — workspace `clear.fm2`) |
+| `--game` / `--mission` | override workspace; при явном FM2 должны совпадать с путём |
 | `--round` | id раунда (default: stem FM2); у shell — подкаталог `scout/<round>/` |
 | `--timeout` | лимит секунд FCEUX (default 600) |
-| `--no-ram-map` | mission: не писать `ram_resolve` / `ram_map` |
+| `--write-ram-map` | mission: записать `ram_resolve` / `ram_map` (default: нет) |
 
 ---
 
@@ -137,48 +147,62 @@
 Кадры и имена `.fc0` — из `head_save_states` в манифесте (`cp_title0`, `cp_intro0`, `cp_gameplay0`, …). Train и inference reset — **один** файл (`cp_gameplay0`).  
 Опциональный `games/<id>/etalon_build.yaml` — автогенерация `routes.yaml` / эвристика `gameplay_start`; если файла нет (пилот RnA), `routes.yaml` не перезаписывается. `--states-only` etalon_build не требует.
 
+Миссия — из пути FM2 или из workspace (`clear.fm2`), не из cwd.
+
 ```bash
 ./.venv/Scripts/python.exe scripts/build_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2
+./.venv/Scripts/python.exe scripts/build_playthrough.py
 # только переснять .fc0 по якорям манифеста (без routes/jsonl):
 ./.venv/Scripts/python.exe scripts/build_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2 --states-only
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `fm2` | путь к FM2 |
+| `fm2` | путь к FM2 (опционально; default — workspace `clear.fm2`) |
+| `--game` / `--mission` | override workspace; при явном FM2 — проверка совпадения |
 | `--timeout` | лимит FCEUX (default 600) |
 | `--skip-states` | без `.fc0` |
 | `--states-only` | только `save_states/` из `head_save_states` |
+| `--replace-states` | wipe всех `*.fc0` (иначе только слоты плана) |
+| `--force-demos` | stub demos поверх non-stub BC |
 | `--skip-demos` | без `reference/demos_for_bc/seg_*.npz` |
 
 ---
 
 ### `segment_playthrough.py`
 
-`reference/demos_for_bc/seg_*.npz` с actions only (`obs` stub). Для BC с кадрами — `record_demos.py`.
+Фасад: argv → `playthrough_build.build_demos` (`src/playthrough_build.py`).  
+`reference/demos_for_bc/seg_*.npz` с actions only (`obs` stub). Для BC с кадрами — `record_demos.py`.  
+Миссия — из пути FM2 или workspace (`clear.fm2`), не из cwd. Non-stub demos не перезаписываются без `--force`.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/segment_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2
+./.venv/Scripts/python.exe scripts/segment_playthrough.py
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `fm2` | путь к FM2 (миссия) |
+| `fm2` | путь к FM2 (опционально; default — workspace `clear.fm2`) |
+| `--game` / `--mission` | override workspace; при явном FM2 — проверка совпадения |
+| `--force` | перезаписать non-stub demos stub-ами |
 
 ---
 
 ### `record_demos.py`
 
-Demos с реальными obs `(N, 4, 84, 84)` для `--bc-epochs`. Параллельно по умолчанию (`min(segments, cpu, 8)`).
+Demos с реальными obs `(N, 4, 84, 84)` для `--bc-epochs`. Параллельно по умолчанию (`min(segments, cpu, 8)`).  
+Миссия — из пути FM2 или workspace (`clear.fm2`), не из cwd.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/record_demos.py games/rushn_attack/missions/m1/reference/clear.fm2
+./.venv/Scripts/python.exe scripts/record_demos.py
 ./.venv/Scripts/python.exe scripts/record_demos.py games/rushn_attack/missions/m1/reference/clear.fm2 --segment seg_001 --max-steps 20 --jobs 1
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `fm2` | путь к FM2 |
+| `fm2` | путь к FM2 (опционально; default — workspace `clear.fm2`) |
+| `--game` / `--mission` | override workspace; при явном FM2 — проверка совпадения |
 | `--segment ID` | только указанные сегменты (можно несколько раз) |
 | `--max-steps` | лимит env steps (отладка) |
 | `--jobs` | parallel FCEUX (`1` = последовательно) |
@@ -383,6 +407,7 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 | ---- | -------- |
 | `--task` | `tasks/train_task.json` |
 | `--timesteps` | total steps (default 500000) |
+| `--allow-reduce-target` | continue: разрешить `--timesteps` ниже sidecar |
 | `--n-envs` | parallel FCEUX (default **8**; через `train_local.sh` → **6**) |
 | `--model-in` / `--model-out` | предок / артефакт поколения (default out: `models/gen0.zip`) |
 | `--overwrite-model-out` | явно заменить существующий `model-out` (scratch или from_ancestor) |
@@ -427,7 +452,7 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 ./scripts/train_local.sh --model-out models/gen1.zip --overwrite-model-out --no-bc --timesteps 10000
 ```
 
-Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--model-out` (без `--model-in`) продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается. Смена `--n-envs` на continue разрешена (hardware-ключ; sidecar обновляет `n_envs` последнего прогона, timesteps не сбрасываются).
+Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--model-out` (без `--model-in`) продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается. Явный `--timesteps` **ниже** sidecar → отказ, пока нет `--allow-reduce-target` (дефолт argparse без флага не укорачивает). Смена `--n-envs` на continue разрешена (hardware-ключ; sidecar обновляет `n_envs` последнего прогона, timesteps не сбрасываются). Task JSON заполняет только поля, не заданные в CLI (`checkpoint_*` deprecated → `model_*`).
 
 ---
 
@@ -441,10 +466,9 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 | Флаг | Описание |
 | ---- | -------- |
-| `--force-promote` | перезаписать target даже если уже есть |
-| `--target-timesteps` | цель для длинного прогона |
-| `--session` | метка metrics-сессии |
-| `--game` / `--mission` | |
+| `--target-timesteps` | цель для continue `models/gen0.zip` (default 100k) |
+| `--session` | метка metrics-сессии в `tmp/bench/` |
+| `--game` / `--mission` | override workspace |
 
 ---
 
@@ -484,7 +508,7 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 ### `inference_local.sh`
 
-Фасад: preflight → `run_inference`. Без аргументов — короткий прогон (`--episodes 5`, playlist). Свои флаги оболочки: `--play`, `--skip-preflight`, `--wipe-gen-logs`; остальное — в `run_inference`.
+Фасад: preflight → `run_inference`. Без аргументов — короткий прогон (`--episodes 5`, playlist). Свои флаги оболочки: `--play`, `--skip-preflight`, `--wipe-gen-logs`; остальное — в `run_inference`. Комбинация `--wipe-gen-logs` + `--skip-preflight` — ошибка (wipe только в preflight). `--model` и `--model-version` с разным stem — отказ.
 
 ```bash
 # Короткий прогон (пул + плейлист по номинациям)
@@ -566,7 +590,7 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 ### `eval_achievements.py`
 
-Правила [`config/achievements.yaml`](../config/achievements.yaml) → `tags[]` в attempts. Номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
+Правила [`games/<game>/achievements.yaml`](../games/rushn_attack/achievements.yaml) (путь из `game.yaml`) → `tags[]` в attempts. Номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
 
 ```bash
 ./.venv/Scripts/python.exe scripts/eval_achievements.py --model gen0.zip
@@ -662,6 +686,7 @@ Board в браузере: `streaming/board/index.html` (читает сосед
 
 ### `play_inference_fm2.py`
 
+Фасад: argv → `stream.play_fm2.play_input` (хелперы staging/wait — `fm2_playback`).  
 Replay одного self-contained `.fm2` или всего `playlist.json` (эфир).
 
 ```bash
@@ -685,6 +710,7 @@ Replay одного self-contained `.fm2` или всего `playlist.json` (э�
 
 ### `play_fm2_gui.py`
 
+Фасад: argv → `stream.play_fm2.play_gui_fm2`.  
 GUI replay одного FM2 (отладка embed / movie).
 
 ```bash
