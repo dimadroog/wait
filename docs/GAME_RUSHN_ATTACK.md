@@ -145,8 +145,7 @@ CP5: mission1_boss           (min_stage≥9)   = cp_bossfight0
 CP6: mission_clear           (flag)
 ```
 
-Поле `stage` — в `config/ram_resolve.json` / `ram_map.md`.  
-История H3 (убрать фарм на старте) — [TASK_GEN1_POLICY_ABLATION](tasks/archive/TASK_GEN1_POLICY_ABLATION.md).
+Поле `stage` — в `config/ram_resolve.json` / `ram_map.md`.
 
 ---
 
