@@ -119,7 +119,7 @@ def main() -> None:
     print(f"  3. Board (live)    — {py} scripts/build_broadcast_board.py --model {model_arg} --mode live")
     print(
         f"  4. Live inference  — {py} src/stream/run_inference.py "
-        f"--model {model_arg} --live --episodes 3 --stochastic"
+        f"--model {model_arg} --live --stochastic"
     )
     print(f"  5. Board (close)   — {py} scripts/build_broadcast_board.py --model {model_arg} --mode close")
 
