@@ -35,7 +35,7 @@ v1 закрывает ритуал hybrid-эпизода: накопить [пу
 **Train (минимум):** timesteps / n-envs / BC on·off / checkpoint in·out (или model out). Полный `train_task.json` не дублировать на форме.
 
 **Pool:**
-- model / wipe-gen-logs (keep по умолчанию) / episodes / stochastic;
+- model / wipe-gen-logs (keep по умолчанию) / playlist-cnt / stochastic;
 - пресеты: «короткий прогон», «добор пула»;
 - после накопления пула — Episode prep (не «набить час клипами»).
 
@@ -45,7 +45,7 @@ v1 закрывает ритуал hybrid-эпизода: накопить [пу
 
 **Air:**
 - выбор `logs/genN/playlist.json` (не дней);
-- Editorial replay; Live (`--live`, короткий episodes);
+- Editorial replay; Live (`--live` до Ctrl+C, без пула);
 - кнопки смены mode board: `open` → `live` → `close` (вызов `build_broadcast_board`);
 - опционально: открыть `streaming/board/index.html` в браузере (без управления OBS).
 

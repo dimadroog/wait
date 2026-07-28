@@ -23,7 +23,7 @@
 | Demos с реальными obs (BC) | [`record_demos.py`](#record_demospy) |
 | Smoke после правок bridge/env | [`run_smoke.py`](#run_smokepy) |
 | Обучение PPO | [`train_local.sh`](#train_localsh) → [`train_ppo.py`](#train_ppopy) |
-| Inference + editorial / эфир | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
+| Inference pool (N + playlist) или live (до Ctrl+C) | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
 | Короткий editorial + board | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) |
 | Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
 | Benchmark bridge / e2e train | [`benchmark_bridge.py`](#benchmark_bridgepy), [`benchmark_train.py`](#benchmark_trainpy) |
@@ -508,22 +508,32 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 ### `inference_local.sh`
 
-Фасад: preflight → `run_inference`. Без аргументов — короткий прогон (`--episodes 5`, playlist). Свои флаги оболочки: `--play`, `--skip-preflight`, `--wipe-gen-logs`; остальное — в `run_inference`. Комбинация `--wipe-gen-logs` + `--skip-preflight` — ошибка (wipe только в preflight). `--model` и `--model-version` с разным stem — отказ.
+Фасад: preflight → `run_inference`. Два сценария:
+
+| Сценарий | Как вызвать | Что делает |
+| -------- | ----------- | ---------- |
+| **Pool** | без `--live` | `--playlist-cnt N` попыток → `logs/genN/` + ачивки + плейлист |
+| **Live** | `--live` | окно FCEUX до Ctrl+C, **без** записи пула |
+
+Без аргументов — pool: `--playlist-cnt 5`, `--stochastic`. Свои флаги оболочки: `--skip-preflight`, `--wipe-gen-logs`. `--wipe-gen-logs` / `--playlist-cnt` нельзя с `--live`. Wipe + `--skip-preflight` — ошибка. `--model` и `--model-version` с разным stem — отказ.
 
 ```bash
-# Короткий прогон (пул + плейлист по номинациям)
+# Pool: пул + плейлист
 ./scripts/inference_local.sh
-./scripts/inference_local.sh --model gen0.zip --episodes 3 --play
+./scripts/inference_local.sh --model gen0.zip --playlist-cnt 13 --wipe-gen-logs
 
-# Hybrid: после накопления пула — короткий editorial + board
+# Live: эфир до Ctrl+C (без пула)
+./scripts/inference_local.sh --live --model gen0.zip
+
+# Hybrid editorial + board (после накопления пула)
 ./.venv/Scripts/python.exe scripts/hybrid_episode_prep.py --model gen0.zip
 ```
 
 | Флаг оболочки | Описание |
 | ------------- | -------- |
-| `--play` | после прогона вызвать `play_inference_fm2` на playlist |
+| `--live` | сценарий эфира (пробрасывается в `run_inference`) |
 | `--skip-preflight` | не вызывать `inference_preflight` |
-| `--wipe-gen-logs` | снести накопление пула поколения перед сбором (default: keep) |
+| `--wipe-gen-logs` | pool: снести `logs/<model_version>/` перед сбором |
 
 ---
 
@@ -532,34 +542,37 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 <a id="inference"></a>
 <a id="run_inferencepy"></a>
 
-Локальный PPO inference. Логи: `games/.../logs/<model_version>/` (`attempts.jsonl`, `inference_inputs.jsonl`); `model_version` = stem модели (`gen0` из `gen0.zip`). Default save state: `save_states/cp_gameplay0.fc0` (тот же канон, что train).  
-Пул номинаций — [пул поколения](GLOSSARY.md#пул-поколения); не путать с [airtime](GLOSSARY.md#airtime) editorial-пакета. Эфир — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Multi-head — один zip ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)). Подробнее — ML_CONCEPT §8.
+Локальный PPO inference. Два взаимоисключающих режима:
+
+- **Pool** (по умолчанию): `--playlist-cnt N` попыток → `games/.../logs/<model_version>/` (`attempts.jsonl`, `inference_inputs.jsonl`), теги ачивок, **всегда** сборка плейлиста.
+- **Live** (`--live`): окно FCEUX + `fceux/operator/fceux.cfg` до Ctrl+C, **без** записи в `logs/genN/`. Нельзя с `--playlist-cnt` / `--wipe-gen-logs` / `--playlist-no-dedupe`.
+
+`model_version` = stem модели (`gen0` из `gen0.zip`). Default save state: `save_states/cp_gameplay0.fc0`. Пул — [пул поколения](GLOSSARY.md#пул-поколения); эфир — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Multi-head — один zip ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)).
 
 ```bash
-# Фиксированное число эпизодов + плейлист
+# Pool: N попыток + плейлист
 ./.venv/Scripts/python.exe src/stream/run_inference.py \
-  --model gen0.zip --episodes 5 --stochastic --build-playlist
+  --model gen0.zip --playlist-cnt 5 --stochastic
 
-# Live на эфире (окно + fceux/operator/fceux.cfg)
+# Live: окно до Ctrl+C, без пула
 ./.venv/Scripts/python.exe src/stream/run_inference.py \
-  --model gen0.zip --live --episodes 3 --stochastic
+  --model gen0.zip --live --stochastic
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `--model` | один `.zip` в `models/` (default `gen0.zip`); Multi-head — тот же путь, головы внутри zip ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)) |
-| `--episodes` / `--max-steps` | default 5 / 8000 |
+| `--model` | один `.zip` в `models/` (default `gen0.zip`); Multi-head — тот же путь |
+| `--live` | эфир до Ctrl+C, без `logs/genN/` |
+| `--playlist-cnt` | pool: число попыток перед плейлистом (default 5; нельзя с `--live`) |
+| `--max-steps` | default 8000 |
 | `--stochastic` | sampling (рекомендуется vs greedy) |
 | `--save-state` | reset state (default `cp_gameplay0.fc0`) |
-| `--save-episode-fm2` | писать FM2 эпизодов |
-| `--build-playlist` | плейлист по номинациям |
-| `--playlist-no-dedupe` | без дедупа эпизодов в плейлисте |
-| `--live` | эфир: окно FCEUX + полная подмена `portable/fceux.cfg` из `fceux/operator/fceux.cfg` (default headless pool) |
+| `--playlist-no-dedupe` | pool: без дедупа (нельзя с `--live`) |
 | `--fceux-profile` | default `inference` |
-| `--turbo` | force turbo on |
+| `--turbo` | force turbo on (live по умолчанию выкл) |
 | `--session` | id bridge (default `inference`) |
 | `--reward-profile` / `--model-version` | |
-| `--wipe-gen-logs` | wipe `logs/<model_version>/` перед сбором (default: keep) |
+| `--wipe-gen-logs` | pool: wipe перед сбором (нельзя с `--live`) |
 | `--skip-preflight` | |
 | `--game` / `--mission` | |
 

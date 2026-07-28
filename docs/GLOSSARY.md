@@ -110,7 +110,7 @@
 
 ### Inference
 
-**Inference** (вывод / прогон модели) — режим, в котором уже обученная сеть только **играет**: вызывается `model.predict()`, веса **не** обновляются. Скрипт входа — `run_inference.py`. Попытки пишутся в лог пула; из них собирают [editorial](#editorial), а на эфире также возможен **live**-inference (см. [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)).
+**Inference** (вывод / прогон модели) — режим, в котором уже обученная сеть только **играет**: вызывается `model.predict()`, веса **не** обновляются. Скрипт входа — `run_inference.py` / `inference_local.sh`. Два сценария: **pool** (`--playlist-cnt N` → [пул поколения](#пул-поколения) + плейлист) и **live** (`--live`: окно до Ctrl+C **без** записи пула). Эфир — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
 
 **Пул** кандидатов в номинации — [пул поколения](#пул-поколения). Длина editorial — [airtime](#airtime); длина Twitch-слота задаётся оператором (editorial + live + [board](#broadcast-board)).
 

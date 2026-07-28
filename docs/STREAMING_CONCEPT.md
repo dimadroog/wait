@@ -86,17 +86,17 @@
 
 ```
 editorial: play_inference_fm2.py (короткий playlist) + FCEUX
-live:      run_inference --live
+live:      run_inference --live   # до Ctrl+C, без записи пула
 board:     OBS сцена без NES (HTML/JSON board)
 encode:    OBS NVENC 720p30 → Twitch
 ```
 
 ПО этапа B: OBS Studio на хосте; FCEUX/venv уже из этапа A. Артефакты — [DESIGN.md § Структура](DESIGN.md#структура-репозитория).
 
-**Операторский смысл (целевой, не обязательный CLI as-is):**
+**Операторский смысл:**
 
-- Собрать eval/attempts для `genN` → собрать **короткий** editorial (`build_playlist --editorial` / `hybrid_episode_prep`).
-- Открыть эфир: Board → Editorial → Board → Live → Board (финал).
+- Pool: `inference_local.sh --playlist-cnt N` → `logs/genN/` + плейлист → короткий editorial (`build_playlist --editorial` / `hybrid_episode_prep`).
+- Эфир: Board → Editorial → Board → Live (`--live` до Ctrl+C) → Board (финал).
 - Длина Twitch-слота (часто ~1 ч) = editorial + live + перебивки; **не** = длина кураторского плейлиста.
 
 ---
