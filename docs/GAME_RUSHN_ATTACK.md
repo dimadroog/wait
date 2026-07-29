@@ -66,7 +66,8 @@ noop | left | right | down | up | right+up | left+up | A | B | start
 
 Список в `games/rushn_attack/env_config.yaml`.
 
-Там же: `screen_phases` → `info.phase_id` (`title` / `intro` / `gameplay`) и `policy_heads` (Multi-head: `intro` + `gameplay`, маска intro = noop+start). Контракт — [TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md).
+Там же: `screen_phases` → `info.phase_id` (`title` / `intro` / `gameplay`) и `policy_heads` (Multi-head).  
+Фазы: title-поза; game over pose → `intro`; после `cp_gameplay*`/`cp_bossfight*` (sticky) или `room≥level_room_min` / `stage≥gameplay_min_stage` → `gameplay` (коридор m1 `room 0x00` не residual intro). Контракт — [TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md).
 
 ### Конец эпизода (`death_mode`)
 

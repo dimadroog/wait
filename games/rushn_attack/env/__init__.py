@@ -1,6 +1,7 @@
 """Rush'n Attack — Gymnasium env (games/rushn_attack/env/)."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Sequence
 
 import gymnasium as gym
@@ -15,6 +16,7 @@ from project_paths import game_dir, load_yaml, mission_dir
 from rewards.checkpoint_wrapper import CheckpointRewardWrapper
 
 _GAME_ID = "rushn_attack"
+_DEFAULT_MISSION_SAVE_PREFIXES = ("cp_gameplay", "cp_bossfight")
 
 
 def _load_env_config() -> dict[str, Any]:
@@ -62,6 +64,22 @@ class RushnAttackEnv(BaseNesEnv):
             self.phase_level_room_min = parse_hex_or_int(cfg["level_room_min"])
         else:
             self.phase_level_room_min = self.title_level_room_min
+        raw_prefixes = cfg.get("mission_save_prefixes")
+        if raw_prefixes is None:
+            self.phase_mission_save_prefixes = _DEFAULT_MISSION_SAVE_PREFIXES
+        else:
+            self.phase_mission_save_prefixes = tuple(str(p) for p in raw_prefixes)
+        if cfg.get("gameplay_min_stage") is not None:
+            self.phase_gameplay_min_stage = int(cfg["gameplay_min_stage"])
+        else:
+            # None = не использовать stage как самостоятельный триггер gameplay.
+            self.phase_gameplay_min_stage = None
+        go_ys = cfg.get("game_over_ys")
+        if go_ys is not None:
+            self.phase_game_over_ys = frozenset(int(y) for y in go_ys)
+        else:
+            # Узкий набор из эталона game_over_to_attract* (y=95 / y=41).
+            self.phase_game_over_ys = frozenset({41, 95})
         if title_cfg.get("rooms") is not None:
             self.phase_title_rooms = parse_int_set(title_cfg.get("rooms"))
         else:
@@ -82,12 +100,29 @@ class RushnAttackEnv(BaseNesEnv):
         self._game_over_freeze_key: tuple[int, int] | None = None
         self._last_secondary_reason = TERMINATE_REASON_GAME_OVER
 
-    def _on_ram(self, ram: dict[str, Any]) -> None:
-        if self.title_level_room_min is None:
-            return
-        room = self._ram_int(ram, "room")
-        if room >= self.title_level_room_min:
+    def _save_state_implies_mission(self, state: str) -> bool:
+        """cp_gameplay* / cp_bossfight* → сразу режим миссии (коридор 0x00 = gameplay)."""
+        stem = Path(state).stem.lower()
+        for prefix in self.phase_mission_save_prefixes:
+            if stem.startswith(str(prefix).lower()):
+                return True
+        return False
+
+    def _mark_mission_from_ram(self, ram: dict[str, Any]) -> None:
+        level_min = self.phase_level_room_min
+        if level_min is not None and self._ram_int(ram, "room") >= level_min:
             self._seen_level_room = True
+            return
+        if (
+            self.phase_gameplay_min_stage is not None
+            and "stage" in ram
+            and self._ram_int(ram, "stage") >= self.phase_gameplay_min_stage
+        ):
+            self._seen_level_room = True
+
+    def _on_ram(self, ram: dict[str, Any]) -> None:
+        # Sticky «в миссии» для phase_id и гейта attempt (game-over-freeze).
+        self._mark_mission_from_ram(ram)
 
     def _attempt_progressed(self) -> bool:
         """Попытка началась: min steps, level-room, или ≥1 death.
@@ -196,14 +231,45 @@ class RushnAttackEnv(BaseNesEnv):
             return False
         return self._ram_int(ram, "y") in self.phase_title_ys
 
-    def _phase_id_from_ram(self, ram: dict[str, Any]) -> str:
-        """title | intro | gameplay — контракт постановки v1 TASK_POLICY_SEPARATION."""
-        room = self._ram_int(ram, "room")
+    def _screen_game_over_match(self, ram: dict[str, Any]) -> bool:
+        """Экран GAME OVER для phase_id: room+title_x+y∈game_over_ys (без confirm)."""
+        if not self.phase_title_rooms or self.phase_title_x is None:
+            return False
+        if self._ram_int(ram, "room") not in self.phase_title_rooms:
+            return False
+        if self._ram_int(ram, "x") != self.phase_title_x:
+            return False
+        if not self.phase_game_over_ys:
+            return False
+        return self._ram_int(ram, "y") in self.phase_game_over_ys
+
+    def _in_mission_play(self, ram: dict[str, Any]) -> bool:
+        """Коридор m1 (room 0x00) и дальше — gameplay после sticky / deep room / stage."""
+        if self._seen_level_room:
+            return True
         level_min = self.phase_level_room_min
-        if level_min is not None and (self._seen_level_room or room >= level_min):
-            return "gameplay"
+        if level_min is not None and self._ram_int(ram, "room") >= level_min:
+            return True
+        if (
+            self.phase_gameplay_min_stage is not None
+            and "stage" in ram
+            and self._ram_int(ram, "stage") >= self.phase_gameplay_min_stage
+        ):
+            return True
+        return False
+
+    def _phase_id_from_ram(self, ram: dict[str, Any]) -> str:
+        """title | intro | gameplay — контракт постановки v1 TASK_POLICY_SEPARATION.
+
+        Порядок: title → game over (intro) → mission play (gameplay) → иначе intro.
+        Коридор room 0x00 после cp_gameplay* — gameplay (sticky по save), не residual intro.
+        """
         if self._screen_title_match(ram):
             return "title"
+        if self._screen_game_over_match(ram):
+            return "intro"
+        if self._in_mission_play(ram):
+            return "gameplay"
         return "intro"
 
     def _attach_phase_id(self, info: dict[str, Any]) -> dict[str, Any]:
@@ -219,14 +285,14 @@ class RushnAttackEnv(BaseNesEnv):
         seed: int | None = None,
         options: dict[str, Any] | None = None,
     ) -> tuple[Any, dict[str, Any]]:
+        opts = options or {}
+        state = str(opts.get("save_state", self.save_state))
         obs, info = super().reset(seed=seed, options=options)
         ram = info.get("ram") or {}
-        # sticky gameplay: reset сразу в уровень (cp0) без ожидания step._on_ram
-        if (
-            self.phase_level_room_min is not None
-            and self._ram_int(ram, "room") >= self.phase_level_room_min
-        ):
+        # sticky: канон train/inference cp_gameplay* (коридор 0x00) + deep room / stage
+        if self._save_state_implies_mission(state):
             self._seen_level_room = True
+        self._mark_mission_from_ram(ram)
         return obs, self._attach_phase_id(info)
 
     def step(self, action: int) -> tuple[Any, float, bool, bool, dict[str, Any]]:

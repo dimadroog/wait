@@ -41,9 +41,16 @@ episode_end_title:
 
 # Детектор фазы экрана → info.phase_id (TASK_POLICY_SEPARATION).
 # Ядро только читает строку; match-числа только здесь (плагин).
-# Порядок: gameplay (room≥level_room_min или уже был уровень) → title (pose) → иначе intro.
+# Порядок: title (pose) → game over pose (intro) → mission play (gameplay) → иначе intro.
+# m1: коридор room 0x00 — gameplay после cp_gameplay*/cp_bossfight* (sticky по save),
+# не residual intro. level_room_min — deep rooms / sticky; gameplay_min_stage — опц. stage≥N.
 screen_phases:
   level_room_min: "0x08"
+  mission_save_prefixes: ["cp_gameplay", "cp_bossfight"]
+  # stage≥1 = уже прошли стартовый участок; stage=0 на cp_gameplay0 закрывает sticky по save.
+  gameplay_min_stage: 1
+  # y на GAME OVER из эталона (не путать с любым y∉title_ys в коридоре).
+  game_over_ys: [41, 95]
   title:
     rooms: ["0x00"]
     x: 129
