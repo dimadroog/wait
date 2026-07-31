@@ -37,6 +37,7 @@ from train.checkpointing import (  # noqa: E402
     write_sidecar,
 )
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_clean_preflight  # noqa: E402
+from route_trigger_compile import validate_route_triggers_for_train  # noqa: E402
 from train.multi_head_policy import MultiHeadActorCriticPolicy  # noqa: E402
 from train.phase_aware_ppo import PhaseAwarePPO  # noqa: E402
 from train.phase_heads import (  # noqa: E402
@@ -246,6 +247,8 @@ def train(args: argparse.Namespace) -> Path:
         warn_if_n_envs_high_for_ram(args.n_envs)
         if not args.skip_preflight:
             require_clean_preflight(label="train_ppo")
+
+        validate_route_triggers_for_train(mission, args.game)
 
         vec_env = build_vec_env(
             game_id=args.game,

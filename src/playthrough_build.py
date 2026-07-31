@@ -386,15 +386,23 @@ def write_routes_yaml(
     addrs,
     etalon_build: dict,
 ) -> None:
+    from route_trigger_compile import (
+        compile_triggers_for_anchors,
+        load_route_trigger_compile_config,
+        write_route_triggers,
+    )
+
     cp_names = checkpoint_names_from_etalon_build(etalon_build)
     checkpoints = []
-    triggers = checkpoint_triggers(frames, addrs, len(segments), etalon_build)
-    for i, trigger in enumerate(triggers):
+    anchors: list[str] = []
+    for i in range(len(segments)):
         name = cp_names[i] if i < len(cp_names) else f"segment_{i}"
-        checkpoints.append({"id": i, "name": name, "trigger": trigger})
+        anchor = f"cp_gameplay{i + 1}"
+        anchors.append(anchor)
+        checkpoints.append({"id": i + 1, "name": name, "anchor": anchor})
     checkpoints.append(
         {
-            "id": len(segments),
+            "id": len(segments) + 1,
             "name": "mission_clear",
             "trigger": {"flag": "mission_complete"},
         }
@@ -407,6 +415,26 @@ def write_routes_yaml(
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.dump(routes_yaml, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    mission = path.parent.parent
+    compile_config = load_route_trigger_compile_config(game_id, mission)
+    anchor_frames = {anchor: int(segments[i]["frame_end"]) for i, anchor in enumerate(anchors)}
+    triggers = compile_triggers_for_anchors(
+        anchors=anchors,
+        anchor_frames=anchor_frames,
+        frames=frames,
+        addrs=addrs,
+        compile_config=compile_config,
+    )
+    write_route_triggers(
+        mission,
+        triggers,
+        metadata={
+            "fm2_file": "reference/clear.fm2",
+            "scout": "reference/scout/ram_scout.jsonl",
+            "manifest": "config/playthrough_manifest.yaml",
+        },
+    )
 
 
 def write_manifest_yaml(

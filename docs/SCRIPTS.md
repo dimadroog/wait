@@ -18,6 +18,7 @@
 | ----- | ------ |
 | Поставить `.venv` | [`setup_all.ps1`](#setup_allps1) → [`verify_env.py`](#verify_envpy) |
 | RAM-разведка (shell / mission) | [`ram_scout.py`](#ram_scoutpy) |
+| Скомпилировать RAM-триггеры CP (`route_triggers.yaml`) | [`compile_route_triggers.py`](#compile_route_triggerspy) |
 | Собрать эталон (jsonl, save_states, demos_for_bc stub) | [`build_playthrough.py`](#build_playthroughpy) |
 | Пересобрать save states из `head_save_states` | [`build_playthrough.py --states-only`](#build_playthroughpy) |
 | Demos с реальными obs (BC) | [`record_demos.py`](#record_demospy) |
@@ -40,6 +41,7 @@
 | [`benchmark_train.py`](#benchmark_trainpy) | E2E PPO benchmark → `tmp/bench/` |
 | [`build_broadcast_board.py`](#build_broadcast_boardpy) | JSON табло эфира (gen + дельта) |
 | [`build_playlist.py`](#build_playlistpy) | FM2-плейлист / короткий editorial |
+| [`compile_route_triggers.py`](#compile_route_triggerspy) | RAM-триггеры CP: `routes.yaml` anchor → `route_triggers.yaml` |
 | [`build_playthrough.py`](#build_playthroughpy) | Эталон: jsonl, routes, `cp_<head><i>.fc0`, demos_for_bc |
 | [`eval_achievements.py`](#eval_achievementspy) | `tags[]` в `attempts.jsonl` |
 | [`export_fm2.py`](#export_fm2py) | `inference_inputs.jsonl` → self-contained `.fm2` |
@@ -140,12 +142,32 @@
 
 ---
 
+### `compile_route_triggers.py`
+
+Фасад: argv → `route_trigger_compile.compile_for_mission` (`src/route_trigger_compile.py`).  
+Протокол миссии — фаза **E′**: после заполнения `frame` в `head_save_states`, до `build_playthrough`.
+
+```bash
+./.venv/Scripts/python.exe scripts/compile_route_triggers.py games/rushn_attack/missions/m1
+# через workspace
+./.venv/Scripts/python.exe scripts/compile_route_triggers.py
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--game` / `--mission` | override workspace |
+
+**Вход:** `routes.yaml` (поле `anchor`), `playthrough_manifest.yaml`, `ram_scout.jsonl`, `ram_resolve.json`, `route_trigger_compile.yaml`.  
+**Выход:** `config/route_triggers.yaml`.
+
+---
+
 ### `build_playthrough.py`
 
 После `ram_scout`: `human_playthrough.jsonl`, `playthrough_manifest.yaml`, `save_states/cp_<head><i>.fc0`, `reference/demos_for_bc` (stub obs).
 
 Кадры и имена `.fc0` — из `head_save_states` в манифесте (`cp_title0`, `cp_intro0`, `cp_gameplay0`, …). Train и inference reset — **один** файл (`cp_gameplay0`).  
-Опциональный `games/<id>/etalon_build.yaml` — автогенерация `routes.yaml` / эвристика `gameplay_start`; если файла нет (пилот RnA), `routes.yaml` не перезаписывается. `--states-only` etalon_build не требует.
+Опциональный `games/<id>/etalon_build.yaml` — автогенерация логического `routes.yaml` + `route_triggers.yaml`; если файла нет (пилот RnA), `routes.yaml` не перезаписывается. `--states-only` etalon_build не требует.
 
 Миссия — из пути FM2 или из workspace (`clear.fm2`), не из cwd.
 
@@ -416,7 +438,7 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 | `--recycle-every-timesteps` | H4: пересоздать FCEUX/vec каждые N steps (`0`=off) |
 | `--session-wall-timeout` | H6: abort по wall-clock сессии, с (`0`=off; continue из model zip) |
 | `--save-every` | каждые N steps (default 50000) |
-| `--bc-epochs` / `--bc-demo` / `--no-bc` | BC warm-start |
+| `--bc-epochs` / `--bc-demo` / `--no-bc` | BC warm-start; **`--timesteps 0`** — только BC, сохранение `saved (bc_only)` + offline `BC demo match` |
 | `--rollout-gc` / `--no-rollout-gc` | `gc.collect` после rollout (default on) |
 | `--rollout-metrics` / `--no-rollout-metrics` | JSONL в `tmp/bench/` (default off) |
 | `--rollout-metrics-session` / `--rollout-metrics-path` | куда писать metrics |
@@ -453,6 +475,7 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 ```
 
 Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--model-out` (без `--model-in`) продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается. Явный `--timesteps` **ниже** sidecar → отказ, пока нет `--allow-reduce-target` (дефолт argparse без флага не укорачивает). Смена `--n-envs` на continue разрешена (hardware-ключ; sidecar обновляет `n_envs` последнего прогона, timesteps не сбрасываются). Task JSON заполняет только поля, не заданные в CLI (`checkpoint_*` deprecated → `model_*`).
+Автостоп схлопа политики (по умолчанию): ≥10 rollout подряд с `|entropy_loss|<0.01` и `approx_kl≈0` → выход `learn`, save `model-out` (`policy_collapse`); см. [TRAIN_ANALYSIS](TRAIN_ANALYSIS.md#практическое-правило-остановки-политика).
 
 ---
 

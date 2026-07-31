@@ -1,13 +1,12 @@
-"""Награды по чекпоинтам из config/routes.yaml."""
+"""Награды по чекпоинтам из config/routes.yaml (+ route_triggers.yaml при anchor CP)."""
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
-import yaml
 
-from project_paths import load_yaml
+from project_paths import load_yaml, route_triggers_path
 
 
 def _norm_room(room: str) -> str:
@@ -79,6 +78,53 @@ def mission_complete_heuristic(
     return True
 
 
+def _checkpoint_requires(cp: dict[str, Any], trigger: dict[str, Any]) -> int | None:
+    if "requires_checkpoint" in cp:
+        return int(cp["requires_checkpoint"])
+    req = trigger.get("requires_checkpoint")
+    return int(req) if req is not None else None
+
+
+def load_resolved_checkpoints(
+    routes_path: str | Path,
+    triggers_path: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Собрать runtime CP: anchor → route_triggers; legacy inline trigger; flag CP."""
+    routes = load_yaml(Path(routes_path))
+    bindings: dict[str, Any] = {}
+    tpath = Path(triggers_path) if triggers_path is not None else route_triggers_path(
+        Path(routes_path).parent.parent
+    )
+    if tpath.is_file():
+        bindings = load_yaml(tpath).get("triggers") or {}
+
+    resolved: list[dict[str, Any]] = []
+    for cp in routes.get("checkpoints") or []:
+        entry = dict(cp)
+        anchor = cp.get("anchor")
+        inline = dict(cp.get("trigger") or {})
+        if anchor:
+            anchor_id = str(anchor)
+            ram_trig = bindings.get(anchor_id)
+            if ram_trig is None:
+                raise ValueError(
+                    f"checkpoint id={cp.get('id')} anchor={anchor_id!r}: "
+                    f"no trigger in {tpath}. Run compile_route_triggers.py."
+                )
+            trigger = dict(ram_trig)
+            req = _checkpoint_requires(cp, inline)
+            if req is not None:
+                trigger["requires_checkpoint"] = req
+            entry["trigger"] = trigger
+        elif inline:
+            entry["trigger"] = inline
+        else:
+            entry["trigger"] = {}
+        entry.pop("anchor", None)
+        resolved.append(entry)
+    return sorted(resolved, key=lambda c: int(c["id"]))
+
+
 class CheckpointRewardWrapper(gym.Wrapper):
     """Читает routes.yaml; награда только за рост max_checkpoint."""
 
@@ -87,16 +133,17 @@ class CheckpointRewardWrapper(gym.Wrapper):
         env: gym.Env,
         routes_path: str | Path,
         *,
+        triggers_path: str | Path | None = None,
         profile: str = "default",
         reward_overrides: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(env)
         self.routes_path = Path(routes_path)
+        if triggers_path is None:
+            triggers_path = route_triggers_path(self.routes_path.parent.parent)
+        self.triggers_path = Path(triggers_path) if triggers_path else None
         routes = load_yaml(self.routes_path)
-        self._checkpoints: list[dict[str, Any]] = sorted(
-            routes.get("checkpoints") or [],
-            key=lambda c: int(c["id"]),
-        )
+        self._checkpoints = load_resolved_checkpoints(self.routes_path, self.triggers_path)
         rewards_root = routes.get("rewards") or {}
         self._rewards = dict(rewards_root.get(profile) or rewards_root.get("default") or {})
         if reward_overrides:
@@ -210,4 +257,4 @@ class CheckpointRewardWrapper(gym.Wrapper):
 
 def load_routes(mission: Path) -> dict[str, Any]:
     path = mission / "config" / "routes.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return load_yaml(path) or {}

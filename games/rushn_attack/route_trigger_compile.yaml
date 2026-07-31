@@ -1,0 +1,6 @@
+# Правила компиляции route_triggers.yaml (игра rushn_attack).
+fields:
+  room:
+    mode: exact
+  stage:
+    mode: min_threshold

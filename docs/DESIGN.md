@@ -169,10 +169,11 @@ Launcher: `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Over
 ### 2. Игровая логика — Strategy в YAML
 
 CP, heuristics, профили наград — в `games/.../config/` (миссия) и `games/<game>/` (игра).  
-В `src/` — только интерпретатор (`trigger_matches`, `mission_complete_heuristic`, `playthrough_build`, загрузчики YAML).
+**Маршрут CP:** `routes.yaml` (логика: `anchor`, `requires_checkpoint`, награды) + производный `route_triggers.yaml` (RAM на фазе E′ протокола).  
+В `src/` — только интерпретатор (`trigger_matches`, `compile_route_triggers`, `playthrough_build`, загрузчики YAML).
 
 **Плохо:** константы комнат, CP-имена или эвристики сборки эталона в `src/`.  
-**Хорошо:** `routes.yaml` (runtime CP); ручные якоря `head_save_states` в манифесте. Опционально `etalon_build.yaml` + ключ в `game.yaml` — только если нужна автогенерация routes/эвристик при сборке эталона (без файла ядро не затирает `routes.yaml`).
+**Хорошо:** `routes.yaml` + `route_triggers.yaml` (runtime CP); ручные якоря `head_save_states` в манифесте. Опционально `etalon_build.yaml` + ключ в `game.yaml` — автогенерация при сборке эталона (без файла ядро не затирает `routes.yaml`).
 
 ### Именование в коде
 
@@ -230,6 +231,7 @@ Experiment-ветки — для проверки гипотез; в main и в 
 │
 ├─ Только для одной игры / миссии?
 │   ├─ Правила, CP, heuristics (runtime) → games/.../missions/.../config/*.yaml (Strategy)
+│   ├─ route_trigger_compile.yaml → games/<game>/ (правила E′; override в миссии)
 │   ├─ (опц.) Heuristics сборки эталона → games/<game>/etalon_build.yaml; иначе head_save_states + routes.yaml
 │   ├─ Действия, lives, env-параметры → games/.../env_config.yaml
 │   ├─ Детектор фазы экрана (phase_id) → YAML + hooks в games/<game>/env/

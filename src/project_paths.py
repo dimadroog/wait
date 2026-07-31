@@ -119,6 +119,11 @@ def ram_resolve_path(mission: Path) -> Path:
     return mission / "config" / "ram_resolve.json"
 
 
+def route_triggers_path(mission: Path) -> Path:
+    """Скомпилированные RAM-триггеры CP (производный артефакт, фаза E′)."""
+    return mission / "config" / "route_triggers.yaml"
+
+
 def game_reference_dir(game_id: str) -> Path:
     """Shell-клипы и scout раундов оболочки: games/<game>/reference/."""
     return game_dir(game_id) / "reference"

@@ -1,6 +1,6 @@
 # GAME — Rush'n Attack
 
-> Игро-специфичная концепция пилота.  
+> Игро-специфичная концепция пилота. **Не runbook** заполнения конфигов — канон процедуры: [PROTOCOL_MISSION_REFERENCE.md](PROTOCOL_MISSION_REFERENCE.md).  
 > Ядро платформы: [ML_CONCEPT.md](ML_CONCEPT.md) · Индекс: [README.md](README.md) · Эфир: [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) · [GLOSSARY.md](GLOSSARY.md)
 
 **Роль в проекте:** первая игра для валидации pipeline (env → train → inference → дообучение → плейлист). Не конечная цель платформы.
