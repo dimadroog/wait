@@ -24,7 +24,7 @@ from project_paths import (  # noqa: E402
     mission_dir,
     repo_root,
 )
-from train.bc_pretrain import bc_pretrain, resolve_demo_paths  # noqa: E402
+from train.bc_pretrain import bc_pretrain, bc_demo_action_match_rate, resolve_demo_paths  # noqa: E402
 from train.checkpointing import (  # noqa: E402
     InterruptHandler,
     LatestCheckpointCallback,
@@ -370,15 +370,17 @@ def train(args: argparse.Namespace) -> Path:
                 device="cpu",
             )
 
+        bc_transitions = 0
         if not skip_bc and not args.no_bc and args.bc_epochs > 0:
             demo_paths = resolve_demo_paths(mission, args.bc_demo)
-            bc_pretrain(
+            bc_transitions = bc_pretrain(
                 model,
                 mission,
                 demo_paths=demo_paths,
                 epochs=args.bc_epochs,
                 batch_size=args.batch_size,
                 learning_rate=min(args.learning_rate, 1e-4),
+                heads_spec=heads_spec,
             )
 
         write_sidecar(
@@ -393,7 +395,32 @@ def train(args: argparse.Namespace) -> Path:
 
         remaining = target_timesteps - int(model.num_timesteps)
         if remaining <= 0:
+            if bc_transitions > 0 and int(model.num_timesteps) == 0:
+                save_reason = "bc_only"
+            else:
+                save_reason = "target_reached"
             print(f"target already reached ({model.num_timesteps}/{target_timesteps})")
+            _persist_train_state(
+                model,
+                model_out,
+                target_timesteps=target_timesteps,
+                game=args.game,
+                mission_id=args.mission,
+                n_envs=args.n_envs,
+                save_state=save_state,
+                reason=save_reason,
+            )
+            if save_reason == "bc_only" and heads_spec is not None:
+                demo_paths = resolve_demo_paths(mission, args.bc_demo)
+                ok, total = bc_demo_action_match_rate(
+                    model,
+                    mission,
+                    heads_spec=heads_spec,
+                    demo_paths=demo_paths,
+                )
+                if total > 0:
+                    pct = 100.0 * ok / total
+                    print(f"BC demo match (argmax vs human): {ok}/{total} ({pct:.1f}%)")
             try:
                 vec_env.close()
             except (EOFError, BrokenPipeError):
