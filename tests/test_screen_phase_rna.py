@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from env.loader import import_game_env
+from obs_contract import OBS_HEIGHT, OBS_WIDTH, obs_frame_shape
 
 RushnAttackEnv = import_game_env("rushn_attack").RushnAttackEnv
 
@@ -45,7 +46,8 @@ def _make_env(
             screen_phases=screen_phases,
         )
     env._bridge = MagicMock()
-    env._frames.append(np.zeros((84, 84), dtype=np.uint8))
+    h, w = obs_frame_shape()
+    env._frames.append(np.zeros((h, w), dtype=np.uint8))
     env._episode_start_lives = 6
     env._prev_lives = 6
     env._death_count = 0
@@ -67,8 +69,8 @@ def _step_ram(
     payload = {
         "obs_file": "x",
         "format": "raw",
-        "w": 84,
-        "h": 84,
+        "w": OBS_WIDTH,
+        "h": OBS_HEIGHT,
         "lives": lives,
         "room": room,
         "x": x,
@@ -77,7 +79,8 @@ def _step_ram(
     if stage is not None:
         payload["stage"] = stage
     bridge.step.return_value = payload
-    bridge.decode_obs_from_response.return_value = np.zeros((84, 84), dtype=np.uint8)
+    h, w = obs_frame_shape()
+    bridge.decode_obs_from_response.return_value = np.zeros((h, w), dtype=np.uint8)
     return env.step(0)
 
 
@@ -94,8 +97,8 @@ def _reset_ram(
     payload = {
         "obs_file": "x",
         "format": "raw",
-        "w": 84,
-        "h": 84,
+        "w": OBS_WIDTH,
+        "h": OBS_HEIGHT,
         "lives": lives,
         "room": room,
         "x": x,
@@ -104,7 +107,8 @@ def _reset_ram(
     if stage is not None:
         payload["stage"] = stage
     bridge.reset_to_state.return_value = payload
-    bridge.decode_obs_from_response.return_value = np.zeros((84, 84), dtype=np.uint8)
+    h, w = obs_frame_shape()
+    bridge.decode_obs_from_response.return_value = np.zeros((h, w), dtype=np.uint8)
     bridge.get_ram.return_value = {
         "lives": lives,
         "room": room,

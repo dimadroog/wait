@@ -144,7 +144,7 @@ PPO → genN+1
 | Компонент                 | Выбор                                                               |
 | ------------------------- | ------------------------------------------------------------------- |
 | Алгоритм                  | PPO (`stable-baselines3`)                                   |
-| Policy                    | `CnnPolicy` (grayscale 84×84, stack 4 frames)                       |
+| Policy                    | `CnnPolicy` (grayscale 112×112, stack 4 frames)                       |
 | Frame skip | 4                                                                   |
 | Inference   | `model.predict(obs)` на CPU                                         |
 
@@ -183,7 +183,7 @@ PPO → genN+1
 ### Препроцессинг наблюдений
 
 - Grayscale
-- Resize 84×84
+- Resize 112×112
 - Stack 4 последних кадра
 - Нормализация [0, 255] → float
 
@@ -309,7 +309,7 @@ LOAD  save_states/cp2.fc*         → savestate.load(cached handle) + GET_RAM + 
 LOAD_OBS save_states/cp2.fc*      → hot reset: load + RAM + obs за один IPC (train)
 SAVE  save_states/out.fc*         → savestate.save(path)
 STEP  right+B                → один decision frame (frame skip)
-GET_OBS                      → grayscale 84×84; train: `obs_format: raw` (7056 B `.raw`), inference: `gd`
+GET_OBS                      → grayscale 112×112; train: `obs_format: raw` (12544 B `.raw`), inference: `gd`
 GET_RAM  room,x,y,hp,lives,checkpoint
 TURBO  on|off                → макс. скорость эмуляции (train)
 ```
@@ -393,9 +393,11 @@ save models/genN+1.zip
 
 | Ключ      | Форма            | Тип                 |
 | --------- | ---------------- | ------------------- |
-| `obs`     | `(N, 4, 84, 84)` | float32             |
-| `actions` | `(N,)`           | int64               |
-| `meta`    | JSON string      | segment_id, mission |
+| `obs`     | `(N, 4, 112, 112)` | float32             |
+| `actions` | `(N,)`           | int64 (Discrete action index) |
+| `meta`    | JSON string      | segment_id, frame_start/end, frame_skip, record_mode, quality |
+
+Запись: `scripts/record_demos.py` (FM2 `-playmovie`). Приёмка: `scripts/preview_demos.py --check`.
 
 
 

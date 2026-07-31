@@ -48,7 +48,6 @@ def main() -> None:
     add_game_mission_arguments(parser)
     parser.add_argument("--timeout", type=float, default=600.0, help="секунд на FCEUX (save states)")
     parser.add_argument("--skip-states", action="store_true", help="не создавать save states")
-    parser.add_argument("--skip-demos", action="store_true", help="не создавать reference/demos_for_bc/seg_*.npz")
     parser.add_argument(
         "--states-only",
         action="store_true",
@@ -58,11 +57,6 @@ def main() -> None:
         "--replace-states",
         action="store_true",
         help="удалить все save_states/*.fc0 перед записью (иначе только слоты плана)",
-    )
-    parser.add_argument(
-        "--force-demos",
-        action="store_true",
-        help="разрешить stub demos поверх non-stub (record_demos)",
     )
     args = parser.parse_args()
 
@@ -153,12 +147,6 @@ def main() -> None:
             staging_subdir="save_states",
             tmp_subdir="save_states",
         )
-
-    if not args.skip_demos:
-        from playthrough_build import build_demos  # noqa: E402
-
-        build_demos(mission, force=bool(args.force_demos))
-        print("Wrote reference/demos_for_bc/seg_*.npz")
 
     print("Done.")
 

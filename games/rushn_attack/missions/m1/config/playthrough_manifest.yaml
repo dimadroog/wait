@@ -1,0 +1,120 @@
+playthrough_id: clear
+game: rushn_attack
+mission: '1'
+recorded_at: '2026-07-31'
+emulator: fceux
+fceux_version: 2.6.6
+fceux_port: win32
+fm2_file: reference/clear.fm2
+total_frames: 8492
+reference_clear_sec: 141.5
+segments:
+- id: seg_001
+  name: seg_001
+  checkpoint_from: 0
+  checkpoint_to: 0
+  frame_start: 1
+  frame_end: 1033
+  room_ids:
+  - '0x00'
+  - '0x01'
+  - '0x02'
+  - '0x03'
+  - '0x04'
+  - '0x05'
+  - '0x06'
+  - '0x07'
+  reference_clear_sec: 17.2
+  demo_file: reference/demos_for_bc/seg_001.npz
+  save_state: save_states/cp_gameplay0.fc0
+- id: seg_002
+  name: seg_002
+  checkpoint_from: 0
+  checkpoint_to: 1
+  frame_start: 1034
+  frame_end: 2897
+  room_ids:
+  - '0x00'
+  reference_clear_sec: 31.1
+  demo_file: reference/demos_for_bc/seg_002.npz
+  save_state: save_states/cp_gameplay0.fc0
+- id: seg_003
+  name: seg_003
+  checkpoint_from: 1
+  checkpoint_to: 2
+  frame_start: 2898
+  frame_end: 4762
+  room_ids:
+  - '0x00'
+  reference_clear_sec: 31.1
+  demo_file: reference/demos_for_bc/seg_003.npz
+  save_state: save_states/cp_gameplay1.fc0
+- id: seg_004
+  name: seg_004
+  checkpoint_from: 2
+  checkpoint_to: 3
+  frame_start: 4763
+  frame_end: 6627
+  room_ids:
+  - '0x00'
+  reference_clear_sec: 31.1
+  demo_file: reference/demos_for_bc/seg_004.npz
+  save_state: save_states/cp_gameplay2.fc0
+- id: seg_005
+  name: seg_005
+  checkpoint_from: 3
+  checkpoint_to: 4
+  frame_start: 6628
+  frame_end: 8492
+  room_ids:
+  - '0x00'
+  - '0x01'
+  - '0x02'
+  - '0x03'
+  - '0x04'
+  - '0x05'
+  - '0x12'
+  - '0x13'
+  reference_clear_sec: 31.1
+  demo_file: reference/demos_for_bc/seg_005.npz
+  save_state: save_states/cp_gameplay4.fc0
+head_save_states:
+  title:
+  - id: cp_title0
+    frame: 35
+    label: title_screen
+  intro:
+  - id: cp_intro0
+    frame: 145
+    phase_end_frame: 1033
+    label: mission_start_intro
+  - id: cp_intro1
+    frame: 8034
+    phase_end_frame: 8492
+    label: post_mission_intro
+  gameplay:
+  - id: cp_gameplay0
+    frame: 1034
+    label: level_start
+  - id: cp_gameplay1
+    frame: 1780
+    label: after_second_ladder
+  - id: cp_gameplay2
+    frame: 3170
+    label: ladders_done_mines_start
+  - id: cp_gameplay3
+    frame: 5150
+    label: after_red_enemy_ground
+  - id: cp_gameplay4
+    frame: 5875
+    label: after_single_mine
+  bossfight:
+  - id: cp_bossfight0
+    frame: 6783
+    label: mission1_boss
+train:
+  save_state: save_states/cp_gameplay0.fc0
+  gameplay_start_frame: 1034
+inference:
+  save_state: save_states/cp_gameplay0.fc0
+  gameplay_start_frame: 1034

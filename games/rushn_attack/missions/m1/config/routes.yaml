@@ -1,0 +1,35 @@
+game: rushn_attack
+mission: '1'
+# Логика маршрута (B2): anchor → head_save_states; RAM — route_triggers.yaml (E′).
+# cp_gameplay0 (старт уровня) без платного CP.
+checkpoints:
+  - id: 1
+    name: after_second_ladder
+    anchor: cp_gameplay1
+  - id: 2
+    name: ladders_done_mines_start
+    anchor: cp_gameplay2
+    requires_checkpoint: 1
+  - id: 3
+    name: after_red_enemy_ground
+    anchor: cp_gameplay3
+    requires_checkpoint: 2
+  - id: 4
+    name: after_single_mine
+    anchor: cp_gameplay4
+    requires_checkpoint: 3
+  - id: 5
+    name: mission1_boss
+    anchor: cp_bossfight0
+    requires_checkpoint: 4
+  - id: 6
+    name: mission_clear
+    trigger:
+      flag: mission_complete
+rewards:
+  default:
+    checkpoint_bonus: 100
+    death_penalty: 40
+    mission_clear_bonus: 1000
+    step_penalty: 0.005
+    kill_bonus: 0

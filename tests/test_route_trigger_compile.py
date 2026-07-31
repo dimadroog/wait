@@ -46,6 +46,31 @@ def test_compile_triggers_for_anchors() -> None:
     assert triggers["cp_gameplay1"] == {"room": "0x00", "min_stage": 1}
 
 
+def test_compile_min_floor_raises_stage_threshold() -> None:
+    addrs = {"room": 0x0C, "stage": 0x30}
+    frames = [
+        {
+            "frame": 1780,
+            "ram_hex": _minimal_ram_hex(0x0C, 0x00, 0x30, 0),
+            "input": "",
+        }
+    ]
+    compile_config = {
+        "fields": {
+            "room": {"mode": "exact"},
+            "stage": {"mode": "min_threshold", "min_floor": 1},
+        }
+    }
+    triggers = compile_triggers_for_anchors(
+        anchors=["cp_gameplay1"],
+        anchor_frames={"cp_gameplay1": 1780},
+        frames=frames,
+        addrs=addrs,
+        compile_config=compile_config,
+    )
+    assert triggers["cp_gameplay1"] == {"room": "0x00", "min_stage": 1}
+
+
 def test_validate_routes_collects_anchors() -> None:
     routes = {
         "checkpoints": [

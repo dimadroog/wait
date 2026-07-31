@@ -1,0 +1,41 @@
+{
+  "frame_count": 8492,
+  "fields": [
+    {
+      "field": "room",
+      "address": "0x000C",
+      "confidence": 1.0,
+      "note": "auto; D3: 0x00 на 8416/8492 кадров геймплея, согласовано с env_config level_room_min"
+    },
+    {
+      "field": "x",
+      "address": "0x01EE",
+      "confidence": 1.0,
+      "note": "manual: D3 title pose x=129 @ f29–45; auto 0x01ED отклонён (слабая корреляция с right)"
+    },
+    {
+      "field": "y",
+      "address": "0x020D",
+      "confidence": 1.0,
+      "note": "manual: D3 title pose y∈{131,135} @ 0x020D; auto 0x01EC отклонён (артефакт intro)"
+    },
+    {
+      "field": "lives",
+      "address": "0x0017",
+      "confidence": 0.9,
+      "note": "auto; D3: смены 6↔0↔5 на смертях, диапазон 0–6"
+    },
+    {
+      "field": "checkpoint",
+      "address": "0x01FB",
+      "confidence": 0.9,
+      "note": "auto; D3: оставлен с прошлой проверенной карты (редкие смены 0↔223)"
+    },
+    {
+      "field": "stage",
+      "address": "0x0030",
+      "confidence": 0.95,
+      "note": "manual: D3 stage 0→9 по кадрам 1939…6219; прогресс m1, cp_gameplay*"
+    }
+  ]
+}

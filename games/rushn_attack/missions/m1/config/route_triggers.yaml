@@ -1,0 +1,20 @@
+compiled_from:
+  fm2_file: reference/clear.fm2
+  scout: reference/scout/ram_scout.jsonl
+  manifest: config/playthrough_manifest.yaml
+triggers:
+  cp_gameplay1:
+    room: '0x00'
+    min_stage: 1
+  cp_gameplay2:
+    room: '0x00'
+    min_stage: 3
+  cp_gameplay3:
+    room: '0x00'
+    min_stage: 6
+  cp_gameplay4:
+    room: '0x00'
+    min_stage: 8
+  cp_bossfight0:
+    room: '0x00'
+    min_stage: 9

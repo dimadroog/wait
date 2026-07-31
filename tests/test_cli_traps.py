@@ -122,39 +122,3 @@ def test_clear_save_states_replace_all(tmp_path: Path) -> None:
     )
     assert {p.name for p in removed} == {"cp_gameplay0.fc0", "extra.fc0"}
     assert list(states.glob("*.fc0")) == []
-
-
-def test_build_demos_refuses_non_stub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from playthrough_build import build_demos, npz_is_non_stub
-
-    mission = tmp_path
-    (mission / "config").mkdir()
-    (mission / "reference").mkdir()
-    demos = mission / "reference" / "demos_for_bc"
-    demos.mkdir(parents=True)
-    (mission / "config" / "playthrough_manifest.yaml").write_text(
-        "segments:\n  - id: seg_001\n    frame_start: 0\n    frame_end: 1\n",
-        encoding="utf-8",
-    )
-    (mission / "reference" / "human_playthrough.jsonl").write_text(
-        json.dumps({"frame": 0, "action": "A"})
-        + "\n"
-        + json.dumps({"frame": 1, "action": "B"})
-        + "\n",
-        encoding="utf-8",
-    )
-    real = demos / "seg_001.npz"
-    meta = json.dumps({"obs_stub": False, "segment_id": "seg_001"})
-    np.savez_compressed(
-        real,
-        obs=np.ones((2, 4, 84, 84), dtype=np.float32),
-        actions=np.array([0, 1], dtype=np.int64),
-        meta=np.array(meta),
-    )
-    assert npz_is_non_stub(real)
-    with pytest.raises(SystemExit, match="non-stub"):
-        build_demos(mission, force=False)
-    assert npz_is_non_stub(real)
-    written = build_demos(mission, force=True)
-    assert written == [real]
-    assert not npz_is_non_stub(real)

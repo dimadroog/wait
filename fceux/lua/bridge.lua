@@ -1,8 +1,7 @@
 -- IPC bridge: Python ↔ FCEUX (Lua 5.1 only — see fceux/README.md § Lua 5.1)
--- Конфиг: WAIT_FCEUX_BRIDGE_CONFIG → JSON (ipc_dir, frame_skip, ram_addrs, show_window)
+-- Конфиг: WAIT_FCEUX_BRIDGE_CONFIG → JSON (ipc_dir, frame_skip, ram_addrs, obs_w, obs_h)
 -- Протокол: ipc_dir/request.json → ipc_dir/response.json; ready.flag при старте
 
-local OBS_W, OBS_H = 84, 84
 local NES_W, NES_H = 256, 240
 local BUTTONS = {"right", "left", "up", "down", "A", "B", "start", "select"}
 
@@ -24,6 +23,8 @@ local function read_config()
   local no_focus_s = text:match('"no_focus"%s*:%s*(%a+)')
   local show_window_s = text:match('"show_window"%s*:%s*(%a+)')
   local obs_format = text:match('"obs_format"%s*:%s*"([^"]+)"') or "gd"
+  local obs_w = tonumber(text:match('"obs_w"%s*:%s*(%d+)')) or 112
+  local obs_h = tonumber(text:match('"obs_h"%s*:%s*(%d+)')) or 112
   if not ipc_dir then
     error("Invalid bridge config: ipc_dir missing")
   end
@@ -41,10 +42,12 @@ local function read_config()
     ram_addrs,
     no_focus_s == "true",
     show_window_s == "true",
-    obs_format
+    obs_format,
+    obs_w,
+    obs_h
 end
 
-local IPC_DIR, FRAME_SKIP, RAM_ADDRS, NO_FOCUS, SHOW_WINDOW, OBS_FORMAT = read_config()
+local IPC_DIR, FRAME_SKIP, RAM_ADDRS, NO_FOCUS, SHOW_WINDOW, OBS_FORMAT, OBS_W, OBS_H = read_config()
 local REQ_PATH = IPC_DIR .. "/request.json"
 local RESP_PATH = IPC_DIR .. "/response.json"
 local READY_PATH = IPC_DIR .. "/ready.flag"

@@ -126,7 +126,7 @@ def load_resolved_checkpoints(
 
 
 class CheckpointRewardWrapper(gym.Wrapper):
-    """Читает routes.yaml; награда только за рост max_checkpoint."""
+    """Читает routes.yaml; бонус checkpoint_bonus — за каждый новый id в achieved_checkpoints."""
 
     def __init__(
         self,
@@ -153,12 +153,14 @@ class CheckpointRewardWrapper(gym.Wrapper):
 
         self.best_checkpoint = -1
         self._achieved: set[int] = set()
+        self._paid_checkpoints: set[int] = set()
         self.episode_reward = 0.0
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
         self.best_checkpoint = -1
         self._achieved = set()
+        self._paid_checkpoints = set()
         self.episode_reward = 0.0
         info = self._enrich_info(info)
         return obs, info
@@ -220,10 +222,15 @@ class CheckpointRewardWrapper(gym.Wrapper):
         step_penalty = float(self._rewards.get("step_penalty", 0.0))
         r -= step_penalty
 
+        achieved = set(info.get("achieved_checkpoints") or [])
+        newly_paid = achieved - self._paid_checkpoints
+        if newly_paid:
+            bonus = float(self._rewards.get("checkpoint_bonus", 100))
+            r += bonus * len(newly_paid)
+            self._paid_checkpoints |= newly_paid
+
         max_cp = int(info.get("max_checkpoint", -1))
         if max_cp > self.best_checkpoint:
-            bonus = float(self._rewards.get("checkpoint_bonus", 100))
-            r += bonus * (max_cp - self.best_checkpoint)
             self.best_checkpoint = max_cp
 
         if info.get("died"):

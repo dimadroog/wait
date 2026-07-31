@@ -19,7 +19,7 @@
 clear.fm2  →  scout (ram_scout.jsonl)  →  ram_resolve (проверенный)
            →  head_save_states (кадры под *этот* FM2)
            →  compile_route_triggers  →  route_triggers.yaml
-           →  build_playthrough  →  jsonl / сегменты / .fc0 / stub-демо
+           →  build_playthrough  →  jsonl / сегменты / .fc0
 ```
 
 - **Единственный первичный артефакт прохождения** — `reference/clear.fm2` текущей сессии.
@@ -220,7 +220,6 @@ Scout автоматически подбирает адреса; результ
 - `reference/human_playthrough.jsonl`
 - `config/playthrough_manifest.yaml` (сегменты, `total_frames`; **`head_save_states` не пересчитывает**)
 - `save_states/cp_*.fc0`
-- `reference/demos_for_bc/seg_*.npz` (stub)
 
 `routes.yaml` без `etalon_build.yaml` **не перезаписывается**.
 
@@ -260,16 +259,25 @@ Smoke **не заменяет** G1: проходит при «почти пра�
 
 ---
 
-## Фаза H. Опционально: behavioral cloning
+## Фаза H. Behavioral cloning (опционально)
 
-### H1. Демо с реальными кадрами
+### H1. FM2-synced демо
 
-Stub `seg_*.npz` из F1 для BC не подходят.
+Запись obs **только** через `-playmovie` эталонного FM2 (один проход). Emulation replay (`save_state` + `env.step`) не используется. Контракт obs: `(4, 112, 112)` grayscale.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/record_demos.py \
-  games/<game_id>/missions/<mission_id>/reference/clear.fm2
+  --game <game_id> --mission <mission_id>
 ```
+
+### H2. Визуальная приёмка (обязательно перед BC)
+
+```bash
+./.venv/Scripts/python.exe scripts/preview_demos.py \
+  --game <game_id> --mission <mission_id> --check
+```
+
+`--check` завершается с exit 1, если quality gate не пройден (чёрные/shell-кадры, низкий `gameplay_fraction` на gameplay-сегментах).
 
 ---
 
@@ -285,7 +293,7 @@ Stub `seg_*.npz` из F1 для BC не подходят.
 | RAM-триггеры CP | `config/route_triggers.yaml` | E′ |
 | Jsonl | `reference/human_playthrough.jsonl` | F1 |
 | Save states | `save_states/cp_*.fc0` | F1 |
-| Demos BC | `reference/demos_for_bc/seg_*.npz` | F1 (stub) / H1 (реальные) |
+| Demos BC | `reference/demos_for_bc/seg_*.npz` | H1 (+ приёмка H2) |
 
 После **C1 → D → E → E′ → F → G** среда готова к `train_ppo` и `run_inference` (reset = `cp_gameplay0`).
 
@@ -303,7 +311,7 @@ Stub `seg_*.npz` из F1 для BC не подходят.
 | `route_triggers.yaml` missing | Пропущен E′ | `compile_route_triggers.py` |
 | RAM в `routes.yaml` до FM2 | Смешение логики и эмпирики | B2: только anchor; RAM → E′ |
 | Scout `x`/`y` сдвинуты на байт | Слепо доверили auto-resolve | D3, правка `ram_resolve.json` |
-| BC не учится | Только stub-демо | H1 |
+| BC не учится | Демо не прошли quality gate / не пересобраны после смены FM2 | H1 + `preview_demos --check` |
 | Рассинхрон jsonl и FM2 | Обновили только `.fc0` | Полный F1 от текущего `clear.fm2` |
 
 **Важно:** save states сами по себе **не генерируют** jsonl и не доказывают правильность якорей — источник правды всегда **текущий** `clear.fm2` и цепочка **D → E → E′ → F**, с проверкой **G1** до smoke и train.
@@ -322,7 +330,7 @@ flowchart TD
   Eprime --> F[build_playthrough F]
   F --> G[Проверка .fc0 G1]
   G --> G2[run_smoke G2]
-  G2 --> H[record_demos H опционально]
+  G2 --> H[record_demos + preview --check]
 ```
 
 **Запрещённый путь:** B3 с кадрами из git → F → «что-то не так» → git restore.

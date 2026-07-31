@@ -10,9 +10,9 @@ import numpy as np
 import yaml
 
 from fceux_bridge import FceuxBridge, FceuxBridgeError
+from obs_contract import OBS_SHAPE, obs_frame_shape
 from project_paths import mission_dir
 
-OBS_SHAPE = (4, 84, 84)
 DEFAULT_MAX_EPISODE_STEPS = 8_000
 
 # life_lost: terminated на первую потерю жизни.
@@ -152,7 +152,8 @@ class BaseNesEnv(gym.Env):
 
     def _obs_stack(self) -> np.ndarray:
         if len(self._frames) < 4:
-            frame = self._frames[-1] if self._frames else np.zeros((84, 84), dtype=np.uint8)
+            h, w = obs_frame_shape()
+            frame = self._frames[-1] if self._frames else np.zeros((h, w), dtype=np.uint8)
             while len(self._frames) < 4:
                 self._frames.append(frame.copy())
         return np.stack(list(self._frames), axis=0).astype(np.float32) / 255.0

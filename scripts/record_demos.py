@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Пересборка reference/demos_for_bc/seg_*.npz с реальными obs через FCEUX env (BC)."""
+"""FM2-synced запись reference/demos_for_bc/seg_*.npz для BC."""
 from __future__ import annotations
 
 import argparse
@@ -15,15 +15,16 @@ from project_paths import add_game_mission_arguments, resolve_cli_mission_fm2  #
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Record reference/demos_for_bc/seg_*.npz with real obs from human_playthrough.jsonl via env"
+        description=(
+            "Запись reference/demos_for_bc/seg_*.npz с FM2-synced obs "
+            "(-playmovie clear.fm2, один проход)"
+        )
     )
     parser.add_argument(
         "fm2",
         nargs="?",
         default=None,
-        help=(
-            "путь к FM2 от корня репо (для миссии); если опущен — clear.fm2 из workspace"
-        ),
+        help="путь к FM2 от корня репо; default — clear.fm2 миссии",
     )
     add_game_mission_arguments(parser)
     parser.add_argument(
@@ -31,45 +32,40 @@ def main() -> None:
         action="append",
         dest="segments",
         metavar="ID",
-        help="только указанные сегменты (seg_001); можно повторить",
+        help="только seg_001 и т.д. (можно повторить)",
     )
     parser.add_argument(
-        "--max-steps",
-        type=int,
-        default=None,
-        help="лимит env steps на сегмент (отладка)",
+        "--no-strict-quality",
+        action="store_true",
+        help="не прерывать запись при провале quality gate",
     )
-    parser.add_argument("--session", default="record_demos", help="FCEUX bridge session id")
     parser.add_argument(
-        "--jobs",
-        type=int,
-        default=None,
-        help="parallel FCEUX workers (default: min(segments, cpu, 8); 1 = sequential)",
+        "--timeout",
+        type=float,
+        default=600.0,
+        help="таймаут FCEUX playmovie (сек, default 600)",
     )
-    parser.add_argument("--no-turbo", action="store_true", help="FCEUX без turbo")
     args = parser.parse_args()
 
     try:
-        _fm2, game_id, mission = resolve_cli_mission_fm2(
+        fm2, game_id, mission = resolve_cli_mission_fm2(
             args.fm2, game=args.game, mission=args.mission
         )
     except (FileNotFoundError, ValueError) as e:
         raise SystemExit(str(e)) from e
 
-    mission_id = mission.name
     paths = record_demos(
         mission,
         game_id,
-        mission_id,
+        mission.name,
+        fm2,
         segment_ids=args.segments,
-        session_id=args.session,
-        turbo=not args.no_turbo,
-        max_steps=args.max_steps,
-        workers=args.jobs,
+        timeout_sec=float(args.timeout),
+        strict_quality=not args.no_strict_quality,
     )
     if not paths:
         raise SystemExit("No demos written.")
-    print(f"Done: {len(paths)} file(s) in {mission / 'demos'}")
+    print(f"Done: {len(paths)} file(s) in {mission / 'reference' / 'demos_for_bc'}")
 
 
 if __name__ == "__main__":

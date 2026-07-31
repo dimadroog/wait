@@ -8,6 +8,7 @@ import pytest
 
 from env.base_nes_env import BaseNesEnv
 from fceux_bridge import FceuxBridgeError
+from obs_contract import OBS_HEIGHT, OBS_SHAPE, OBS_WIDTH, obs_frame_shape
 
 
 def _make_env() -> BaseNesEnv:
@@ -21,7 +22,8 @@ def _make_env() -> BaseNesEnv:
             session_id="train_0",
         )
     env._bridge = MagicMock()
-    env._frames.append(np.zeros((84, 84), dtype=np.uint8))
+    h, w = obs_frame_shape()
+    env._frames.append(np.zeros((h, w), dtype=np.uint8))
     return env
 
 
@@ -32,11 +34,12 @@ def test_step_soft_reset_on_bridge_error() -> None:
     bridge.reset_to_state.return_value = {
         "obs_file": "x",
         "format": "raw",
-        "w": 84,
-        "h": 84,
+        "w": OBS_WIDTH,
+        "h": OBS_HEIGHT,
         "lives": 3,
     }
-    bridge.decode_obs_from_response.return_value = np.zeros((84, 84), dtype=np.uint8)
+    h, w = obs_frame_shape()
+    bridge.decode_obs_from_response.return_value = np.zeros((h, w), dtype=np.uint8)
 
     obs, reward, terminated, truncated, info = env.step(1)
 
@@ -45,7 +48,7 @@ def test_step_soft_reset_on_bridge_error() -> None:
     assert truncated is True
     assert info["bridge_recovered"] is True
     assert "IPC timeout" in info["bridge_error"]
-    assert obs.shape == (4, 84, 84)
+    assert obs.shape == OBS_SHAPE
     bridge.reset_to_state.assert_called_once_with("save_states/cp_gameplay0.fc0")
 
 

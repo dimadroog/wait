@@ -6,10 +6,11 @@ import torch as th
 from gymnasium import spaces
 from train.multi_head_policy import MultiHeadActorCriticPolicy
 from train.phase_heads import parse_policy_heads_spec, predict_with_phase
+from obs_contract import OBS_SHAPE
 
 
 def _make_policy() -> MultiHeadActorCriticPolicy:
-    obs_space = spaces.Box(0, 1, shape=(4, 84, 84), dtype=np.float32)
+    obs_space = spaces.Box(0, 1, shape=OBS_SHAPE, dtype=np.float32)
     act_space = spaces.Discrete(4)  # "", left, right, start
     masks = {
         "intro": [True, False, False, True],
@@ -30,7 +31,7 @@ def _make_policy() -> MultiHeadActorCriticPolicy:
 def test_intro_mask_blocks_non_start_actions() -> None:
     policy = _make_policy()
     policy.set_active_head("intro")
-    obs = th.zeros((8, 4, 84, 84), dtype=th.float32)
+    obs = th.zeros((8, *OBS_SHAPE), dtype=th.float32)
     with th.no_grad():
         actions, _values, _logp = policy(obs, deterministic=True)
     actions_np = actions.cpu().numpy().reshape(-1)
@@ -41,7 +42,7 @@ def test_intro_mask_blocks_non_start_actions() -> None:
 def test_gameplay_head_can_use_all_actions() -> None:
     policy = _make_policy()
     policy.set_active_head("gameplay")
-    obs = th.zeros((1, 4, 84, 84), dtype=th.float32)
+    obs = th.zeros((1, *OBS_SHAPE), dtype=th.float32)
     with th.no_grad():
         dist = policy.get_distribution(obs)
         logits = dist.distribution.logits
@@ -52,7 +53,7 @@ def test_gameplay_head_can_use_all_actions() -> None:
 
 def test_batch_heads_per_sample() -> None:
     policy = _make_policy()
-    obs = th.zeros((4, 4, 84, 84), dtype=th.float32)
+    obs = th.zeros((4, *OBS_SHAPE), dtype=th.float32)
     # 0=intro, 1=gameplay
     policy.set_batch_head_indices([0, 0, 1, 1])
     with th.no_grad():
@@ -87,6 +88,6 @@ def test_predict_with_phase_selects_intro() -> None:
 
     model.predict = fake_predict
     _action, _state, head_id = predict_with_phase(
-        model, np.zeros((4, 84, 84), np.float32), "title", spec, deterministic=True
+        model, np.zeros(OBS_SHAPE, np.float32), "title", spec, deterministic=True
     )
     assert head_id == "intro"

@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from fm2_export import default_fm2_template
+from obs_contract import OBS_HEIGHT, OBS_WIDTH
 from project_paths import parse_fm2_rom_basename, repo_root, resolve_fceux_binary, resolve_rom
 from ram_map_load import load_ram_addresses
 
@@ -203,7 +204,7 @@ def _write_ipc_atomic(path: Path, content: bytes, *, retries: int = IPC_RETRIES)
     raise OSError(f"IPC write failed: {path}")
 
 
-def decode_raw_obs(path: Path, width: int = 84, height: int = 84) -> np.ndarray:
+def decode_raw_obs(path: Path, width: int = OBS_WIDTH, height: int = OBS_HEIGHT) -> np.ndarray:
     """Raw grayscale width×height из obs_*.raw."""
     raw = path.read_bytes()
     if len(raw) != width * height:
@@ -211,7 +212,7 @@ def decode_raw_obs(path: Path, width: int = 84, height: int = 84) -> np.ndarray:
     return np.frombuffer(raw, dtype=np.uint8).reshape(height, width)
 
 
-def decode_gd_screenshot(path: Path, width: int = 84, height: int = 84) -> np.ndarray:
+def decode_gd_screenshot(path: Path, width: int = OBS_WIDTH, height: int = OBS_HEIGHT) -> np.ndarray:
     """GD-скриншот FCEUX (gui.gdscreenshot) → grayscale width×height."""
     import cv2
 
@@ -341,6 +342,8 @@ class FceuxBridge:
                     "no_focus": self.no_focus,
                     "show_window": self.show_window,
                     "obs_format": self.obs_format,
+                    "obs_w": OBS_WIDTH,
+                    "obs_h": OBS_HEIGHT,
                 }
             ),
             encoding="utf-8",
@@ -561,7 +564,7 @@ class FceuxBridge:
 
     def decode_obs_from_response(self, bridge_response: dict) -> np.ndarray:
         """Obs из STEP (obs_file) или отдельный GET_OBS."""
-        w, h = int(bridge_response.get("w", 84)), int(bridge_response.get("h", 84))
+        w, h = int(bridge_response.get("w", OBS_WIDTH)), int(bridge_response.get("h", OBS_HEIGHT))
         if not bridge_response.get("obs_file"):
             raise FceuxBridgeError("Response missing obs_file")
         path = Path(str(bridge_response["obs_file"]))

@@ -4,3 +4,5 @@ fields:
     mode: exact
   stage:
     mode: min_threshold
+    # Якорь cp_gameplay1 (frame 1780) ещё stage=0; CP1 не должен платить на reset.
+    min_floor: 1

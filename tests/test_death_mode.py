@@ -14,6 +14,7 @@ from env.base_nes_env import (
     BaseNesEnv,
 )
 from env.loader import import_game_env
+from obs_contract import OBS_HEIGHT, OBS_WIDTH, obs_frame_shape
 
 RushnAttackEnv = import_game_env("rushn_attack").RushnAttackEnv
 
@@ -39,7 +40,8 @@ def _make_base(
             max_episode_steps=max_episode_steps,
         )
     env._bridge = MagicMock()
-    env._frames.append(np.zeros((84, 84), dtype=np.uint8))
+    h, w = obs_frame_shape()
+    env._frames.append(np.zeros((h, w), dtype=np.uint8))
     env._episode_start_lives = start_lives
     env._prev_lives = start_lives
     env._death_count = 0
@@ -85,7 +87,8 @@ def _make_rna(
             max_episode_steps=max_episode_steps,
         )
     env._bridge = MagicMock()
-    env._frames.append(np.zeros((84, 84), dtype=np.uint8))
+    h, w = obs_frame_shape()
+    env._frames.append(np.zeros((h, w), dtype=np.uint8))
     env._episode_start_lives = start_lives
     env._prev_lives = start_lives
     env._death_count = 0
@@ -107,14 +110,15 @@ def _step_ram(
     bridge.step.return_value = {
         "obs_file": "x",
         "format": "raw",
-        "w": 84,
-        "h": 84,
+        "w": OBS_WIDTH,
+        "h": OBS_HEIGHT,
         "lives": lives,
         "room": room,
         "x": x,
         "y": y,
     }
-    bridge.decode_obs_from_response.return_value = np.zeros((84, 84), dtype=np.uint8)
+    h, w = obs_frame_shape()
+    bridge.decode_obs_from_response.return_value = np.zeros((h, w), dtype=np.uint8)
     return env.step(0)
 
 

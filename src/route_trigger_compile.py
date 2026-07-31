@@ -71,13 +71,17 @@ def _decode_ram_fields(ram_hex: str, addrs: dict[str, int], field_names: list[st
     return out
 
 
-def _apply_field_rule(field: str, value: Any, mode: str) -> dict[str, Any]:
+def _apply_field_rule(field: str, value: Any, mode: str, *, spec: dict[str, Any]) -> dict[str, Any]:
     if mode == "exact":
         if field == "room":
             return {"room": str(value)}
         return {field: int(value)}
     if mode == "min_threshold":
-        return {f"min_{field}": int(value)}
+        threshold = int(value)
+        floor = spec.get("min_floor")
+        if floor is not None:
+            threshold = max(threshold, int(floor))
+        return {f"min_{field}": threshold}
     if mode == "max_threshold":
         return {f"max_{field}": int(value)}
     raise ValueError(f"unsupported compile mode: {mode!r}")
@@ -93,7 +97,7 @@ def compile_trigger_from_ram(
         if field not in ram_fields:
             raise ValueError(f"compile config field {field!r} not present in decoded RAM")
         mode = str(spec.get("mode"))
-        trigger.update(_apply_field_rule(field, ram_fields[field], mode))
+        trigger.update(_apply_field_rule(field, ram_fields[field], mode, spec=spec))
     return trigger
 
 

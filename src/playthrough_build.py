@@ -5,7 +5,6 @@ import json
 from datetime import date
 from pathlib import Path
 
-import numpy as np
 import yaml
 
 from etalon_build_config import (
@@ -19,24 +18,13 @@ from etalon_build_config import (
     segment_count_from_etalon_build,
     transition_rooms_from_etalon_build,
 )
-from project_paths import count_fm2_frames, demos_for_bc_dir, load_yaml, repo_root
+from project_paths import count_fm2_frames, load_yaml, repo_root
 from ram_map_load import load_ram_addresses
 from ram_resolve import load_frames
-
-NES_BUTTONS = ("right", "left", "up", "down", "A", "B", "start", "select")
 
 
 def input_to_action(inp: str) -> str:
     return inp or ""
-
-
-def encode_action(inp: str) -> int:
-    keys = set(inp.split("+")) if inp else set()
-    code = 0
-    for i, k in enumerate(NES_BUTTONS):
-        if k in keys:
-            code |= 1 << i
-    return code
 
 
 def _ram_byte(ram_hex: str, addr: int) -> int:
@@ -47,18 +35,18 @@ def build_human_playthrough(frames: list[dict], addrs: dict[str, int]) -> list[d
     rows: list[dict] = []
     for f in frames:
         ram = f["ram_hex"]
-        rows.append(
-            {
-                "frame": f["frame"],
-                "room": f"0x{_ram_byte(ram, addrs['room']):02X}",
-                "x": _ram_byte(ram, addrs["x"]),
-                "y": _ram_byte(ram, addrs["y"]),
-                "action": input_to_action(f.get("input", "")),
-                "hp": _ram_byte(ram, addrs["hp"]),
-                "lives": _ram_byte(ram, addrs["lives"]),
-                "checkpoint": _ram_byte(ram, addrs["checkpoint"]),
-            }
-        )
+        row = {
+            "frame": f["frame"],
+            "room": f"0x{_ram_byte(ram, addrs['room']):02X}",
+            "x": _ram_byte(ram, addrs["x"]),
+            "y": _ram_byte(ram, addrs["y"]),
+            "action": input_to_action(f.get("input", "")),
+            "lives": _ram_byte(ram, addrs["lives"]),
+            "checkpoint": _ram_byte(ram, addrs["checkpoint"]),
+        }
+        if "hp" in addrs:
+            row["hp"] = _ram_byte(ram, addrs["hp"])
+        rows.append(row)
     return rows
 
 
@@ -575,94 +563,3 @@ def build_playthrough_artifacts(
         head_save_states=head_saves,
     )
     return rows, segments
-
-
-def _load_human_jsonl(path: Path) -> dict[int, dict]:
-    by_frame: dict[int, dict] = {}
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                row = json.loads(line)
-                by_frame[row["frame"]] = row
-    return by_frame
-
-
-def npz_is_non_stub(path: Path) -> bool:
-    """True если файл — демо с реальными obs (record_demos), не stub segment_playthrough."""
-    try:
-        with np.load(path, allow_pickle=True) as data:
-            if "meta" in data.files:
-                raw = data["meta"]
-                text = raw.item() if getattr(raw, "shape", ()) == () else str(raw)
-                meta = json.loads(str(text))
-                if isinstance(meta, dict) and meta.get("obs_stub") is False:
-                    return True
-                if isinstance(meta, dict) and meta.get("obs_stub") is True:
-                    return False
-            if "obs" in data.files:
-                obs = data["obs"]
-                if getattr(obs, "size", 0) and float(np.max(np.abs(obs))) > 0:
-                    return True
-    except (OSError, ValueError, json.JSONDecodeError, KeyError):
-        return False
-    return False
-
-
-def build_demos(mission: Path, *, force: bool = False) -> list[Path]:
-    """Нарезать reference/demos_for_bc/seg_*.npz (actions + obs stub) из manifest."""
-    manifest_path = mission / "config" / "playthrough_manifest.yaml"
-    human_path = mission / "reference" / "human_playthrough.jsonl"
-    if not manifest_path.is_file():
-        raise FileNotFoundError(f"manifest not found: {manifest_path}")
-    if not human_path.is_file():
-        raise FileNotFoundError(f"human_playthrough.jsonl not found: {human_path}")
-
-    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-    by_frame = _load_human_jsonl(human_path)
-    demos_dir = demos_for_bc_dir(mission)
-    demos_dir.mkdir(parents=True, exist_ok=True)
-    pending: list[tuple[dict, Path, list[int]]] = []
-    blocked: list[str] = []
-
-    for seg in manifest.get("segments", []):
-        start = int(seg["frame_start"])
-        end = int(seg["frame_end"])
-        actions: list[int] = []
-        for frame in range(start, end + 1):
-            row = by_frame.get(frame)
-            if row is None:
-                continue
-            actions.append(encode_action(row.get("action", "")))
-        if not actions:
-            continue
-        out = demos_dir / f"{seg['id']}.npz"
-        if out.is_file() and not force and npz_is_non_stub(out):
-            blocked.append(out.name)
-            continue
-        pending.append((seg, out, actions))
-
-    if blocked:
-        raise SystemExit(
-            "refuse to overwrite non-stub demos (record_demos): "
-            + ", ".join(blocked)
-            + ". Pass --force to replace with obs stubs."
-        )
-
-    written: list[Path] = []
-    for seg, out, actions in pending:
-        n = len(actions)
-        obs = np.zeros((n, 4, 84, 84), dtype=np.float32)
-        act = np.array(actions, dtype=np.int64)
-        segment_meta_json = json.dumps(
-            {
-                "segment_id": seg["id"],
-                "mission": mission.name,
-                "frame_start": int(seg["frame_start"]),
-                "frame_end": int(seg["frame_end"]),
-                "obs_stub": True,
-            }
-        )
-        np.savez_compressed(out, obs=obs, actions=act, meta=np.array(segment_meta_json))
-        written.append(out)
-    return written

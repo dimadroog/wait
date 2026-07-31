@@ -282,7 +282,9 @@ def run_vec_rollout(
 def _execute_ppo_spike_compute(*, batch_size: int, n_epochs: int) -> None:
     import torch
 
-    obs = torch.randn(batch_size, 4, 84, 84)
+    from obs_contract import OBS_SHAPE
+
+    obs = torch.randn(batch_size, *OBS_SHAPE)
     for epoch in range(n_epochs):
         flat = obs.reshape(batch_size, -1)
         w1 = torch.randn(flat.shape[1], 512, requires_grad=True)

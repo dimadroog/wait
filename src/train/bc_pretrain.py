@@ -12,9 +12,9 @@ import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.policies import ActorCriticCnnPolicy
 
-from playthrough_build import load_head_save_states, nearest_head_save_rel
-from project_paths import demos_for_bc_dir, game_dir, load_yaml, mission_dir
-from train.action_map import action_string_to_index
+from demo_quality import validate_demo_npz
+from playthrough_build import gameplay_start_frame_from_head_saves, load_head_save_states, nearest_head_save_rel
+from project_paths import demos_for_bc_dir, mission_dir
 from train.multi_head_policy import MultiHeadActorCriticPolicy
 from train.phase_heads import PolicyHeadsSpec
 
@@ -46,12 +46,6 @@ class _BcDataset(torch.utils.data.Dataset):
         if self.head_indices is None:
             return self.obs[idx], self.actions[idx]
         return self.obs[idx], self.actions[idx], self.head_indices[idx]
-
-
-def _game_id_from_mission(mission: Path) -> str:
-    parts = mission.parts
-    idx = parts.index("games")
-    return parts[idx + 1]
 
 
 def checkpoint_id_from_save_rel(save_rel: str) -> str:
@@ -103,34 +97,14 @@ def resolve_bc_head_id(
     return heads_spec.default_head
 
 
-def _load_human_actions(mission: Path, frame_start: int, frame_end: int) -> list[int]:
-    human_path = mission / "reference" / "human_playthrough.jsonl"
-    env_config = load_yaml(game_dir(_game_id_from_mission(mission)) / "env_config.yaml")
-    action_strings = tuple(env_config.get("actions") or [])
-    by_frame: dict[int, str] = {}
-    with human_path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
-            by_frame[int(row["frame"])] = str(row.get("action", ""))
-
-    actions: list[int] = []
-    for frame in range(frame_start, frame_end + 1):
-        row_action = by_frame.get(frame, "")
-        actions.append(action_string_to_index(row_action, action_strings))
-    return actions
-
-
 def load_demo_dataset(
     mission: Path,
     *,
     demo_paths: list[Path] | None = None,
-    require_real_obs: bool = True,
+    require_quality_pass: bool = True,
     heads_spec: PolicyHeadsSpec | None = None,
 ) -> _BcDemoBatch | None:
-    """Собирает демо из npz; при multi-head — индекс головы на каждый кадр."""
+    """Собирает демо из npz; obs и actions — только из файла сегмента."""
     demos_dir = demos_for_bc_dir(mission)
     paths = demo_paths or sorted(demos_dir.glob("seg_*.npz"))
     if not paths:
@@ -140,6 +114,10 @@ def load_demo_dataset(
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
     seg_by_id = {seg["id"]: seg for seg in manifest.get("segments") or []}
     head_save_states = load_head_save_states(mission)
+    gameplay_start = gameplay_start_frame_from_head_saves(head_save_states)
+    train_block = manifest.get("train") or {}
+    if gameplay_start is None and train_block.get("gameplay_start_frame") is not None:
+        gameplay_start = int(train_block["gameplay_start_frame"])
 
     obs_parts: list[np.ndarray] = []
     act_parts: list[np.ndarray] = []
@@ -150,24 +128,33 @@ def load_demo_dataset(
         head_index = {h: i for i, h in enumerate(heads_spec.heads)}
 
     for path in paths:
-        segment_npz = np.load(path, allow_pickle=True)
-        meta_raw = segment_npz["meta"]
-        segment_meta: dict[str, Any] = json.loads(str(meta_raw.item() if hasattr(meta_raw, "item") else meta_raw))
-        if require_real_obs and segment_meta.get("obs_stub"):
-            print(f"skip {path.name}: obs_stub (пересоберите demos с реальными obs)")
+        quality = validate_demo_npz(path, gameplay_start_frame=gameplay_start)
+        if require_quality_pass and not quality.passed:
+            reasons = "; ".join(quality.failure_reasons())
+            print(f"skip {path.name}: quality gate failed ({reasons})")
             continue
 
-        obs = np.asarray(segment_npz["obs"], dtype=np.float32)
-        seg_id = segment_meta.get("segment_id") or path.stem
-        seg = seg_by_id.get(seg_id, {})
-        frame_start = int(segment_meta.get("frame_start") or seg.get("frame_start", 0))
-        frame_end = int(segment_meta.get("frame_end") or seg.get("frame_end", 0))
-        actions = _load_human_actions(mission, frame_start, frame_end)
-        n = min(len(actions), obs.shape[0])
+        with np.load(path, allow_pickle=True) as segment_npz:
+            meta_raw = segment_npz["meta"]
+            segment_meta: dict[str, Any] = json.loads(
+                str(meta_raw.item() if hasattr(meta_raw, "item") else meta_raw)
+            )
+            obs = np.asarray(segment_npz["obs"], dtype=np.float32)
+            actions = np.asarray(segment_npz["actions"], dtype=np.int64)
+
+        n = min(int(obs.shape[0]), int(actions.shape[0]))
         if n == 0:
             continue
+        if obs.shape[0] != actions.shape[0]:
+            print(
+                f"warning {path.name}: obs/actions length mismatch "
+                f"({obs.shape[0]} vs {actions.shape[0]}), using n={n}"
+            )
+
+        seg_id = segment_meta.get("segment_id") or path.stem
+        seg = seg_by_id.get(seg_id, {})
         obs_parts.append(obs[:n])
-        act_parts.append(np.asarray(actions[:n], dtype=np.int64))
+        act_parts.append(actions[:n])
         if use_heads and heads_spec is not None and head_index is not None:
             head_id = resolve_bc_head_id(
                 {**seg, "id": seg_id},
@@ -175,9 +162,7 @@ def load_demo_dataset(
                 heads_spec=heads_spec,
             )
             print(f"BC segment {seg_id}: head={head_id} transitions={n}")
-            head_parts.append(
-                np.full(n, head_index[head_id], dtype=np.int64)
-            )
+            head_parts.append(np.full(n, head_index[head_id], dtype=np.int64))
 
     if not obs_parts:
         return None
@@ -221,11 +206,11 @@ def bc_pretrain(
     batch = load_demo_dataset(
         mission,
         demo_paths=demo_paths,
-        require_real_obs=True,
+        require_quality_pass=True,
         heads_spec=heads_spec if multi else None,
     )
     if batch is None:
-        print("BC skipped: нет demos с реальными obs")
+        print("BC skipped: нет demos, прошедших quality gate")
         return 0
 
     loader = torch.utils.data.DataLoader(
@@ -284,7 +269,7 @@ def bc_demo_action_match_rate(
     batch = load_demo_dataset(
         mission,
         demo_paths=demo_paths,
-        require_real_obs=True,
+        require_quality_pass=True,
         heads_spec=heads_spec if multi else None,
     )
     if batch is None:

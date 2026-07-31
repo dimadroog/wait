@@ -19,9 +19,10 @@
 | Поставить `.venv` | [`setup_all.ps1`](#setup_allps1) → [`verify_env.py`](#verify_envpy) |
 | RAM-разведка (shell / mission) | [`ram_scout.py`](#ram_scoutpy) |
 | Скомпилировать RAM-триггеры CP (`route_triggers.yaml`) | [`compile_route_triggers.py`](#compile_route_triggerspy) |
-| Собрать эталон (jsonl, save_states, demos_for_bc stub) | [`build_playthrough.py`](#build_playthroughpy) |
+| Собрать эталон (jsonl, save_states) | [`build_playthrough.py`](#build_playthroughpy) |
 | Пересобрать save states из `head_save_states` | [`build_playthrough.py --states-only`](#build_playthroughpy) |
 | Demos с реальными obs (BC) | [`record_demos.py`](#record_demospy) |
+| PNG-превью BC-демо | [`preview_demos.py`](#preview_demospy) |
 | Smoke после правок bridge/env | [`run_smoke.py`](#run_smokepy) |
 | Обучение PPO | [`train_local.sh`](#train_localsh) → [`train_ppo.py`](#train_ppopy) |
 | Inference pool (N + playlist) или live (до Ctrl+C) | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
@@ -42,7 +43,7 @@
 | [`build_broadcast_board.py`](#build_broadcast_boardpy) | JSON табло эфира (gen + дельта) |
 | [`build_playlist.py`](#build_playlistpy) | FM2-плейлист / короткий editorial |
 | [`compile_route_triggers.py`](#compile_route_triggerspy) | RAM-триггеры CP: `routes.yaml` anchor → `route_triggers.yaml` |
-| [`build_playthrough.py`](#build_playthroughpy) | Эталон: jsonl, routes, `cp_<head><i>.fc0`, demos_for_bc |
+| [`build_playthrough.py`](#build_playthroughpy) | Эталон: jsonl, routes, `cp_<head><i>.fc0` |
 | [`eval_achievements.py`](#eval_achievementspy) | `tags[]` в `attempts.jsonl` |
 | [`export_fm2.py`](#export_fm2py) | `inference_inputs.jsonl` → self-contained `.fm2` |
 | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) | Editorial + board + шаги оператора |
@@ -52,9 +53,9 @@
 | [`play_fm2_gui.py`](#play_fm2_guipy) | GUI replay одного FM2 (отладка) |
 | [`play_inference_fm2.py`](#play_inference_fm2py) | Replay FM2 или `playlist.json` |
 | [`ram_scout.py`](#ram_scoutpy) | RAM scout: shell (`games/…/reference/`) или mission clear |
-| [`record_demos.py`](#record_demospy) | Demos с реальными obs |
+| [`preview_demos.py`](#preview_demospy) | PNG-превью `demos_for_bc` → `tmp/demos_for_bc/` |
+| [`record_demos.py`](#record_demospy) | FM2-synced BC demos (`-playmovie`) |
 | [`run_smoke.py`](#run_smokepy) | Единый smoke entry point |
-| [`segment_playthrough.py`](#segment_playthroughpy) | Demos actions-only (obs=stub) |
 | [`setup_all.ps1`](#setup_allps1) | Setup: venv (+ FCEUX вручную) |
 | [`setup_venv.ps1`](#setup_venvps1) | Создать `.venv`, `requirements.txt` |
 | [`smoke_bridge.py`](#smoke_bridgepy) | Smoke IPC bridge |
@@ -164,7 +165,7 @@
 
 ### `build_playthrough.py`
 
-После `ram_scout`: `human_playthrough.jsonl`, `playthrough_manifest.yaml`, `save_states/cp_<head><i>.fc0`, `reference/demos_for_bc` (stub obs).
+После `ram_scout`: `human_playthrough.jsonl`, `playthrough_manifest.yaml`, `save_states/cp_<head><i>.fc0`. BC-демо — отдельно [`record_demos.py`](#record_demospy).
 
 Кадры и имена `.fc0` — из `head_save_states` в манифесте (`cp_title0`, `cp_intro0`, `cp_gameplay0`, …). Train и inference reset — **один** файл (`cp_gameplay0`).  
 Опциональный `games/<id>/etalon_build.yaml` — автогенерация логического `routes.yaml` + `route_triggers.yaml`; если файла нет (пилот RnA), `routes.yaml` не перезаписывается. `--states-only` etalon_build не требует.
@@ -186,50 +187,46 @@
 | `--skip-states` | без `.fc0` |
 | `--states-only` | только `save_states/` из `head_save_states` |
 | `--replace-states` | wipe всех `*.fc0` (иначе только слоты плана) |
-| `--force-demos` | stub demos поверх non-stub BC |
-| `--skip-demos` | без `reference/demos_for_bc/seg_*.npz` |
-
----
-
-### `segment_playthrough.py`
-
-Фасад: argv → `playthrough_build.build_demos` (`src/playthrough_build.py`).  
-`reference/demos_for_bc/seg_*.npz` с actions only (`obs` stub). Для BC с кадрами — `record_demos.py`.  
-Миссия — из пути FM2 или workspace (`clear.fm2`), не из cwd. Non-stub demos не перезаписываются без `--force`.
-
-```bash
-./.venv/Scripts/python.exe scripts/segment_playthrough.py games/rushn_attack/missions/m1/reference/clear.fm2
-./.venv/Scripts/python.exe scripts/segment_playthrough.py
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `fm2` | путь к FM2 (опционально; default — workspace `clear.fm2`) |
-| `--game` / `--mission` | override workspace; при явном FM2 — проверка совпадения |
-| `--force` | перезаписать non-stub demos stub-ами |
 
 ---
 
 ### `record_demos.py`
 
-Demos с реальными obs `(N, 4, 84, 84)` для `--bc-epochs`. Параллельно по умолчанию (`min(segments, cpu, 8)`).  
-Миссия — из пути FM2 или workspace (`clear.fm2`), не из cwd.
+FM2-synced запись BC: один проход `-playmovie clear.fm2` → `reference/demos_for_bc/seg_*.npz`. Quality gate встроен.
 
 ```bash
-./.venv/Scripts/python.exe scripts/record_demos.py games/rushn_attack/missions/m1/reference/clear.fm2
-./.venv/Scripts/python.exe scripts/record_demos.py
-./.venv/Scripts/python.exe scripts/record_demos.py games/rushn_attack/missions/m1/reference/clear.fm2 --segment seg_001 --max-steps 20 --jobs 1
+./.venv/Scripts/python.exe scripts/record_demos.py --game rushn_attack --mission m1
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `fm2` | путь к FM2 (опционально; default — workspace `clear.fm2`) |
-| `--game` / `--mission` | override workspace; при явном FM2 — проверка совпадения |
+| `fm2` | путь к FM2 (опционально) |
+| `--game` / `--mission` | override workspace |
+| `--segment ID` | только указанные сегменты |
+| `--no-strict-quality` | не прерывать при провале quality gate |
+| `--timeout` | таймаут FCEUX (сек, default 600) |
+
+---
+
+### `preview_demos.py`
+
+PNG-превью и приёмка BC (`--check` → exit 1 при провале quality gate).
+
+```bash
+./.venv/Scripts/python.exe scripts/preview_demos.py --game rushn_attack --mission m1 --check
+./.venv/Scripts/python.exe scripts/preview_demos.py --segment seg_002 --step-interval 10
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--game` / `--mission` | миссия (default — workspace) |
+| `--out` | каталог вывода (default `tmp/demos_for_bc/`) |
 | `--segment ID` | только указанные сегменты (можно несколько раз) |
-| `--max-steps` | лимит env steps (отладка) |
-| `--jobs` | parallel FCEUX (`1` = последовательно) |
-| `--session` | id bridge (default `record_demos`) |
-| `--no-turbo` | без turbo |
+| `--step-interval` | шаг env между sample PNG (default 25) |
+| `--max-samples` | макс. шагов для samples на сегмент (default 200) |
+| `--grid-cols` | сторона сетки `grid.png` (default 5 → 5×5) |
+| `--tile-px` | размер плитки в сетке (default 112) |
+| `--check` | exit 1 если quality gate не пройден |
 
 ---
 
@@ -418,7 +415,7 @@ E2E PPO `learn` → `tmp/bench/<session>/`. Перед learn — preflight orpha
 <a id="train_ppopy"></a>
 
 PPO на CPU / FCEUX env. Поколения модели: `games/.../models/genN.zip` (или `tmp/smoke/` при `--smoke`).  
-Модуль BC: `src/train/bc_pretrain.py` (при `--bc-epochs > 0`, demos без `obs_stub`).
+Модуль BC: `src/train/bc_pretrain.py` (при `--bc-epochs > 0`; demos проходят quality gate).
 
 ```bash
 ./scripts/train_local.sh --timesteps 50000 --model-out models/gen0.zip

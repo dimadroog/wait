@@ -19,7 +19,7 @@ def load_ram_addresses(mission: Path) -> dict[str, int]:
         addr = field.get("address")
         if addr:
             addrs[field["field"]] = int(addr, 16)
-    required = {"room", "x", "y", "hp", "lives", "checkpoint"}
+    required = {"room", "x", "y", "lives", "checkpoint"}
     missing = required - addrs.keys()
     if missing:
         raise ValueError(f"Unresolved RAM fields in {path}: {sorted(missing)}")
