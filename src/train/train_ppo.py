@@ -52,6 +52,10 @@ from train.learn_watchdog import (  # noqa: E402
     SessionWallTimeoutError,
     learn_with_stall_watchdog,
 )
+from train.policy_collapse_stop import (  # noqa: E402
+    DEFAULT_COLLAPSE_STREAK,
+    PolicyCollapseStopCallback,
+)
 from train.progress_callback import TrainProgressPctCallback  # noqa: E402
 from train.ram_mitigations import RolloutGcCallback, warn_if_n_envs_high_for_ram  # noqa: E402
 from train.recycle import iter_learn_chunks  # noqa: E402
@@ -429,6 +433,8 @@ def train(args: argparse.Namespace) -> Path:
             return checkpoint_zip_path(model_out)
 
         callbacks: list[Any] = []
+        collapse_cb = PolicyCollapseStopCallback(streak=DEFAULT_COLLAPSE_STREAK, verbose=1)
+        callbacks.append(collapse_cb)
         if not args.no_intermediate_models:
             runs_dir = mission / "models" / "runs"
             runs_dir.mkdir(parents=True, exist_ok=True)
@@ -485,6 +491,10 @@ def train(args: argparse.Namespace) -> Path:
             f"n_envs={args.n_envs} remaining={remaining}/{target_timesteps} "
             f"save_state={save_state} mode={mode}"
         )
+        print(
+            f"policy collapse stop: on "
+            f"(streak>={DEFAULT_COLLAPSE_STREAK} on dead entropy+approx_kl; see TRAIN_ANALYSIS)"
+        )
         if recycle_every > 0:
             print(
                 f"H4 recycle: every {recycle_every} timesteps "
@@ -532,6 +542,9 @@ def train(args: argparse.Namespace) -> Path:
                         progress_bar=args.progress,
                         reset_num_timesteps=reset_ts,
                     )
+                    if collapse_cb.stopped:
+                        abort_reason = "policy_collapse"
+                        break
             except LearnStallError as exc:
                 learn_failed = True
                 abort_reason = "stall"
@@ -549,6 +562,8 @@ def train(args: argparse.Namespace) -> Path:
                 if int(model.num_timesteps) > 0:
                     if interrupt.interrupted:
                         abort_reason = "interrupt"
+                    elif collapse_cb.stopped:
+                        abort_reason = "policy_collapse"
                     elif not learn_failed:
                         abort_reason = "complete"
                     _persist_train_state(
