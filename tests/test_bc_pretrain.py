@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from train.bc_pretrain import (
+    build_bc_valid_mask,
     checkpoint_id_from_save_rel,
     checkpoint_id_to_head_map,
     load_demo_dataset,
@@ -77,6 +78,47 @@ def test_checkpoint_id_to_head_map_nonempty() -> None:
     m = checkpoint_id_to_head_map(_SAMPLE_HEAD_SAVE_STATES)
     assert m.get("cp_gameplay0") == "gameplay"
     assert m.get("cp_title0") == "title"
+
+
+def test_resolve_bc_head_explicit_overrides_save_state() -> None:
+    heads = load_policy_heads_spec("rushn_attack")
+    assert heads is not None
+    seg = {
+        "id": "seg_001",
+        "frame_start": 1,
+        "save_state": "save_states/cp_gameplay0.fc0",
+        "bc_head": "title",
+    }
+    assert (
+        resolve_bc_head_id(seg, head_save_states=_SAMPLE_HEAD_SAVE_STATES, heads_spec=heads)
+        == "title"
+    )
+
+
+def test_build_bc_valid_mask_skips_forbidden_target() -> None:
+    heads = load_policy_heads_spec("rushn_attack")
+    assert heads is not None
+    action_strings = ("", "left", "right", "down", "up", "right+up", "left+up", "A", "B", "start")
+    actions = np.array([0, 9], dtype=np.int64)  # noop + start
+    head_indices = np.array([heads.heads.index("gameplay")] * 2, dtype=np.int64)
+    valid, n_masked = build_bc_valid_mask(
+        actions, head_indices, heads_spec=heads, action_strings=action_strings
+    )
+    assert n_masked == 1
+    assert list(valid) == [True, False]
+
+
+def test_build_bc_valid_mask_title_allows_start() -> None:
+    heads = load_policy_heads_spec("rushn_attack")
+    assert heads is not None
+    action_strings = ("", "left", "right", "down", "up", "right+up", "left+up", "A", "B", "start")
+    actions = np.array([0, 9], dtype=np.int64)
+    head_indices = np.array([heads.heads.index("title")] * 2, dtype=np.int64)
+    valid, n_masked = build_bc_valid_mask(
+        actions, head_indices, heads_spec=heads, action_strings=action_strings
+    )
+    assert n_masked == 0
+    assert list(valid) == [True, True]
 
 
 def test_load_demo_dataset_uses_npz_actions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

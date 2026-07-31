@@ -416,15 +416,24 @@ def train(args: argparse.Namespace) -> Path:
             )
             if save_reason == "bc_only" and heads_spec is not None:
                 demo_paths = resolve_demo_paths(mission, args.bc_demo)
-                ok, total = bc_demo_action_match_rate(
+                stats = bc_demo_action_match_rate(
                     model,
                     mission,
                     heads_spec=heads_spec,
                     demo_paths=demo_paths,
                 )
-                if total > 0:
-                    pct = 100.0 * ok / total
-                    print(f"BC demo match (argmax vs human): {ok}/{total} ({pct:.1f}%)")
+                if stats.total > 0:
+                    print(
+                        f"BC demo match (argmax vs human): "
+                        f"{stats.correct}/{stats.total} ({stats.pct:.1f}%)"
+                    )
+                    if stats.noop_total or stats.move_total:
+                        print(
+                            f"  noop: {stats.noop_correct}/{stats.noop_total} "
+                            f"({stats.noop_pct:.1f}%)  "
+                            f"move: {stats.move_correct}/{stats.move_total} "
+                            f"({stats.move_pct:.1f}%)"
+                        )
             try:
                 vec_env.close()
             except (EOFError, BrokenPipeError):

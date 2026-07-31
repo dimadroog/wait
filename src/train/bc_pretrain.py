@@ -4,10 +4,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.policies import ActorCriticCnnPolicy
@@ -16,7 +17,7 @@ from demo_quality import validate_demo_npz
 from playthrough_build import gameplay_start_frame_from_head_saves, load_head_save_states, nearest_head_save_rel
 from project_paths import demos_for_bc_dir, mission_dir
 from train.multi_head_policy import MultiHeadActorCriticPolicy
-from train.phase_heads import PolicyHeadsSpec
+from train.phase_heads import PolicyHeadsSpec, load_game_action_strings
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,29 @@ class _BcDemoBatch:
     obs: np.ndarray
     actions: np.ndarray
     head_indices: np.ndarray | None
+    valid_mask: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
+class BcMatchStats:
+    correct: int
+    total: int
+    noop_correct: int
+    noop_total: int
+    move_correct: int
+    move_total: int
+
+    @property
+    def pct(self) -> float:
+        return 100.0 * self.correct / max(self.total, 1)
+
+    @property
+    def noop_pct(self) -> float:
+        return 100.0 * self.noop_correct / max(self.noop_total, 1)
+
+    @property
+    def move_pct(self) -> float:
+        return 100.0 * self.move_correct / max(self.move_total, 1)
 
 
 class _BcDataset(torch.utils.data.Dataset):
@@ -32,11 +56,15 @@ class _BcDataset(torch.utils.data.Dataset):
         obs: np.ndarray,
         actions: np.ndarray,
         head_indices: np.ndarray | None = None,
+        valid_mask: np.ndarray | None = None,
     ) -> None:
         self.obs = torch.as_tensor(obs, dtype=torch.float32)
         self.actions = torch.as_tensor(actions, dtype=torch.long)
         self.head_indices = (
             torch.as_tensor(head_indices, dtype=torch.long) if head_indices is not None else None
+        )
+        self.valid_mask = (
+            torch.as_tensor(valid_mask, dtype=torch.bool) if valid_mask is not None else None
         )
 
     def __len__(self) -> int:
@@ -44,8 +72,12 @@ class _BcDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, ...]:
         if self.head_indices is None:
-            return self.obs[idx], self.actions[idx]
-        return self.obs[idx], self.actions[idx], self.head_indices[idx]
+            if self.valid_mask is None:
+                return self.obs[idx], self.actions[idx]
+            return self.obs[idx], self.actions[idx], self.valid_mask[idx]
+        if self.valid_mask is None:
+            return self.obs[idx], self.actions[idx], self.head_indices[idx]
+        return self.obs[idx], self.actions[idx], self.head_indices[idx], self.valid_mask[idx]
 
 
 def checkpoint_id_from_save_rel(save_rel: str) -> str:
@@ -97,12 +129,56 @@ def resolve_bc_head_id(
     return heads_spec.default_head
 
 
+def _allowed_index_sets(
+    heads_spec: PolicyHeadsSpec, action_strings: Sequence[str]
+) -> dict[str, frozenset[int] | None]:
+    return {
+        head_id: (
+            frozenset(allowed)
+            if (allowed := heads_spec.allowed_action_indices(head_id, action_strings)) is not None
+            else None
+        )
+        for head_id in heads_spec.heads
+    }
+
+
+def build_bc_valid_mask(
+    actions: np.ndarray,
+    head_indices: np.ndarray | None,
+    *,
+    heads_spec: PolicyHeadsSpec,
+    action_strings: Sequence[str],
+) -> tuple[np.ndarray, int]:
+    """bool mask: True = сэмпл участвует в BC loss/match. Возвращает (mask, n_masked)."""
+    n = int(actions.shape[0])
+    allowed_by_head = _allowed_index_sets(heads_spec, action_strings)
+    valid = np.ones(n, dtype=bool)
+    if head_indices is None:
+        return valid, 0
+    for i in range(n):
+        head_id = heads_spec.heads[int(head_indices[i])]
+        allowed = allowed_by_head[head_id]
+        if allowed is not None and int(actions[i]) not in allowed:
+            valid[i] = False
+    return valid, int((~valid).sum())
+
+
+def _game_id_from_mission(mission: Path) -> str | None:
+    manifest_path = mission / "config" / "playthrough_manifest.yaml"
+    if not manifest_path.is_file():
+        return None
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    game_id = manifest.get("game")
+    return str(game_id) if game_id else None
+
+
 def load_demo_dataset(
     mission: Path,
     *,
     demo_paths: list[Path] | None = None,
     require_quality_pass: bool = True,
     heads_spec: PolicyHeadsSpec | None = None,
+    action_strings: Sequence[str] | None = None,
 ) -> _BcDemoBatch | None:
     """Собирает демо из npz; obs и actions — только из файла сегмента."""
     demos_dir = demos_for_bc_dir(mission)
@@ -118,6 +194,11 @@ def load_demo_dataset(
     train_block = manifest.get("train") or {}
     if gameplay_start is None and train_block.get("gameplay_start_frame") is not None:
         gameplay_start = int(train_block["gameplay_start_frame"])
+
+    if action_strings is None and heads_spec is not None:
+        game_id = _game_id_from_mission(mission)
+        if game_id:
+            action_strings = load_game_action_strings(game_id)
 
     obs_parts: list[np.ndarray] = []
     act_parts: list[np.ndarray] = []
@@ -161,16 +242,32 @@ def load_demo_dataset(
                 head_save_states=head_save_states,
                 heads_spec=heads_spec,
             )
-            print(f"BC segment {seg_id}: head={head_id} transitions={n}")
+            extra = ""
+            if action_strings is not None:
+                seg_heads = np.full(n, head_index[head_id], dtype=np.int64)
+                _, n_masked = build_bc_valid_mask(
+                    actions[:n], seg_heads, heads_spec=heads_spec, action_strings=action_strings
+                )
+                if n_masked:
+                    extra = f" masked_targets={n_masked}"
+            print(f"BC segment {seg_id}: head={head_id} transitions={n}{extra}")
             head_parts.append(np.full(n, head_index[head_id], dtype=np.int64))
 
     if not obs_parts:
         return None
+    obs_arr = np.concatenate(obs_parts, axis=0)
+    act_arr = np.concatenate(act_parts, axis=0)
     head_arr = np.concatenate(head_parts, axis=0) if head_parts else None
+    valid_arr: np.ndarray | None = None
+    if heads_spec is not None and action_strings is not None and head_arr is not None:
+        valid_arr, _ = build_bc_valid_mask(
+            act_arr, head_arr, heads_spec=heads_spec, action_strings=action_strings
+        )
     return _BcDemoBatch(
-        obs=np.concatenate(obs_parts, axis=0),
-        actions=np.concatenate(act_parts, axis=0),
+        obs=obs_arr,
+        actions=act_arr,
         head_indices=head_arr,
+        valid_mask=valid_arr,
     )
 
 
@@ -187,6 +284,33 @@ def _bc_logits(
     return policy.action_net(latent_pi)
 
 
+def _unpack_batch_item(
+    batch_item: tuple[torch.Tensor, ...],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+    if len(batch_item) == 2:
+        return batch_item[0], batch_item[1], None, None
+    if len(batch_item) == 3:
+        if batch_item[2].dtype == torch.bool:
+            return batch_item[0], batch_item[1], None, batch_item[2]
+        return batch_item[0], batch_item[1], batch_item[2], None
+    return batch_item[0], batch_item[1], batch_item[2], batch_item[3]
+
+
+def _masked_ce_loss(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    valid: torch.Tensor | None,
+) -> tuple[torch.Tensor, int, int]:
+    per_sample = F.cross_entropy(logits, targets, reduction="none")
+    if valid is None:
+        return per_sample.mean(), int(targets.shape[0]), 0
+    n_masked = int((~valid).sum().item())
+    n_valid = int(valid.sum().item())
+    if n_valid == 0:
+        return per_sample.sum() * 0.0, 0, n_masked
+    return per_sample[valid].mean(), n_valid, n_masked
+
+
 def bc_pretrain(
     model: PPO,
     mission: Path,
@@ -197,7 +321,7 @@ def bc_pretrain(
     learning_rate: float = 1e-4,
     heads_spec: PolicyHeadsSpec | None = None,
 ) -> int:
-    """Supervised BC на policy CNN / multi-head. Возвращает число transitions."""
+    """Supervised BC на policy CNN / multi-head. Возвращает число valid transitions."""
     multi = isinstance(model.policy, MultiHeadActorCriticPolicy)
     if multi and heads_spec is None:
         print("BC skipped: multi-head policy but no policy_heads spec")
@@ -214,7 +338,7 @@ def bc_pretrain(
         return 0
 
     loader = torch.utils.data.DataLoader(
-        _BcDataset(batch.obs, batch.actions, batch.head_indices),
+        _BcDataset(batch.obs, batch.actions, batch.head_indices, batch.valid_mask),
         batch_size=batch_size,
         shuffle=True,
         drop_last=False,
@@ -222,38 +346,44 @@ def bc_pretrain(
     policy = model.policy
     assert isinstance(policy, ActorCriticCnnPolicy)
     optimizer = torch.optim.Adam(policy.parameters(), lr=learning_rate)
-    loss_fn = torch.nn.CrossEntropyLoss()
 
     policy.set_training_mode(True)
-    steps = 0
+    valid_steps = 0
+    total_masked = 0
     for epoch in range(epochs):
         epoch_loss = 0.0
+        epoch_valid = 0
+        epoch_masked = 0
         batches = 0
         for batch_item in loader:
-            if len(batch_item) == 3:
-                batch_obs, batch_act, batch_heads = batch_item
-            else:
-                batch_obs, batch_act = batch_item
-                batch_heads = None
+            batch_obs, batch_act, batch_heads, batch_valid = _unpack_batch_item(batch_item)
             optimizer.zero_grad()
             logits = _bc_logits(policy, batch_obs, batch_heads)
-            loss = loss_fn(logits, batch_act)
+            loss, n_valid, n_masked = _masked_ce_loss(logits, batch_act, batch_valid)
+            if n_valid == 0:
+                continue
             loss.backward()
             optimizer.step()
-            epoch_loss += float(loss.item())
+            epoch_loss += float(loss.item()) * n_valid
+            epoch_valid += n_valid
+            epoch_masked += n_masked
             batches += 1
-            steps += int(batch_act.shape[0])
-        avg = epoch_loss / max(batches, 1)
+            valid_steps += n_valid
+        total_masked = epoch_masked
+        avg = epoch_loss / max(epoch_valid, 1)
         mode = "multi-head" if batch.head_indices is not None else "single-head"
+        masked_note = f" masked_skipped={epoch_masked}" if epoch_masked else ""
         print(
             f"BC epoch {epoch + 1}/{epochs} loss={avg:.4f} "
-            f"samples={len(batch.actions)} ({mode})"
+            f"samples={len(batch.actions)} valid={epoch_valid}{masked_note} ({mode})"
         )
 
     if isinstance(policy, MultiHeadActorCriticPolicy):
         policy.clear_batch_heads()
     policy.set_training_mode(False)
-    return steps
+    if total_masked:
+        print(f"BC note: skipped {total_masked} transitions with forbidden target for assigned head")
+    return valid_steps
 
 
 def bc_demo_action_match_rate(
@@ -263,7 +393,8 @@ def bc_demo_action_match_rate(
     heads_spec: PolicyHeadsSpec | None = None,
     demo_paths: list[Path] | None = None,
     batch_size: int = 256,
-) -> tuple[int, int]:
+    noop_action_index: int = 0,
+) -> BcMatchStats:
     """Совпадение argmax политики с метками демо (offline, без env)."""
     multi = isinstance(model.policy, MultiHeadActorCriticPolicy)
     batch = load_demo_dataset(
@@ -273,26 +404,39 @@ def bc_demo_action_match_rate(
         heads_spec=heads_spec if multi else None,
     )
     if batch is None:
-        return 0, 0
+        return BcMatchStats(0, 0, 0, 0, 0, 0)
     policy = model.policy
     assert isinstance(policy, ActorCriticCnnPolicy)
     policy.set_training_mode(False)
-    correct = 0
+    correct = noop_correct = noop_total = move_correct = move_total = 0
     n = int(batch.actions.shape[0])
     with torch.no_grad():
         for start in range(0, n, batch_size):
             end = min(start + batch_size, n)
             obs_t = torch.as_tensor(batch.obs[start:end], dtype=torch.float32)
-            act_t = torch.as_tensor(batch.actions[start:end], dtype=torch.long)
+            act_np = batch.actions[start:end]
             head_t = None
             if batch.head_indices is not None:
                 head_t = torch.as_tensor(batch.head_indices[start:end], dtype=torch.long)
             logits = _bc_logits(policy, obs_t, head_t)
-            pred = logits.argmax(dim=-1)
-            correct += int((pred == act_t).sum().item())
+            pred = logits.argmax(dim=-1).cpu().numpy()
+            valid_slice = None
+            if batch.valid_mask is not None:
+                valid_slice = batch.valid_mask[start:end]
+            for i, (p, a) in enumerate(zip(pred, act_np, strict=True)):
+                if valid_slice is not None and not bool(valid_slice[i]):
+                    continue
+                if int(a) == noop_action_index:
+                    noop_total += 1
+                    noop_correct += int(p == a)
+                else:
+                    move_total += 1
+                    move_correct += int(p == a)
+                correct += int(p == a)
     if isinstance(policy, MultiHeadActorCriticPolicy):
         policy.clear_batch_heads()
-    return correct, n
+    total = noop_total + move_total
+    return BcMatchStats(correct, total, noop_correct, noop_total, move_correct, move_total)
 
 
 def resolve_demo_paths(mission: Path, demo_segment: str | None) -> list[Path] | None:

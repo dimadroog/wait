@@ -27,6 +27,7 @@ segments:
   reference_clear_sec: 17.2
   demo_file: reference/demos_for_bc/seg_001.npz
   save_state: save_states/cp_gameplay0.fc0
+  bc_head: title
 - id: seg_002
   name: seg_002
   checkpoint_from: 0
