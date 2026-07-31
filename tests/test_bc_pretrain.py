@@ -3,10 +3,16 @@ from __future__ import annotations
 
 import pytest
 
-from playthrough_build import load_head_save_states
-from project_paths import mission_dir
 from train.bc_pretrain import checkpoint_id_from_save_rel, checkpoint_id_to_head_map, resolve_bc_head_id
 from train.phase_heads import load_policy_heads_spec
+
+_SAMPLE_HEAD_SAVE_STATES = {
+    "title": [{"id": "cp_title0", "frame": 20, "label": "title_screen"}],
+    "gameplay": [
+        {"id": "cp_gameplay0", "frame": 1243, "label": "level_start"},
+        {"id": "cp_gameplay1", "frame": 1506, "label": "after_second_ladder"},
+    ],
+}
 
 
 def test_checkpoint_id_from_save_rel() -> None:
@@ -14,29 +20,33 @@ def test_checkpoint_id_from_save_rel() -> None:
 
 
 def test_resolve_bc_head_from_segment_save_state() -> None:
-    mission = mission_dir("rushn_attack", "m1")
     heads = load_policy_heads_spec("rushn_attack")
     assert heads is not None
-    head_saves = load_head_save_states(mission)
     seg = {
         "id": "seg_002",
         "frame_start": 1243,
         "save_state": "save_states/cp_gameplay0.fc0",
     }
-    assert resolve_bc_head_id(seg, head_save_states=head_saves, heads_spec=heads) == "gameplay"
+    assert (
+        resolve_bc_head_id(
+            seg, head_save_states=_SAMPLE_HEAD_SAVE_STATES, heads_spec=heads
+        )
+        == "gameplay"
+    )
 
 
 def test_resolve_bc_head_title_segment() -> None:
-    mission = mission_dir("rushn_attack", "m1")
     heads = load_policy_heads_spec("rushn_attack")
     assert heads is not None
-    head_saves = load_head_save_states(mission)
     seg = {
         "id": "seg_001",
         "frame_start": 1,
         "save_state": "save_states/cp_title0.fc0",
     }
-    assert resolve_bc_head_id(seg, head_save_states=head_saves, heads_spec=heads) == "title"
+    assert (
+        resolve_bc_head_id(seg, head_save_states=_SAMPLE_HEAD_SAVE_STATES, heads_spec=heads)
+        == "title"
+    )
 
 
 def test_resolve_bc_head_explicit_bc_head() -> None:
@@ -54,7 +64,6 @@ def test_resolve_bc_head_unknown_bc_head_raises() -> None:
 
 
 def test_checkpoint_id_to_head_map_nonempty() -> None:
-    mission = mission_dir("rushn_attack", "m1")
-    m = checkpoint_id_to_head_map(load_head_save_states(mission))
+    m = checkpoint_id_to_head_map(_SAMPLE_HEAD_SAVE_STATES)
     assert m.get("cp_gameplay0") == "gameplay"
     assert m.get("cp_title0") == "title"
