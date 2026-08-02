@@ -48,17 +48,19 @@ end
 local finished = false
 local sample_count = 0
 
+local GD_HEADER_BYTES = 11
+
+-- Должна совпадать с bridge.lua (train/inference obs pipeline).
 local function gd_to_raw_gray(shot, w, h)
+  local src_w, src_h = NES_W, NES_H
   local parts = {}
   local idx = 1
-  local sx = NES_W / w
-  local sy = NES_H / h
-  for y = 0, h - 1 do
-    local src_y = math.floor((y + 0.5) * sy)
-    local row_base = src_y * NES_W * 4
-    for x = 0, w - 1 do
-      local src_x = math.floor((x + 0.5) * sx)
-      local p = row_base + src_x * 4
+  for oy = 0, h - 1 do
+    local sy = math.floor(oy * src_h / h)
+    local row_base = GD_HEADER_BYTES + sy * src_w * 4
+    for ox = 0, w - 1 do
+      local sx = math.floor(ox * src_w / w)
+      local p = row_base + sx * 4 + 1
       local r = shot:byte(p)
       local g = shot:byte(p + 1)
       local b = shot:byte(p + 2)

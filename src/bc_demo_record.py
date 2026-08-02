@@ -98,6 +98,8 @@ def _partition_samples(
         if seg is None:
             continue
         seg_id = str(seg["id"])
+        if int(row.frame) == int(seg["frame_start"]):
+            frame_deque.clear()
         gray = decode_raw_obs(row.obs_path)
         frame_deque.append(gray)
         obs_stack = _obs_stack_from_deque(frame_deque)

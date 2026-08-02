@@ -291,9 +291,13 @@ class FceuxBridge:
         for prefix in _parallel_bridge_session_prefixes():
             if sid.startswith(prefix):
                 try:
-                    return int(sid.rsplit("_", 1)[-1])
+                    rank = int(sid.rsplit("_", 1)[-1])
                 except ValueError:
                     return None
+                # train_0..train_7; bench_1738123456 — не rank (иначе startup_stagger часами).
+                if rank < 0 or rank > 63:
+                    return None
+                return rank
         return None
 
     def _step_timeout(self) -> float:

@@ -248,6 +248,7 @@ end
 
 local GD_HEADER_BYTES = 11
 
+-- Должна совпадать с demos_for_bc.lua (BC record pipeline).
 local function gd_to_raw_gray(shot, w, h)
   local src_w, src_h = NES_W, NES_H
   local parts = {}
@@ -454,10 +455,8 @@ else
 end
 set_idle_render_planes()
 write_ready()
-if SHOW_WINDOW then
-  -- Без frameadvance окно остаётся серым: busy-loop не качает WM_PAINT.
-  emu.frameadvance()
-end
+-- Не делаем frameadvance здесь: сдвигает кадр относительно save state (open-loop drift).
+-- Окно может быть серым до первого STEP/GET_OBS; render planes включаются в capture_obs/finish_step.
 
 local function yield_ui_if_live()
   if not SHOW_WINDOW then
@@ -473,10 +472,12 @@ end
 
 while not should_quit do
   if stepping then
+    FCEU.setrenderplanes(true, true)
     emu.frameadvance()
     step_frames_left = step_frames_left - 1
     if step_frames_left <= 0 then
       finish_step()
+      set_idle_render_planes()
     end
   elseif obs_pending then
     finish_obs(obs_pending)

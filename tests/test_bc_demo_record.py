@@ -53,6 +53,33 @@ def test_partition_samples_assigns_segments(tmp_path: Path) -> None:
     assert partitioned["seg_002"][0].shape[0] == 0
 
 
+def test_partition_samples_clears_stack_at_segment_start(tmp_path: Path) -> None:
+    obs_a = tmp_path / "a.raw"
+    obs_c = tmp_path / "c.raw"
+    obs_a.write_bytes(np.full(OBS_RAW_BYTES, 200, dtype=np.uint8).tobytes())
+    obs_c.write_bytes(np.full(OBS_RAW_BYTES, 50, dtype=np.uint8).tobytes())
+    rows = [
+        SampleRow(frame=10, obs_path=obs_a),
+        SampleRow(frame=30, obs_path=obs_c),
+    ]
+    segments = [
+        {"id": "seg_001", "frame_start": 10, "frame_end": 20},
+        {"id": "seg_002", "frame_start": 30, "frame_end": 40},
+    ]
+    partitioned = _partition_samples(
+        rows,
+        segments=segments,
+        human_by_frame={10: "", 30: "left"},
+        action_strings=["", "left", "right"],
+        frame_skip=4,
+    )
+    obs2, actions2 = partitioned["seg_002"]
+    assert obs2.shape[0] == 1
+    assert actions2[0] == 1
+    expected = 50.0 / 255.0
+    assert np.allclose(obs2[0], expected, atol=1e-5)
+
+
 def test_load_sample_rows(tmp_path: Path) -> None:
     path = tmp_path / "samples.jsonl"
     path.write_text(

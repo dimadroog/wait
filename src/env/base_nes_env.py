@@ -84,6 +84,7 @@ class BaseNesEnv(gym.Env):
         session_id: str = "default",
         show_window: bool = False,
         fm2_template: str | Path | None = None,
+        obs_format: str | None = None,
         death_mode: str = DEATH_MODE_LIFE_LOST,
         death_confirm_steps: int = DEFAULT_DEATH_CONFIRM_STEPS,
     ) -> None:
@@ -106,6 +107,7 @@ class BaseNesEnv(gym.Env):
         self.session_id = session_id
         self.show_window = show_window
         self.fm2_template = Path(fm2_template) if fm2_template else None
+        self.obs_format = obs_format
 
         self.observation_space = gym.spaces.Box(0.0, 1.0, OBS_SHAPE, dtype=np.float32)
         self.action_space = gym.spaces.Discrete(len(self.action_strings))
@@ -147,6 +149,7 @@ class BaseNesEnv(gym.Env):
                 session_id=self.session_id,
                 show_window=self.show_window,
                 fm2_template=self.fm2_template,
+                obs_format=self.obs_format,
             )
         return self._bridge
 
