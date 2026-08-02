@@ -23,6 +23,9 @@
 | Пересобрать save states из `head_save_states` | [`build_playthrough.py --states-only`](#build_playthroughpy) |
 | Demos с реальными obs (BC) | [`record_demos.py`](#record_demospy) |
 | PNG-превью BC-демо | [`preview_demos.py`](#preview_demospy) |
+| Диагностика BC open-loop vs closed-loop | [`bc_open_loop_eval.py`](#bc_open_loop_evalpy) |
+| BC open-loop watch в FCEUX (max match) | [`bc_open_loop_watch.py`](#bc_open_loop_watchpy) |
+| Сравнить NPZ obs vs live env | [`bc_obs_compare.py`](#bc_obs_comparepy) |
 | Smoke после правок bridge/env | [`run_smoke.py`](#run_smokepy) |
 | Обучение PPO | [`train_local.sh`](#train_localsh) → [`train_ppo.py`](#train_ppopy) |
 | Inference pool (N + playlist) или live (до Ctrl+C) | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
@@ -37,6 +40,9 @@
 
 | Скрипт | Назначение |
 | ------ | ---------- |
+| [`bc_obs_compare.py`](#bc_obs_comparepy) | NPZ vs live env obs diff на human-траектории |
+| [`bc_open_loop_eval.py`](#bc_open_loop_evalpy) | BC transfer diagnostic: open-loop + closed-loop match |
+| [`bc_open_loop_watch.py`](#bc_open_loop_watchpy) | BC open-loop watch: FCEUX + pred vs human |
 | [`bench_parallel_step.py`](#bench_parallel_steppy) | Быстрый замер latency parallel step (4 env, без CLI) |
 | [`benchmark_bridge.py`](#benchmark_bridgepy) | Benchmark IPC bridge → `tmp/bench/` |
 | [`benchmark_train.py`](#benchmark_trainpy) | E2E PPO benchmark → `tmp/bench/` |
@@ -227,6 +233,78 @@ PNG-превью и приёмка BC (`--check` → exit 1 при провал�
 | `--grid-cols` | сторона сетки `grid.png` (default 5 → 5×5) |
 | `--tile-px` | размер плитки в сетке (default 112) |
 | `--check` | exit 1 если quality gate не пройден |
+
+---
+
+### `bc_obs_compare.py`
+
+Побайтовое сравнение obs из `demos_for_bc/seg_*.npz` и live env на human-траектории. Отчёт → `tmp/bench/bc_obs_compare/`.
+
+```bash
+./.venv/Scripts/python.exe scripts/bc_obs_compare.py \
+  --game rushn_attack --mission m1 \
+  --model tmp/bench/bc_sanity_overfit/bc_sanity_overfit.zip
+```
+
+---
+
+### `bc_open_loop_eval.py`
+
+Диагностика переноса BC: greedy open-loop match на human-траектории (FCEUX) и/или closed-loop сравнение с `inference_inputs.jsonl`. Отчёты → `tmp/bench/…`.
+
+```bash
+./.venv/Scripts/python.exe scripts/bc_open_loop_eval.py \
+  --game rushn_attack --mission m1 \
+  --model tmp/bench/bc_sanity_overfit/bc_sanity_overfit.zip \
+  --closed-loop-logs games/rushn_attack/missions/m1/logs/bc_sanity_overfit/inference_inputs.jsonl \
+  --out tmp/bench/bc_open_loop_overfit
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--model` | путь к `.zip` (обязателен без `--no-fceux`) |
+| `--frame-start` / `--frame-end` | диапазон decision-кадров (default 1034–1300) |
+| `--attack-window` | окно атаки `START-END` (default `1195-1210`) |
+| `--closed-loop-logs` | `inference_inputs.jsonl` для closed-loop без FCEUX |
+| `--no-fceux` | только closed-loop часть |
+| `--segment` | NPZ-сегмент для offline baseline (default `seg_002`) |
+| `--out` | каталог отчётов (default `tmp/bench/bc_open_loop`) |
+| `--run-label` | метка в `bc_transfer_verdict.md` |
+
+Ядро: `src/bc_open_loop_eval.py`.
+
+---
+
+### `bc_open_loop_watch.py`
+
+BC open-loop **watch**: human ведёт gameplay в окне FCEUX, в консоли greedy pred vs human (`OK`/`MISS`). Максимальное соответствие BC в gameplay (~80% live); не `run_inference` (closed-loop).
+
+```bash
+./.venv/Scripts/python.exe scripts/bc_open_loop_watch.py \
+  --game rushn_attack --mission m1 \
+  --model tmp/bench/bc_sanity_overfit/bc_sanity_overfit.zip
+```
+
+Короткий прогон (attack-window):
+
+```bash
+./.venv/Scripts/python.exe scripts/bc_open_loop_watch.py \
+  --game rushn_attack --mission m1 \
+  --model tmp/bench/bc_sanity_overfit/bc_sanity_overfit.zip \
+  --frame-start 1180 --frame-end 1230
+```
+
+| Флаг | Описание |
+| ---- | -------- |
+| `--model` | путь к BC `.zip` (обязателен) |
+| `--frame-start` / `--frame-end` | диапазон (default 1034–1300) |
+| `--frame-skip` | decision cadence (default 4) |
+| `--attack-window` | окно атаки для метки `attack` в логе |
+| `--save-state` | default `save_states/cp_gameplay0.fc0` |
+| `--no-window` | headless (быстрая проверка без окна) |
+| `--realtime` | без turbo (медленно, каждый NES-кадр) |
+
+Turbo **включён** по умолчанию. Без NPZ offline / отчётов — только watch.
 
 ---
 

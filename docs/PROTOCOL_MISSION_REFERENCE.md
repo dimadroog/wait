@@ -270,7 +270,7 @@ Smoke **не заменяет** G1: проходит при «почти пра�
   --game <game_id> --mission <mission_id>
 ```
 
-### H2. Визуальная приёмка (обязательно перед BC)
+### H2. Визуальная приёмка демо (обязательно перед BC)
 
 ```bash
 ./.venv/Scripts/python.exe scripts/preview_demos.py \
@@ -278,6 +278,96 @@ Smoke **не заменяет** G1: проходит при «почти пра�
 ```
 
 `--check` завершается с exit 1, если quality gate не пройден (чёрные/shell-кадры, низкий `gameplay_fraction` на gameplay-сегментах).
+
+### H3. Приёмка BC transfer (обязательно перед `--bc-epochs` в train)
+
+Проверяет, что демо **переносятся** в live env (obs + greedy pred на human-траектории), а не только учатся offline на NPZ.  
+Артефакты диагностики — в `tmp/bench/…` ([гигиена артефактов](DESIGN.md)); в `games/…/logs/` пишется только явный inference.
+
+**Когда перезапускать H3 целиком:** смена `clear.fm2`, якорей (фаза E), пересъём демо (H1), правки `bridge.lua` / `demos_for_bc.lua` / `bc_demo_record`.
+
+#### H3.1. Согласованность obs: NPZ vs live
+
+```bash
+./.venv/Scripts/python.exe scripts/bc_obs_compare.py \
+  --game <game_id> --mission <mission_id> \
+  --segment seg_002 --out tmp/bench/bc_obs_compare
+```
+
+| Метрика | Порог приёмки | Провал означает |
+| ------- | ------------- | --------------- |
+| `mean_match_frac` (пиксели &lt; 1/255) | **≥ 0.99** | obs в env ≠ записанные демо |
+| `first_diverge_frame` | **отсутствует** (MAE ≤ 0.01 на всех decision-кадрах) | рассинхрон pipeline на конкретном кадре |
+
+При провале — чинить pipeline (gd/raw, render planes, `frame_deque`, frame drift), **не** увеличивать `--bc-epochs`.
+
+#### H3.2. BC probe (warm-start, не overfit)
+
+```bash
+./.venv/Scripts/python.exe src/train/train_ppo.py \
+  --game <game_id> --mission <mission_id> \
+  --model-out tmp/bench/bc_probe/model.zip \
+  --timesteps 0 --bc-epochs 5 --overwrite-model-out
+```
+
+Смотреть строку `BC demo match` в логе:
+
+| Метрика | Порог приёмки | Комментарий |
+| ------- | ------------- | ----------- |
+| Offline match (все сегменты) | **60–75%** | цель warm-start перед PPO 1M |
+| Offline match | **&lt; 55%** | провал: данные / masked targets / head assignment |
+| Offline match | **≥ 95%** при `--bc-epochs ≤ 10` | не цель train; только диагностика «BC_CAN_LEARN» (`--timesteps 0`, больше эпох) |
+
+Для production train на 1M: **`--bc-epochs 5`** (канон); **10** — если probe &lt; 55%. Больше 10 эпох перед полным PPO не использовать.
+
+#### H3.3. Open-loop live transfer (главный критерий gameplay)
+
+Human-траектория в FCEUX, greedy pred сравнивается с human (модель **не** управляет env):
+
+```bash
+./.venv/Scripts/python.exe scripts/bc_open_loop_eval.py \
+  --game <game_id> --mission <mission_id> \
+  --model tmp/bench/bc_probe/model.zip \
+  --out tmp/bench/bc_open_loop_probe
+```
+
+Визуальный просмотр (тот же human path, OK/MISS в консоли):
+
+```bash
+./.venv/Scripts/python.exe scripts/bc_open_loop_watch.py \
+  --game <game_id> --mission <mission_id> \
+  --model tmp/bench/bc_probe/model.zip
+```
+
+Диапазон по умолчанию: gameplay-сегмент `seg_002`, кадры **1034–1300** (decision cadence `frame_skip=4`), reset `cp_gameplay0`.
+
+| Метрика | Порог приёмки | Провал означает |
+| ------- | ------------- | --------------- |
+| Open-loop match (все decision-кадры) | **≥ 75%** | слабый transfer на human path |
+| Match на действии B | **≥ 60%** | attack-кадры не переносятся |
+| Attack-window B (кадры 1195–1210) | **100%** желательно; **&lt; 50%** — провал | фаза/голова или timing |
+| Вердикт `PHASE_BUG` | **запрещён** | intro/title голова на attack-window |
+| NPZ offline ≥ 80% **и** live open-loop &lt; 60% | **провал** (`OBS_PIPELINE_MISMATCH`) | учим одно, inference видит другое |
+
+Отчёт: `bc_transfer_verdict.md` в `--out`. Exit code eval-скрипта не блокирует train — решение по таблице выше.
+
+#### H3.4. Что **не** является приёмкой BC
+
+| Сценарий | Почему не критерий |
+| -------- | ------------------ |
+| `run_inference` pool / `--live` (closed-loop) | агент играет сам; trajectory drift, не match с демо |
+| Offline overfit ≥ 95% | подтверждает, что BC *может* учить, но не гарантирует transfer и усиливает noop-bias |
+| `run_smoke` | не проверяет BC и кадры демо |
+
+Closed-loop inference — отдельная метрика **после** train (noop_frac, max_cp), не gate для H3.
+
+#### H3.5. Чеклист перед `train_ppo --bc-epochs`
+
+- [ ] H2: `preview_demos --check` → exit 0  
+- [ ] H3.1: obs NPZ vs live → `mean_match_frac ≥ 0.99`  
+- [ ] H3.2: BC probe 5 ep → offline match 60–75%  
+- [ ] H3.3: open-loop live → match ≥ 75%, B ≥ 60%, нет `PHASE_BUG` / `OBS_PIPELINE_MISMATCH`  
+- [ ] Контроль: тот же бюджет с `--no-bc` (ablation) — иначе неясно, помог BC или навредил  
 
 ---
 
@@ -294,8 +384,9 @@ Smoke **не заменяет** G1: проходит при «почти пра�
 | Jsonl | `reference/human_playthrough.jsonl` | F1 |
 | Save states | `save_states/cp_*.fc0` | F1 |
 | Demos BC | `reference/demos_for_bc/seg_*.npz` | H1 (+ приёмка H2) |
+| BC transfer отчёты | `tmp/bench/bc_obs_compare/`, `tmp/bench/bc_open_loop_*` | H3 (диагностика) |
 
-После **C1 → D → E → E′ → F → G** среда готова к `train_ppo` и `run_inference` (reset = `cp_gameplay0`).
+После **C1 → D → E → E′ → F → G → H (H1–H3)** среда готова к `train_ppo --bc-epochs` и `run_inference` (reset = `cp_gameplay0`).
 
 ---
 
@@ -311,7 +402,10 @@ Smoke **не заменяет** G1: проходит при «почти пра�
 | `route_triggers.yaml` missing | Пропущен E′ | `compile_route_triggers.py` |
 | RAM в `routes.yaml` до FM2 | Смешение логики и эмпирики | B2: только anchor; RAM → E′ |
 | Scout `x`/`y` сдвинуты на байт | Слепо доверили auto-resolve | D3, правка `ram_resolve.json` |
-| BC не учится | Демо не прошли quality gate / не пересобраны после смены FM2 | H1 + `preview_demos --check` |
+| BC не учится (offline &lt; 55%) | Демо не прошли quality gate / не пересобраны после смены FM2 | H1 + `preview_demos --check` |
+| NPZ 95%, live open-loop ~50% | Рассинхрон obs pipeline (gd/raw, render, frame drift) | H3.1 + H3.3; чинить bridge, не эпохи BC |
+| Open-loop B = 0% при высоком offline | Неверная голова на attack-window / phase bug | H3.3 вердикт `PHASE_BUG` |
+| BC probe OK, closed-loop noop | Нормально для H3; closed-loop — после PPO, не gate BC | H3.4; смотреть train/inference отдельно |
 | Рассинхрон jsonl и FM2 | Обновили только `.fc0` | Полный F1 от текущего `clear.fm2` |
 
 **Важно:** save states сами по себе **не генерируют** jsonl и не доказывают правильность якорей — источник правды всегда **текущий** `clear.fm2` и цепочка **D → E → E′ → F**, с проверкой **G1** до smoke и train.
@@ -330,7 +424,9 @@ flowchart TD
   Eprime --> F[build_playthrough F]
   F --> G[Проверка .fc0 G1]
   G --> G2[run_smoke G2]
-  G2 --> H[record_demos + preview --check]
+  G2 --> H[record_demos H1-H2]
+  H --> H3[BC transfer H3.1-H3.3]
+  H3 --> Train[train_ppo --bc-epochs]
 ```
 
 **Запрещённый путь:** B3 с кадрами из git → F → «что-то не так» → git restore.
