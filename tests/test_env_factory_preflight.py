@@ -70,5 +70,4 @@ def test_kill_orphan_runs_fceux_and_python_cleanup() -> None:
     assert "bridge.lua" in fceux_script
     assert "tmp" in fceux_script and "bridge" in fceux_script
     assert "$me = 4242" in python_script
-    assert "benchmark_train.py" in python_script
     assert "train_ppo.py" in python_script

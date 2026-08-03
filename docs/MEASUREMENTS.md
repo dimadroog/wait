@@ -1,6 +1,6 @@
 # Замеры производительности train
 
-Сводка метрик bridge IPC и end-to-end PPO. Источники: этапы **1.5–1.9** BACKLOG, прогоны `scripts/benchmark_bridge.py` и `scripts/benchmark_train.py`. CLI — [SCRIPTS.md](SCRIPTS.md) (только актуальные флаги train/inference).
+Сводка метрик bridge IPC и исторические e2e-замеры. Источники: этапы **1.5–1.9** BACKLOG, прогоны `scripts/benchmark_bridge.py`. Скрипты `benchmark_train.py`, `stress_e2e_gate.py`, `parse_train_rollouts.py` **удалены** (2026-08); таблицы ниже — архив кампаний. CLI train — [SCRIPTS.md](SCRIPTS.md).
 
 **Эталон для финального прогона [5.0]:** вердикт **1.9** (2026-07-09) — без регрессии по e2e и bridge.
 
@@ -18,7 +18,7 @@
 | Типичный `ep_len_mean` | ≈2 при `death_mode=life_lost`; при default **`game_over`** (H3) — длиннее (бюджет жизней) |
 | JSON-отчёты | `tmp/bench/` (gitignored, локально) |
 
-Команды воспроизведения — [benchmark_bridge.py](SCRIPTS.md#benchmark_bridgepy), [benchmark_train.py](SCRIPTS.md#benchmark_trainpy).
+Команды воспроизведения bridge — [benchmark_bridge.py](SCRIPTS.md#benchmark_bridgepy).
 
 ---
 
@@ -140,7 +140,7 @@
 **Команда (оба прогона):**
 
 ```bash
-./.venv/Scripts/python.exe src/train/train_ppo.py --smoke --timesteps 4096 --no-bc \
+./.venv/Scripts/python.exe src/train/train_ppo.py --smoke --timesteps 4096 --bc-epochs 0 \
   --smoke-session h2_cmp_n{N} --n-envs {4|6}
 ```
 
@@ -232,31 +232,32 @@ JSONL: `tmp/bench/fps_r6_ab_n{4,6,8}/rollouts.jsonl`, `tmp/bench/fps_r6_20260717
 
 Ожидание: I/O latest ≈÷5 → вклад wall ~3–4% вместо ~18% (без отдельного long re-bench).
 
-### H4 — FCEUX recycle (2026-07-18)
+### H4 — FCEUX recycle (2026-07-18, архив)
 
-**Код:** `--recycle-every-timesteps N` — segmented learn: `close` vec → `cleanup_bridge_sessions('train_')` → `build_vec_env` → `model.set_env` → следующий chunk. Default **`0` (off)**.  
-**Ops (без флага):** между длинными сессиями — `train_preflight` + **continue** того же `--model-out` (без `--model-in`); `models/latest.zip` — зеркало по `--latest-every`.  
-**R6.2:** при `n_envs=6` деградации mid-session не было (`wall_late/early=0.28`) — recycle нужен, если wall растёт при стабильной RAM.
+**Код (удалён 2026-08):** `--recycle-every-timesteps N` — segmented learn.  
+**Ops сейчас:** короткие сессии + **continue** того же `--model-out`; при деградации — `--rollback` или ручной preflight между сессиями.  
+**R6.2:** при `n_envs=6` деградации mid-session не было (`wall_late/early=0.28`).
 
-### H6 — лимит сессии (2026-07-18)
+### H6 — лимит сессии (2026-07-18, архив)
 
-**Код:** `--session-wall-timeout SEC` (default `0`=off) → abort + save; продолжить **continue** того же `--model-out`.  
-**Рекомендации i7-3770 / 16 GB:**
+**Код (удалён 2026-08):** `--session-wall-timeout SEC`.  
+**Рекомендации i7-3770 / 16 GB (актуально):**
 
 | Ситуация | Практика |
 | -------- | -------- |
 | Длинный train (>2–3 ч) | `train_preflight` перед стартом; при подозрении на H1 — reboot |
 | Gate / benchmark серии | preflight **между** прогонами; 2-й gate подряд без cleanup не эталон |
-| Опц. авто-пауза | `--session-wall-timeout 14400` (4 ч) → continue `model-out` |
-| Mid-session FCEUX stale | `--recycle-every-timesteps 50000` или ручной continue |
+| Опц. авто-пауза | *удалено* (`--session-wall-timeout`; continue через повторный `train_ppo`) |
+| Mid-session FCEUX stale | *удалено* (`--recycle-every-timesteps`; короткие сессии + continue) |
 
-### Закрытие задачи — smoke H3+H4 (2026-07-18)
+### Закрытие задачи — smoke H3+H4 (2026-07-18, архив)
+
+*Флаги `--recycle-every-timesteps`, `--rollout-metrics`, `--no-bc` удалены (2026-08). Команда ниже — историческая.*
 
 ```bash
 ./.venv/Scripts/python.exe src/train/train_ppo.py --smoke \
-  --smoke-session fps_close_h34 --n-envs 2 --timesteps 2048 --no-bc \
-  --death-mode game_over --recycle-every-timesteps 1024 \
-  --learn-stall-timeout 1200 --rollout-metrics --rollout-metrics-session fps_close_h34
+  --smoke-session fps_close_h34 --n-envs 2 --timesteps 2048 --bc-epochs 0 \
+  --death-mode game_over --learn-stall-timeout 1200
 ```
 
 | Метрика | Значение |
@@ -277,11 +278,10 @@ JSONL: `tmp/bench/fps_r6_ab_n{4,6,8}/rollouts.jsonl`, `tmp/bench/fps_r6_20260717
    ./.venv/Scripts/python.exe scripts/benchmark_bridge.py --n-envs 1
    ```
 
-3. E2E gate + steady:
+3. E2E train (вместо удалённого `benchmark_train.py`):
 
    ```bash
-   ./.venv/Scripts/python.exe scripts/benchmark_train.py --mode gate
-   ./.venv/Scripts/python.exe scripts/benchmark_train.py --mode fps
+   ./.venv/Scripts/python.exe src/train/train_ppo.py --n-envs 8 --timesteps 2048
    ```
 
 4. Перенести значения из stdout (или JSON) в колонку **5.0** выше; указать дату и отличия среды, если железо/ОС изменились.
@@ -294,7 +294,7 @@ JSONL: `tmp/bench/fps_r6_ab_n{4,6,8}/rollouts.jsonl`, `tmp/bench/fps_r6_20260717
 
 | Документ | Содержание |
 | -------- | ---------- |
-| [SCRIPTS.md](SCRIPTS.md) | CLI benchmark (`benchmark_bridge`, `benchmark_train`) |
+| [SCRIPTS.md](SCRIPTS.md) | CLI benchmark (`benchmark_bridge`), train (`train_ppo`) |
 | [TASK_FIRST_CAMPAIGN](tasks/archive/TASK_FIRST_CAMPAIGN.md) | Архив этапов 1.5–1.9, вердикты, критерий 5.0 |
 | [TASK_TRAIN_FPS…](tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md) | Done (2026-07-18): H1–H6 remediation, R6 |
 | [DESIGN.md](DESIGN.md) | `tmp/bench/`, карантин артефактов |

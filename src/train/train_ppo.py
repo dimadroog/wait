@@ -30,10 +30,14 @@ from train.checkpointing import (  # noqa: E402
     LatestCheckpointCallback,
     atomic_save_model,
     checkpoint_zip_path,
+    latest_checkpoint_path,
     note_n_envs_change,
     read_sidecar,
     resolve_target_timesteps,
     resolve_train_model_mode,
+    rollback_prev_session,
+    snapshot_prev_session,
+    sidecar_path,
     write_sidecar,
 )
 from train.env_factory import build_vec_env, cleanup_bridge_sessions, require_clean_preflight  # noqa: E402
@@ -49,7 +53,6 @@ from train.phase_heads import (  # noqa: E402
 from train.learn_watchdog import (  # noqa: E402
     DEFAULT_LEARN_STALL_TIMEOUT_S,
     LearnStallError,
-    SessionWallTimeoutError,
     learn_with_stall_watchdog,
 )
 from train.policy_collapse_stop import (  # noqa: E402
@@ -58,8 +61,6 @@ from train.policy_collapse_stop import (  # noqa: E402
 )
 from train.progress_callback import TrainProgressPctCallback  # noqa: E402
 from train.ram_mitigations import RolloutGcCallback, warn_if_n_envs_high_for_ram  # noqa: E402
-from train.recycle import iter_learn_chunks  # noqa: E402
-from train.rollout_metrics import RolloutMetricsCallback  # noqa: E402
 from train.thread_limits import configure_train_threads  # noqa: E402
 
 POLICY_KWARGS = {"normalize_images": False}  # obs уже float [0,1], channel-first (4,84,84)
@@ -107,7 +108,29 @@ _TASK_FIELD_CLI_FLAGS: dict[str, tuple[str, ...]] = {
     "learning_rate": ("--learning-rate",),
     "bc_epochs": ("--bc-epochs",),
     "bc_demo": ("--bc-demo",),
+    "scratch": ("--scratch",),
+    "rollback": ("--rollback",),
 }
+
+
+def validate_cli_combos(args: argparse.Namespace, *, explicit: frozenset[str]) -> None:
+    """Запретить несовместимые комбинации флагов до запуска FCEUX."""
+    if args.rollback:
+        if args.scratch:
+            raise SystemExit("--rollback cannot be combined with --scratch")
+        if args.model_in:
+            raise SystemExit("--rollback cannot be combined with --model-in")
+        if args.smoke:
+            raise SystemExit("--rollback cannot be combined with --smoke")
+        blocked = explicit - {"model_out", "rollback"}
+        if blocked:
+            names = ", ".join(f"--{f.replace('_', '-')}" for f in sorted(blocked))
+            raise SystemExit(f"--rollback: omit train flags ({names})")
+        return
+    if args.scratch and args.model_in:
+        raise SystemExit("--scratch cannot be combined with --model-in")
+    if args.smoke and (args.model_in or args.rollback):
+        raise SystemExit("--smoke cannot be combined with --model-in or --rollback")
 
 
 def cli_explicit_fields(argv: list[str] | None = None) -> frozenset[str]:
@@ -130,25 +153,11 @@ def apply_task_defaults(
     *,
     cli_explicit: frozenset[str] | None = None,
 ) -> None:
-    """Подставить поля task только если CLI их не задал (CLI > task).
-
-    ``checkpoint_in`` / ``checkpoint_out`` — deprecated aliases ``model_in`` / ``model_out``.
-    """
+    """Подставить поля task только если CLI их не задал (CLI > task)."""
     explicit = cli_explicit if cli_explicit is not None else frozenset()
 
-    if task.get("checkpoint_in") and not task.get("model_in"):
-        print(
-            "warning: task checkpoint_in deprecated; use model_in",
-            file=sys.stderr,
-        )
-    if task.get("checkpoint_out") and not task.get("model_out"):
-        print(
-            "warning: task checkpoint_out deprecated; use model_out",
-            file=sys.stderr,
-        )
-
-    model_in = task.get("model_in") or task.get("checkpoint_in")
-    model_out = task.get("model_out") or task.get("checkpoint_out")
+    model_in = task.get("model_in")
+    model_out = task.get("model_out")
 
     def _fill(field: str, value: Any) -> None:
         if field in explicit:
@@ -193,7 +202,6 @@ def _configure_smoke(args: argparse.Namespace, mission: Path) -> str | None:
         if explicit and mission.resolve() in explicit.resolve().parents:
             print(f"smoke: ignore --model-out under mission ({explicit})")
     args.model_out = str(smoke_dir / "model.zip")
-    args.overwrite_model_out = True
     args.no_intermediate_models = True
     args.latest_model = False
     print(f"smoke: session={session} model={args.model_out}")
@@ -245,6 +253,12 @@ def train(args: argparse.Namespace) -> Path:
         model_out.parent.mkdir(parents=True, exist_ok=True)
         target_timesteps = int(args.timesteps)
 
+        validate_cli_combos(args, explicit=explicit)
+
+        if args.rollback:
+            rollback_prev_session(model_out)
+            return checkpoint_zip_path(model_out)
+
         reward_overrides = _reward_overrides_from_task(task)
 
         configure_train_threads(n_envs=args.n_envs, threads=args.threads)
@@ -253,6 +267,15 @@ def train(args: argparse.Namespace) -> Path:
             require_clean_preflight(label="train_ppo")
 
         validate_route_triggers_for_train(mission, args.game)
+
+        model_in = _resolve_model_path(args.model_in, mission)
+        mode = resolve_train_model_mode(
+            model_out,
+            model_in,
+            scratch=bool(args.scratch),
+        )
+        if mode in ("continue", "scratch") and model_out.is_file():
+            snapshot_prev_session(model_out)
 
         vec_env = build_vec_env(
             game_id=args.game,
@@ -266,11 +289,7 @@ def train(args: argparse.Namespace) -> Path:
             death_mode=args.death_mode,
         )
 
-        model_in = _resolve_model_path(args.model_in, mission)
-        overwrite = bool(getattr(args, "overwrite_model_out", False))
-        mode = resolve_train_model_mode(model_out, model_in, overwrite=overwrite)
         continuing = mode == "continue"
-        skip_bc = continuing
         heads_spec = load_policy_heads_spec(args.game)
         if heads_spec:
             print(
@@ -306,6 +325,11 @@ def train(args: argparse.Namespace) -> Path:
 
         if mode == "continue":
             sidecar = read_sidecar(model_out)
+            if sidecar is None:
+                print(
+                    f"warning: continue without sidecar {sidecar_path(model_out).name}; "
+                    f"target_timesteps={target_timesteps} from CLI"
+                )
             if sidecar:
                 note = note_n_envs_change(sidecar, args.n_envs)
                 if note:
@@ -332,6 +356,11 @@ def train(args: argparse.Namespace) -> Path:
             model.learning_rate = args.learning_rate
         elif mode == "from_ancestor":
             assert model_in is not None
+            if "timesteps" in explicit:
+                print(
+                    "from_ancestor: --timesteps is absolute target for the new generation "
+                    "(not added to ancestor steps)"
+                )
             print(f"from_ancestor load {model_in} -> {model_out}")
             model = load_cls.load(str(model_in.with_suffix("")), env=vec_env, device="cpu")
             model = _attach_heads_spec(model)
@@ -375,7 +404,7 @@ def train(args: argparse.Namespace) -> Path:
             )
 
         bc_transitions = 0
-        if not skip_bc and not args.no_bc and args.bc_epochs > 0:
+        if args.bc_epochs > 0:
             demo_paths = resolve_demo_paths(mission, args.bc_demo)
             bc_transitions = bc_pretrain(
                 model,
@@ -386,16 +415,6 @@ def train(args: argparse.Namespace) -> Path:
                 learning_rate=min(args.learning_rate, 1e-4),
                 heads_spec=heads_spec,
             )
-
-        write_sidecar(
-            model_out,
-            target_timesteps=target_timesteps,
-            game=args.game,
-            mission=args.mission,
-            n_envs=args.n_envs,
-            save_state=save_state,
-            num_timesteps=int(model.num_timesteps),
-        )
 
         remaining = target_timesteps - int(model.num_timesteps)
         if remaining <= 0:
@@ -459,7 +478,7 @@ def train(args: argparse.Namespace) -> Path:
                 )
             )
         if args.latest_model:
-            latest = mission / "models" / "latest.zip"
+            latest = latest_checkpoint_path(model_out)
             latest_every = max(int(args.latest_every), 1)
             callbacks.append(
                 LatestCheckpointCallback(latest, every_rollouts=latest_every, verbose=1)
@@ -479,22 +498,7 @@ def train(args: argparse.Namespace) -> Path:
             callbacks.append(
                 TrainProgressPctCallback(progress_target, start_timesteps=progress_start)
             )
-        metrics_path: Path | None = None
-        if args.rollout_metrics:
-            if args.rollout_metrics_path:
-                metrics_path = Path(args.rollout_metrics_path)
-                if not metrics_path.is_absolute():
-                    metrics_path = repo_root() / metrics_path
-            else:
-                session = (args.rollout_metrics_session or "train_fps").strip() or "train_fps"
-                metrics_path = (
-                    artifact_quarantine_dir("bench", session).resolve() / "rollouts.jsonl"
-                )
-            callbacks.append(RolloutMetricsCallback(metrics_path, verbose=1))
-            print(f"rollout metrics -> {metrics_path}")
 
-        recycle_every = max(int(args.recycle_every_timesteps), 0)
-        chunks = iter_learn_chunks(remaining, recycle_every)
         print(
             f"train: game={args.game} mission={args.mission} "
             f"n_envs={args.n_envs} remaining={remaining}/{target_timesteps} "
@@ -504,13 +508,6 @@ def train(args: argparse.Namespace) -> Path:
             f"policy collapse stop: on "
             f"(streak>={DEFAULT_COLLAPSE_STREAK} on dead entropy+approx_kl; see TRAIN_ANALYSIS)"
         )
-        if recycle_every > 0:
-            print(
-                f"H4 recycle: every {recycle_every} timesteps "
-                f"({len(chunks)} chunk(s); close FCEUX + cleanup train_* between)"
-            )
-        if float(args.session_wall_timeout) > 0:
-            print(f"H6 session wall timeout: {args.session_wall_timeout:.0f}s")
 
         callback_list = CallbackList(callbacks) if callbacks else None
 
@@ -518,50 +515,26 @@ def train(args: argparse.Namespace) -> Path:
             learn_failed = False
             abort_reason = "complete"
             try:
-                for chunk_i, chunk in enumerate(chunks):
-                    if interrupt.interrupted:
-                        break
-                    if chunk_i > 0:
-                        print(f"recycle FCEUX before chunk {chunk_i + 1}/{len(chunks)} (+{chunk} steps)")
-                        try:
-                            vec_env.close()
-                        except (EOFError, BrokenPipeError):
-                            pass
-                        cleanup_bridge_sessions("train_")
-                        vec_env = build_vec_env(
-                            game_id=args.game,
-                            mission_id=args.mission,
-                            n_envs=args.n_envs,
-                            save_state=save_state,
-                            reward_profile=args.reward_profile,
-                            reward_overrides=reward_overrides,
-                            turbo=not args.no_turbo,
-                            subproc=not args.dummy_vec,
-                            death_mode=args.death_mode,
-                        )
-                        model.set_env(vec_env)
-                    reset_ts = (not continuing) and chunk_i == 0
+                if interrupt.interrupted:
+                    pass
+                else:
+                    reset_ts = not continuing
                     learn_with_stall_watchdog(
                         model,
                         vec_env,
                         stall_timeout_s=args.learn_stall_timeout,
-                        wall_timeout_s=float(args.session_wall_timeout),
-                        total_timesteps=chunk,
+                        wall_timeout_s=0.0,
+                        total_timesteps=remaining,
                         callback=callback_list,
                         progress_bar=args.progress,
                         reset_num_timesteps=reset_ts,
                     )
                     if collapse_cb.stopped:
                         abort_reason = "policy_collapse"
-                        break
             except LearnStallError as exc:
                 learn_failed = True
                 abort_reason = "stall"
                 print(f"train aborted: {exc}")
-            except SessionWallTimeoutError as exc:
-                learn_failed = True
-                abort_reason = "session_wall"
-                print(f"train paused (H6 session wall): {exc}")
             finally:
                 try:
                     vec_env.close()
@@ -656,15 +629,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="артефакт поколения .zip (default: models/gen0.zip); существует → continue",
     )
     p.add_argument(
-        "--overwrite-model-out",
+        "--scratch",
         action="store_true",
-        help="разрешить заменить существующий model-out (scratch или from_ancestor)",
+        help="пересоздать сеть на существующем model-out (snapshot в .prev перед сессией)",
+    )
+    p.add_argument(
+        "--rollback",
+        action="store_true",
+        help="откатить последний прогон: genN.prev.* → genN.* (без train)",
     )
     p.add_argument(
         "--latest-model",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="писать models/latest.zip (default: on; частота — --latest-every)",
+        help="писать models/{stem}.latest.zip (default: on; частота — --latest-every)",
     )
     p.add_argument(
         "--latest-every",
@@ -673,8 +651,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="latest.zip каждые N rollout (H5 throttle; default 5; 1=каждый)",
     )
     p.add_argument("--bc-demo", default=None, help="reference/demos_for_bc/seg_XXX.npz для BC")
-    p.add_argument("--bc-epochs", type=int, default=0, help="BC epochs (0 = skip)")
-    p.add_argument("--no-bc", action="store_true")
+    p.add_argument("--bc-epochs", type=int, default=0, help="BC epochs (0 = skip; на continue — refresh)")
     p.add_argument("--no-turbo", action="store_true", help="FCEUX без turbo (отладка)")
     p.add_argument("--progress", action="store_true", help="tqdm/rich progress bar (доп. к таблице SB3)")
     p.add_argument(
@@ -705,38 +682,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="abort learn без прогресса timesteps, с (default 300; 0=off)",
     )
     p.add_argument(
-        "--session-wall-timeout",
-        type=float,
-        default=0.0,
-        help="H6: abort learn по wall-clock сессии, с (default 0=off; continue из model zip)",
-    )
-    p.add_argument(
-        "--recycle-every-timesteps",
-        type=int,
-        default=0,
-        help="H4: close FCEUX + cleanup train_* каждые N env-steps (0=off)",
-    )
-    p.add_argument(
         "--rollout-gc",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="gc.collect() после каждого rollout — снижает RAM pressure (H2, default: on)",
-    )
-    p.add_argument(
-        "--rollout-metrics",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="JSONL wall/rollout + RAM snapshot (H2 dual train+measure)",
-    )
-    p.add_argument(
-        "--rollout-metrics-session",
-        default="train_fps",
-        help="подкаталог tmp/bench/<session>/rollouts.jsonl (если нет --rollout-metrics-path)",
-    )
-    p.add_argument(
-        "--rollout-metrics-path",
-        default=None,
-        help="явный путь к rollouts.jsonl (иначе tmp/bench/<session>/)",
     )
     p.add_argument(
         "--skip-preflight",

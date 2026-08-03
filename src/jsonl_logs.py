@@ -34,30 +34,31 @@ def require_consistent_model_version(
         )
 
 
+from project_paths import default_model_zip
+from train.checkpointing import latest_checkpoint_path
+
+
 def resolve_default_model_version(
     mission: Path,
     *,
     model: str | Path | None = None,
     model_version: str | None = None,
 ) -> str:
-    """--model-version → stem(--model) → stem(models/latest.zip); иначе ошибка."""
+    """--model-version → stem(--model) → default genN.zip / genN.latest.zip."""
     require_consistent_model_version(model=model, model_version=model_version)
     if model_version:
         return normalize_model_version(model_version)
     if model is not None:
         return normalize_model_version(model)
-    latest = mission / "models" / "latest.zip"
+    canonical = default_model_zip(mission)
+    if canonical.is_file():
+        return normalize_model_version(canonical)
+    latest = latest_checkpoint_path(canonical)
     if latest.is_file():
-        try:
-            resolved = latest.resolve(strict=False)
-            if resolved.name.lower().endswith(".zip") and resolved.stem != "latest":
-                return normalize_model_version(resolved)
-        except OSError:
-            pass
-        return "latest"
+        return normalize_model_version(canonical)
     raise FileNotFoundError(
         "model_version required: pass --model-version / --model, "
-        f"or create {latest}"
+        f"or create {canonical}"
     )
 
 

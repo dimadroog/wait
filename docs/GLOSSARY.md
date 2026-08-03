@@ -155,7 +155,7 @@
 
 ### Orphan (process)
 
-**Orphan process** (осиротевший процесс) — процесс эмулятора или Python, у которого уже нет живого родителя (сессия обучения или воркер упали, оборвали по Ctrl+C, оборвался `SubprocVecEnv` в [Stable-Baselines3](#sb3)). Типичные примеры: зависший `fceux64.exe` с `bridge.lua` или сессией в `tmp/bridge/`, зависший `python` от `train_ppo.py`, `benchmark_train.py`, `stress_e2e_gate.py` и т.п.
+**Orphan process** (осиротевший процесс) — процесс эмулятора или Python, у которого уже нет живого родителя (сессия обучения или воркер упали, оборвали по Ctrl+C, оборвался `SubprocVecEnv` в [Stable-Baselines3](#sb3)). Типичные примеры: зависший `fceux64.exe` с `bridge.lua` или сессией в `tmp/bridge/`, зависший `python` от `train_ppo.py` и т.п.
 
 Их снимает `kill_orphan_fceux_bridge()` внутри `cleanup_bridge_sessions()` в `src/train/env_factory.py`.
 
@@ -257,7 +257,7 @@ Shell-раунд **не** перезаписывает scout и `ram_resolve` м
 
 Как читать поля, какую динамику ждать и когда **останавливать** прогон: **[TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md)**.
 
-Кратко: два потока — таблица [Stable-Baselines3](#sb3) (всегда при `learn`) и опционально строка `rollout_metrics:` (`--rollout-metrics`). Поле `fps` в таблице — не [FPS](#fps) видео, а кумулятивные [env-step](#env-step) / [wall-clock](#wall-clock); для просадки скорости смотрите `rate` / `wall` в [TRAIN_ANALYSIS](TRAIN_ANALYSIS.md) и [MEASUREMENTS § R6](MEASUREMENTS.md#r6-dual-trainmeasure).
+Кратко: таблица [Stable-Baselines3](#sb3) при `learn` (`verbose=1` + `progress_pct`). Поле `fps` в таблице — не [FPS](#fps) видео, а кумулятивные [env-step](#env-step) / [wall-clock](#wall-clock). Исторические dual-train замеры — [MEASUREMENTS.md](MEASUREMENTS.md) (архив).
 
 ### TAS
 
@@ -289,7 +289,11 @@ Shell-раунд **не** перезаписывает scout и `ram_resolve` м
 
 Не путать с `n_epochs` у [PPO](#ppo) / [Stable-Baselines3](#sb3): там это число проходов по **буферу одного [rollout](#rollout)** при обновлении политики, а не по демо человека.
 
-Если `--bc-epochs > 0`, нет `--no-bc` и есть `seg_*.npz` с реальными кадрами, `bc_pretrain` несколько эпох минимизирует CrossEntropy по выходам актора **соответствующей головы** (для multi-head: `save_state` сегмента в `playthrough_manifest` → ключ в `head_save_states`, опционально `bc_head` в сегменте), затем стартует обычный PPO. При **continue** того же `model-out` (добор поколения) ветка клонирования пропускается; при **from_ancestor** / **scratch** BC выполняется по флагам.
+Если `--bc-epochs > 0` и есть `seg_*.npz` с реальными кадрами, `bc_pretrain` несколько эпох минимизирует CrossEntropy по выходам актора **соответствующей головы** (для multi-head: `save_state` сегмента в `playthrough_manifest` → ключ в `head_save_states`, опционально `bc_head` в сегменте), затем стартует обычный PPO. На **continue** того же `model-out` BC выполняется при `--bc-epochs > 0` (refresh сессии); при `--bc-epochs 0` (default) — пропуск.
+
+### Снимок сессии
+
+**Снимок сессии** — перед каждым train на существующем `models/genN.zip` (continue или `--scratch`) каркас копирует `genN.zip` и `genN.train.json` в **`genN.prev.zip`** / **`genN.prev.train.json`** (один уровень). Откат: `train_ppo --rollback --model-out models/genN.zip`. Не путать с `models/runs/` (промежуточные чекпоинты по шагам) и `models/genN.latest.zip` (зеркало во время learn).
 
 ### Эталон
 

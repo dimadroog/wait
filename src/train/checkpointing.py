@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import signal
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,20 @@ def checkpoint_zip_path(path: Path) -> Path:
 def sidecar_path(checkpoint: Path) -> Path:
     z = checkpoint_zip_path(checkpoint)
     return z.with_suffix(".train.json")
+
+
+def prev_checkpoint_path(checkpoint: Path) -> Path:
+    z = checkpoint_zip_path(checkpoint)
+    return z.with_name(f"{z.stem}.prev.zip")
+
+
+def prev_sidecar_path(checkpoint: Path) -> Path:
+    return prev_checkpoint_path(checkpoint).with_suffix(".train.json")
+
+
+def latest_checkpoint_path(checkpoint: Path) -> Path:
+    z = checkpoint_zip_path(checkpoint)
+    return z.with_name(f"{z.stem}.latest.zip")
 
 
 def read_sidecar(checkpoint: Path) -> dict[str, Any] | None:
@@ -81,11 +96,47 @@ def _paths_same_zip(a: Path, b: Path) -> bool:
     return checkpoint_zip_path(a).resolve() == checkpoint_zip_path(b).resolve()
 
 
+def snapshot_prev_session(checkpoint: Path) -> Path | None:
+    """Сохранить текущий genN.* в genN.prev.* перед сессией; None если zip не было."""
+    src = checkpoint_zip_path(checkpoint)
+    if not src.is_file():
+        return None
+    dst = prev_checkpoint_path(checkpoint)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    side = sidecar_path(checkpoint)
+    prev_side = prev_sidecar_path(checkpoint)
+    if side.is_file():
+        shutil.copy2(side, prev_side)
+    elif prev_side.is_file():
+        prev_side.unlink()
+    print(f"session snapshot -> {dst.name}")
+    return dst
+
+
+def rollback_prev_session(checkpoint: Path) -> Path:
+    """Восстановить genN.prev.* → genN.* (zip + sidecar)."""
+    prev = prev_checkpoint_path(checkpoint)
+    if not prev.is_file():
+        raise SystemExit(f"no previous session snapshot: {prev}")
+    out = checkpoint_zip_path(checkpoint)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(prev, out)
+    prev_side = prev_sidecar_path(checkpoint)
+    side = sidecar_path(checkpoint)
+    if prev_side.is_file():
+        shutil.copy2(prev_side, side)
+    elif side.is_file():
+        side.unlink()
+    print(f"rollback {prev.name} -> {out.name}")
+    return out
+
+
 def resolve_train_model_mode(
     model_out: Path,
     model_in: Path | None,
     *,
-    overwrite: bool = False,
+    scratch: bool = False,
 ) -> TrainModelMode:
     """Выбрать continue / from_ancestor / scratch или SystemExit при опасной комбинации.
 
@@ -105,19 +156,18 @@ def resolve_train_model_mode(
                 f"model-in and model-out are the same file ({out}). "
                 "Omit --model-in to continue this generation."
             )
-        if out_exists and not overwrite:
+        if out_exists:
             raise SystemExit(
                 f"model-out already exists: {out}. "
-                "Omit --model-in to continue, choose another --model-out, "
-                "or pass --overwrite-model-out to replace from --model-in."
+                "Omit --model-in to continue, or choose another --model-out."
             )
         return "from_ancestor"
 
-    if out_exists and not overwrite:
-        return "continue"
-
-    if out_exists and overwrite:
+    if out_exists and scratch:
         return "scratch"
+
+    if out_exists:
+        return "continue"
 
     return "scratch"
 
@@ -173,7 +223,7 @@ def atomic_save_model(model: PPO, checkpoint: Path) -> Path:
 
 
 class LatestCheckpointCallback(BaseCallback):
-    """on_rollout_end → models/latest.zip с throttling (H5).
+    """on_rollout_end → models/{stem}.latest.zip с throttling (H5).
 
     `every_rollouts=1` — каждый rollout (старое поведение).
     `every_rollouts=N` — каждый N-й (default train: 5 ≈ −15% wall vs каждый).

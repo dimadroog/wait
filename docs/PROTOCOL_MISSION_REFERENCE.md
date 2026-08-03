@@ -307,7 +307,7 @@ Smoke **не заменяет** G1: проходит при «почти пра�
 ./.venv/Scripts/python.exe src/train/train_ppo.py \
   --game <game_id> --mission <mission_id> \
   --model-out tmp/bench/bc_probe/model.zip \
-  --timesteps 0 --bc-epochs 5 --overwrite-model-out
+  --timesteps 0 --bc-epochs 5 --scratch --model-out tmp/bench/bc_probe/model.zip
 ```
 
 Смотреть строку `BC demo match` в логе:
@@ -367,7 +367,7 @@ Closed-loop inference — отдельная метрика **после** train
 - [ ] H3.1: obs NPZ vs live → `mean_match_frac ≥ 0.99`  
 - [ ] H3.2: BC probe 5 ep → offline match 60–75%  
 - [ ] H3.3: open-loop live → match ≥ 75%, B ≥ 60%, нет `PHASE_BUG` / `OBS_PIPELINE_MISMATCH`  
-- [ ] Контроль: тот же бюджет с `--no-bc` (ablation) — иначе неясно, помог BC или навредил  
+- [ ] Контроль: тот же бюджет с `--bc-epochs 0` (ablation) — иначе неясно, помог BC или навредил  
 
 ---
 

@@ -31,8 +31,7 @@
 | Inference pool (N + playlist) или live (до Ctrl+C) | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
 | Короткий editorial + board | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) |
 | Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
-| Benchmark bridge / e2e train | [`benchmark_bridge.py`](#benchmark_bridgepy), [`benchmark_train.py`](#benchmark_trainpy) |
-| Разбор `rollouts.jsonl` | [`parse_train_rollouts.py`](#parse_train_rolloutspy) |
+| Benchmark bridge IPC | [`benchmark_bridge.py`](#benchmark_bridgepy) |
 
 ---
 
@@ -43,9 +42,7 @@
 | [`bc_obs_compare.py`](#bc_obs_comparepy) | NPZ vs live env obs diff на human-траектории |
 | [`bc_open_loop_eval.py`](#bc_open_loop_evalpy) | BC transfer diagnostic: open-loop + closed-loop match |
 | [`bc_open_loop_watch.py`](#bc_open_loop_watchpy) | BC open-loop watch: FCEUX + pred vs human |
-| [`bench_parallel_step.py`](#bench_parallel_steppy) | Быстрый замер latency parallel step (4 env, без CLI) |
 | [`benchmark_bridge.py`](#benchmark_bridgepy) | Benchmark IPC bridge → `tmp/bench/` |
-| [`benchmark_train.py`](#benchmark_trainpy) | E2E PPO benchmark → `tmp/bench/` |
 | [`build_broadcast_board.py`](#build_broadcast_boardpy) | JSON табло эфира (gen + дельта) |
 | [`build_playlist.py`](#build_playlistpy) | FM2-плейлист / короткий editorial |
 | [`compile_route_triggers.py`](#compile_route_triggerspy) | RAM-триггеры CP: `routes.yaml` anchor → `route_triggers.yaml` |
@@ -55,9 +52,6 @@
 | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) | Editorial + board + шаги оператора |
 | [`inference_local.sh`](#inference_localsh) | Фасад: preflight → `run_inference` |
 | [`inference_preflight.py`](#inference_preflightpy) | Очистка перед inference / playback |
-| [`parse_train_rollouts.py`](#parse_train_rolloutspy) | Сводка `rollouts.jsonl` |
-| [`play_fm2_gui.py`](#play_fm2_guipy) | GUI replay одного FM2 (отладка) |
-| [`play_inference_fm2.py`](#play_inference_fm2py) | Replay FM2 или `playlist.json` |
 | [`ram_scout.py`](#ram_scoutpy) | RAM scout: shell (`games/…/reference/`) или mission clear |
 | [`preview_demos.py`](#preview_demospy) | PNG-превью `demos_for_bc` → `tmp/demos_for_bc/` |
 | [`record_demos.py`](#record_demospy) | FM2-synced BC demos (`-playmovie`) |
@@ -66,10 +60,7 @@
 | [`setup_venv.ps1`](#setup_venvps1) | Создать `.venv`, `requirements.txt` |
 | [`smoke_bridge.py`](#smoke_bridgepy) | Smoke IPC bridge |
 | [`smoke_env.py`](#smoke_envpy) | Smoke Gymnasium env |
-| [`stress_e2e_gate.py`](#stress_e2e_gatepy) | Длительный IPC/gate stress |
-| [`stress_parallel_reset.py`](#stress_parallel_resetpy) | Короткий parallel reset stress (устаревший относительно gate) |
 | [`test_parallel_env.py`](#test_parallel_envpy) | Parallel vec step + reset |
-| [`train_fps_round_prep.py`](#train_fps_round_preppy) | Prep `models/gen0` для fps-раунда |
 | [`train_local.sh`](#train_localsh) | Фасад: preflight → `train_ppo` (`--n-envs 6`) |
 | [`train_preflight.py`](#train_preflightpy) | Очистка перед train |
 | [`verify_env.py`](#verify_envpy) | Проверка импортов ML-стека |
@@ -310,17 +301,16 @@ Turbo **включён** по умолчанию. Без NPZ offline / отчё�
 
 ### `run_smoke.py`
 
-Единый smoke после правок bridge/env. Subprocess: `smoke_bridge`, `smoke_env --steps 20`, `test_parallel_env`, опц. `stress_e2e_gate --quick`. Exit 0/1; cleanup quarantine в `finally`.
+Единый smoke после правок bridge/env. Subprocess: `smoke_bridge`, `smoke_env --steps 20`, `test_parallel_env`. Exit 0/1; cleanup quarantine в `finally`.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/run_smoke.py
 ./.venv/Scripts/python.exe scripts/run_smoke.py --suite bridge,env,parallel
-./.venv/Scripts/python.exe scripts/run_smoke.py --suite stress
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `--suite` | `bridge`, `env`, `parallel`, `stress` (default — первые три) |
+| `--suite` | `bridge`, `env`, `parallel` (default — все три) |
 
 Pytest-аналог: `pytest tests/smoke/` (не часть этого каталога).
 
@@ -373,40 +363,6 @@ Random agent / короткий env smoke. `--log` пишет в `games/.../logs
 
 ---
 
-### `stress_e2e_gate.py`
-
-Пять фаз gate-shaped stress (без полного `benchmark_train`). Детали расследования — [ISSUE_FALL.md](tasks/archive/ISSUE_FALL.md).
-
-```bash
-./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --quick
-./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --full
-./.venv/Scripts/python.exe scripts/stress_e2e_gate.py --phase vec_rollout_2 --full
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--quick` / `--full` | глубина rollout (default quick) |
-| `--phase` | `bridge_parallel`, `vec_rollout_1`, `ppo_spike`, `ppo_spike_with_vec`, `vec_rollout_2` |
-| `--n-envs` | default 8 |
-| `--cycles` | vec steps (override quick/full) |
-| `--bridge-steps` | STEP-only на env в `bridge_parallel` |
-| `--batch-size`, `--n-epochs`, `--threads` | фаза `ppo_spike` |
-| `--fail-fast` / `--no-fail-fast` | (default fail-fast on) |
-| `--json-out` | default `tmp/smoke/stress_e2e/report.json` |
-| `--save-state`, `--frame-skip`, `--game`, `--mission` | |
-
----
-
-### `stress_parallel_reset.py`
-
-Короткий stress: 4 env, ~90 s auto-reset. Ужее, чем `stress_e2e_gate`. CLI нет.
-
-```bash
-./.venv/Scripts/python.exe scripts/stress_parallel_reset.py
-```
-
----
-
 ### `benchmark_bridge.py`
 
 IPC throughput → JSON в `tmp/bench/` (не `games/.../models/`). Числа baseline — [MEASUREMENTS.md](MEASUREMENTS.md).
@@ -426,44 +382,6 @@ IPC throughput → JSON в `tmp/bench/` (не `games/.../models/`). Числа b
 | `--json-out` | путь отчёта |
 | `--session` | id bridge (default `bench_bridge`) |
 | `--save-state`, `--frame-skip`, `--game`, `--mission` | |
-
----
-
-### `benchmark_train.py`
-
-E2E PPO `learn` → `tmp/bench/<session>/`. Перед learn — preflight orphan IPC.
-
-```bash
-./.venv/Scripts/python.exe scripts/benchmark_train.py --dry-run
-./.venv/Scripts/python.exe scripts/benchmark_train.py --mode gate
-./.venv/Scripts/python.exe scripts/benchmark_train.py --mode fps
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--mode` | `gate` (2048) / `fps` (8192) / `custom` |
-| `--timesteps` | override режима |
-| `--n-envs` | default 8 |
-| `--warmup-rollouts` | вне steady fps (default 1) |
-| `--session` | `tmp/bench/<session>/` (default `train_e2e`) |
-| `--bridge-report` | JSON `benchmark_bridge` для сравнения |
-| `--json-out` | путь `train_report.json` |
-| `--dry-run` | только пути |
-| `--dummy-vec` / `--quiet` | отладка |
-| `--learn-stall-timeout` | abort без прогресса timesteps, с (default 300; `0`=off) |
-| `--session-wall-timeout` | abort по wall сессии, с (default 3600; `0`=off) |
-| `--n-steps`, `--batch-size`, `--n-epochs`, `--gamma`, `--learning-rate`, `--threads` | PPO |
-| `--save-state`, `--game`, `--mission` | |
-
----
-
-### `bench_parallel_step.py`
-
-Фиксированный замер: 4 env, 50 steps, stdout latency. CLI нет.
-
-```bash
-./.venv/Scripts/python.exe scripts/bench_parallel_step.py
-```
 
 ---
 
@@ -497,26 +415,23 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 
 ```bash
 ./scripts/train_local.sh --timesteps 50000 --model-out models/gen0.zip
-./.venv/Scripts/python.exe src/train/train_ppo.py --smoke --timesteps 256 --n-envs 1 --dummy-vec --no-bc
+./.venv/Scripts/python.exe src/train/train_ppo.py --smoke --timesteps 256 --n-envs 1 --dummy-vec
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
 | `--task` | `tasks/train_task.json` |
 | `--timesteps` | total steps (default 500000) |
-| `--allow-reduce-target` | continue: разрешить `--timesteps` ниже sidecar |
+| `--allow-reduce-target` | continue: разрешить `--timesteps` ниже sidecar (**опасно**) |
 | `--n-envs` | parallel FCEUX (default **8**; через `train_local.sh` → **6**) |
 | `--model-in` / `--model-out` | предок / артефакт поколения (default out: `models/gen0.zip`) |
-| `--overwrite-model-out` | явно заменить существующий `model-out` (scratch или from_ancestor) |
-| `--latest-model` / `--no-latest-model` | `models/latest.zip` (default on) |
-| `--latest-every` | latest.zip каждые N rollout (default **5**, H5; `1` = каждый) |
-| `--recycle-every-timesteps` | H4: пересоздать FCEUX/vec каждые N steps (`0`=off) |
-| `--session-wall-timeout` | H6: abort по wall-clock сессии, с (`0`=off; continue из model zip) |
+| `--scratch` | пересоздать сеть на существующем `model-out` (snapshot в `.prev` перед сессией) |
+| `--rollback` | откатить последний прогон: `genN.prev.*` → `genN.*` (без train) |
+| `--latest-model` / `--no-latest-model` | `models/{stem}.latest.zip` (default on) |
+| `--latest-every` | latest каждые N rollout (default **5**; `1` = каждый) |
 | `--save-every` | каждые N steps (default 50000) |
-| `--bc-epochs` / `--bc-demo` / `--no-bc` | BC warm-start; **`--timesteps 0`** — только BC, сохранение `saved (bc_only)` + offline `BC demo match` |
+| `--bc-epochs` / `--bc-demo` | BC; на **continue** — refresh при `--bc-epochs > 0`; **`--timesteps 0`** — только BC |
 | `--rollout-gc` / `--no-rollout-gc` | `gc.collect` после rollout (default on) |
-| `--rollout-metrics` / `--no-rollout-metrics` | JSONL в `tmp/bench/` (default off) |
-| `--rollout-metrics-session` / `--rollout-metrics-path` | куда писать metrics |
 | `--smoke` / `--smoke-session` | карантин `tmp/smoke/` |
 | `--no-intermediate-models` | без `models/runs/` |
 | `--dummy-vec` | DummyVecEnv |
@@ -526,62 +441,37 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 | `--skip-preflight` | не вызывать preflight (только прямой вызов) |
 | `--n-steps`, `--batch-size`, `--n-epochs`, `--gamma`, `--learning-rate`, `--threads` | PPO гиперпараметры |
 | `--save-state`, `--reward-profile`, `--game`, `--mission` | |
-| `--death-mode` | `life_lost` \| `game_over` (default из `env_config.yaml`; H3) |
+| `--death-mode` | `life_lost` \| `game_over` (default из `env_config.yaml`) |
 
-**Режимы model-out (безопасно по умолчанию):**
+**Режимы model-out:**
 
 | Ситуация | Режим |
 | -------- | ----- |
-| `model-out` есть, `--model-in` нет | **continue** — добор того же поколения (timesteps из sidecar/zip, без повторного BC) |
-| `--model-in` → другой новый `model-out` | **from_ancestor** — веса предка, счётчик поколения с 0; BC по флагам |
-| `model-out` нет, `--model-in` нет | **scratch** — новая сеть |
-| `model-out` уже есть и нужен replace | только с **`--overwrite-model-out`** (иначе `SystemExit`) |
-| `--model-in` = `--model-out` | отказ — для continue уберите `--model-in` |
+| `model-out` есть, без `--scratch` / `--model-in` | **continue** — добор поколения; snapshot `.prev` перед сессией |
+| то же + `--bc-epochs N` | continue + BC refresh |
+| `--model-in` → новый `model-out` (out не существует) | **from_ancestor** — новое поколение; `--timesteps` абсолютная цель |
+| `model-out` нет | **scratch** — новая сеть |
+| `model-out` есть + `--scratch` | scratch на том же пути (snapshot `.prev`) |
+| `--rollback --model-out genN.zip` | восстановить из `.prev`, без train |
 
 ```bash
-# continue gen0
-./scripts/train_local.sh --model-out models/gen0.zip --timesteps 1700000 --no-bc
+# continue + BC refresh (цель 500k → 600k)
+./scripts/train_local.sh --model-out models/gen0.zip --timesteps 600000 --bc-epochs 2
 
-# новое поколение от предка (gen1 ещё не существует)
+# откат последнего прогона
+./scripts/train_local.sh --rollback --model-out models/gen0.zip
+
+# новое поколение
 ./scripts/train_local.sh --model-in models/gen0.zip --model-out models/gen1.zip --timesteps 300000 --bc-epochs 5
 
-# явно затереть out
-./scripts/train_local.sh --model-out models/gen1.zip --overwrite-model-out --no-bc --timesteps 10000
+# пересоздать gen0
+./scripts/train_local.sh --scratch --model-out models/gen0.zip --timesteps 500000 --bc-epochs 5
 ```
 
-Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + sidecar; повтор с тем же `--model-out` (без `--model-in`) продолжает до `target_timesteps`. CLI `--timesteps` больше sidecar → цель поднимается. Явный `--timesteps` **ниже** sidecar → отказ, пока нет `--allow-reduce-target` (дефолт argparse без флага не укорачивает). Смена `--n-envs` на continue разрешена (hardware-ключ; sidecar обновляет `n_envs` последнего прогона, timesteps не сбрасываются). Task JSON заполняет только поля, не заданные в CLI (`checkpoint_*` deprecated → `model_*`).
+Перед каждой сессией continue/scratch на существующем `genN.zip` пишется **`genN.prev.zip`** (+ sidecar) — один уровень отката через `--rollback`.
+
+Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + sidecar. CLI `--timesteps` выше sidecar поднимает цель; ниже — только с `--allow-reduce-target`. Смена `--n-envs` на continue разрешена.
 Автостоп схлопа политики (по умолчанию): ≥10 rollout подряд с `|entropy_loss|<0.01` и `approx_kl≈0` → выход `learn`, save `model-out` (`policy_collapse`); см. [TRAIN_ANALYSIS](TRAIN_ANALYSIS.md#практическое-правило-остановки-политика).
-
----
-
-### `train_fps_round_prep.py`
-
-Архив `models/gen0.zip` + печать команд для fps/dual-train раунда. Runbook — [TASK_TRAIN_FPS_DEGRADATION](tasks/archive/TASK_TRAIN_FPS_DEGRADATION.md).
-
-```bash
-./.venv/Scripts/python.exe scripts/train_fps_round_prep.py
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--target-timesteps` | цель для continue `models/gen0.zip` (default 100k) |
-| `--session` | метка metrics-сессии в `tmp/bench/` |
-| `--game` / `--mission` | override workspace |
-
----
-
-### `parse_train_rollouts.py`
-
-Сводка wall_rollout / degradation из `rollouts.jsonl`.
-
-```bash
-./.venv/Scripts/python.exe scripts/parse_train_rollouts.py --jsonl tmp/bench/train_fps/rollouts.jsonl
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--jsonl` | путь к `rollouts.jsonl` (обязательный) |
-| `--json` | только JSON в stdout |
 
 ---
 
@@ -599,7 +489,7 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 | ---- | -------- |
 | `--playback-only` | только staging/bridge (для replay, без wipe logs) |
 | `--wipe-gen-logs` | удалить `logs/<model_version>/` перед сбором |
-| `--model` / `--model-version` | stem пула (иначе `models/latest.zip`) |
+| `--model` / `--model-version` | stem пула (иначе `models/genN.zip` / `genN.latest.zip`) |
 | `--game` / `--mission` | |
 
 ---

@@ -16,12 +16,9 @@ from project_paths import repo_root
 DEFAULT_BRIDGE_PREFIXES = ("train_", "bench_")
 
 TRAIN_ORPHAN_SCRIPT_MARKERS = (
-    "benchmark_train.py",
     "train_ppo.py",
-    "stress_e2e_gate.py",
     "test_parallel_env.py",
     "benchmark_bridge.py",
-    "bench_parallel_step.py",
 )
 
 _WIN32_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)

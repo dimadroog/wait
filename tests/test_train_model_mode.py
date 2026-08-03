@@ -16,51 +16,43 @@ def _touch_zip(path: Path) -> Path:
 
 def test_scratch_when_out_missing(tmp_path: Path) -> None:
     out = tmp_path / "models" / "gen0.zip"
-    assert resolve_train_model_mode(out, None, overwrite=False) == "scratch"
+    assert resolve_train_model_mode(out, None) == "scratch"
 
 
 def test_continue_when_out_exists(tmp_path: Path) -> None:
     out = _touch_zip(tmp_path / "gen0.zip")
-    assert resolve_train_model_mode(out, None, overwrite=False) == "continue"
+    assert resolve_train_model_mode(out, None) == "continue"
 
 
-def test_scratch_replace_with_overwrite(tmp_path: Path) -> None:
+def test_scratch_when_out_exists_and_flag(tmp_path: Path) -> None:
     out = _touch_zip(tmp_path / "gen0.zip")
-    assert resolve_train_model_mode(out, None, overwrite=True) == "scratch"
+    assert resolve_train_model_mode(out, None, scratch=True) == "scratch"
 
 
 def test_from_ancestor_when_out_missing(tmp_path: Path) -> None:
     ancestor = _touch_zip(tmp_path / "gen0.zip")
     out = tmp_path / "gen1.zip"
-    assert resolve_train_model_mode(out, ancestor, overwrite=False) == "from_ancestor"
+    assert resolve_train_model_mode(out, ancestor) == "from_ancestor"
 
 
 def test_from_ancestor_refuse_when_out_exists(tmp_path: Path) -> None:
     ancestor = _touch_zip(tmp_path / "gen0.zip")
     out = _touch_zip(tmp_path / "gen1.zip")
     with pytest.raises(SystemExit, match="already exists"):
-        resolve_train_model_mode(out, ancestor, overwrite=False)
-
-
-def test_from_ancestor_replace_with_overwrite(tmp_path: Path) -> None:
-    ancestor = _touch_zip(tmp_path / "gen0.zip")
-    out = _touch_zip(tmp_path / "gen1.zip")
-    assert resolve_train_model_mode(out, ancestor, overwrite=True) == "from_ancestor"
+        resolve_train_model_mode(out, ancestor)
 
 
 def test_same_in_out_refused(tmp_path: Path) -> None:
     z = _touch_zip(tmp_path / "gen0.zip")
     with pytest.raises(SystemExit, match="same file"):
-        resolve_train_model_mode(z, z, overwrite=False)
-    with pytest.raises(SystemExit, match="same file"):
-        resolve_train_model_mode(z, z, overwrite=True)
+        resolve_train_model_mode(z, z)
 
 
 def test_model_in_missing_refused(tmp_path: Path) -> None:
     out = tmp_path / "gen1.zip"
     missing = tmp_path / "nope.zip"
     with pytest.raises(SystemExit, match="model-in not found"):
-        resolve_train_model_mode(out, missing, overwrite=False)
+        resolve_train_model_mode(out, missing)
 
 
 def test_note_n_envs_change_continue_prefix() -> None:
