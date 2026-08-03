@@ -58,7 +58,8 @@
 
 **Агенты:**  
 - CLI add·remove·change — [DESIGN § Регистрация скриптов](DESIGN.md#регистрация-скриптов-в-scriptsmd).  
-- Объёмная работа — [TASK_BLANK](tasks/TASK_BLANK.md); archive не подключать без нужды.
+- Объёмная работа — [TASK_BLANK](tasks/TASK_BLANK.md); archive не подключать без нужды.  
+- **Open:** [TASK_OPERATOR_LAUNCHER](tasks/TASK_OPERATOR_LAUNCHER.md) — операторский GUI (Tkinter); ветка `task/operator-launcher`.
 
 ## Железо (хост, 2026-07-05)
 
