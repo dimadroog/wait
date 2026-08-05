@@ -31,6 +31,7 @@
 | Inference pool (N + playlist) или live (до Ctrl+C) | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
 | Короткий editorial + board | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) |
 | Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
+| Операторский GUI (Config / Inference / Train) | [`operator_launcher.py`](#operator_launcherpy) |
 | Benchmark bridge IPC | [`benchmark_bridge.py`](#benchmark_bridgepy) |
 
 ---
@@ -52,6 +53,7 @@
 | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) | Editorial + board + шаги оператора |
 | [`inference_local.sh`](#inference_localsh) | Фасад: preflight → `run_inference` |
 | [`inference_preflight.py`](#inference_preflightpy) | Очистка перед inference / playback |
+| [`operator_launcher.py`](#operator_launcherpy) | GUI: workspace + inference + train (subprocess фасады) |
 | [`ram_scout.py`](#ram_scoutpy) | RAM scout: shell (`games/…/reference/`) или mission clear |
 | [`preview_demos.py`](#preview_demospy) | PNG-превью `demos_for_bc` → `tmp/demos_for_bc/` |
 | [`record_demos.py`](#record_demospy) | FM2-synced BC demos (`-playmovie`) |
@@ -436,7 +438,7 @@ PPO на CPU / FCEUX env. Поколения модели: `games/.../models/gen
 | `--no-intermediate-models` | без `models/runs/` |
 | `--dummy-vec` | DummyVecEnv |
 | `--no-turbo` | отладка |
-| `--progress` / `--no-progress-pct` | UX таблицы SB3 |
+| `--no-progress-pct` | не писать `progress_pct` / `target_timesteps` в таблицу SB3 |
 | `--learn-stall-timeout` | abort без прогресса timesteps (default 300; `0`=off) |
 | `--skip-preflight` | не вызывать preflight (только прямой вызов) |
 | `--n-steps`, `--batch-size`, `--n-epochs`, `--gamma`, `--learning-rate`, `--threads` | PPO гиперпараметры |
@@ -682,6 +684,33 @@ Attempts (+ опц. inputs) → `NN_slug_MMM.fm2`, `.overlay.json`, `playlist.js
 | `--game` / `--mission` | |
 
 Board в браузере: `streaming/board/index.html` (читает соседний `broadcast_board.json`). Live: `run_inference --live`.
+
+---
+
+### `operator_launcher.py`
+
+<a id="operator_launcherpy"></a>
+
+Операторский GUI (Tkinter): смена рабочего контекста (`config/workspace.yaml`: game / mission / save_state) и запуск inference / train через subprocess-фасады. Бизнес-логика train/inference **не** в GUI — только сбор argv и панель stdout.
+
+```bash
+./.venv/Scripts/python.exe scripts/operator_launcher.py
+```
+
+Windows (двойной клик или из cmd):
+
+```bat
+operator_launcher.cmd
+```
+
+| Область | Действия |
+| ------- | -------- |
+| **Config** | game, mission, чекпоинт миссии (`save_state`); кнопка «Применить» → `workspace.yaml` |
+| **Inference** | `mode`: live / pool / replay; live+pool → `inference_local.sh`; replay → `play_inference_fm2.py`; pool editorial → `build_playlist.py --editorial` |
+| **Train** | `continue` / `scratch` / `from_ancestor` → preflight + `train_ppo` |
+| **Rollback** | `genN.prev.zip` → `genN.zip` (без learn) |
+
+Лаунчер вызывает те же шаги, что `inference_local.sh` / `train_local.sh`, через **venv Python** (не `bash` — на Windows `bash` из System32 это WSL-заглушка). Под формами — **предпросмотр команды** (копировать в терминал); для pool вторая строка — editorial.
 
 ---
 

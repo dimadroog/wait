@@ -1,5 +1,6 @@
-# Дефолты game/mission для CLI, когда --game / --mission не переданы.
+# Дефолты game/mission/save_state для CLI и операторского лаунчера.
 # Контракт: docs/DESIGN.md#контракт-game--mission · GLOSSARY «конфиг рабочей области».
 # Не путать с games/<id>/ (плагин) и fceux/runtime.yaml.
 game: rushn_attack
 mission: m1
+save_state: save_states/cp_gameplay0.fc0

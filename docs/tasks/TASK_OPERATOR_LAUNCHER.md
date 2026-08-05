@@ -1,6 +1,6 @@
 # TASK_OPERATOR_LAUNCHER — операторский GUI-лаунчер
 
-**Статус:** open  
+**Статус:** in progress  
 **Приоритет:** medium  
 **Ветка:** `task/operator-launcher` — проработку и код выполнять **только в этой ветке** (не в `main` и не в чужих task-ветках). Если ветки нет: `git checkout -b task/operator-launcher` от актуального `main`.  
 **Зависит от:** [контракт game/mission](../DESIGN.md#контракт-game--mission) (`config/workspace.yaml`, `resolve_game_mission`); фасады [`inference_local.sh`](../SCRIPTS.md#inference_localsh), [`train_local.sh`](../SCRIPTS.md#train_localsh)  
@@ -15,12 +15,12 @@
 | --- | ------ |
 | Спецификация UI (Config / Inference / Train) | **утверждена** — § «Спецификация UI» |
 | План клиента (Tkinter) | **утверждён** — § «План реализации клиента» |
-| `src/operator_launcher/` | **не создан** |
-| `scripts/operator_launcher.py` | **не создан** |
-| `config/workspace.yaml` | только `game` / `mission`; поле `save_state` — добавить при этапе 1 |
-| Регистрация в SCRIPTS.md | **нет** |
+| `src/operator_launcher/` | **создан** |
+| `scripts/operator_launcher.py` | **создан** |
+| `config/workspace.yaml` | `game` / `mission` / `save_state` |
+| Регистрация в SCRIPTS.md | **да** |
 
-**Следующий шаг для агента:** этап 1–2 (каркас Tk + Config + `catalog.py`). Отметить `- [x]` в чеклисте по завершении каждого этапа.
+**Следующий шаг для агента:** ручная приёмка на `games/rushn_attack/missions/m1/` (этап 7).
 
 ### Шпаргалка для агента (порядок чтения)
 
@@ -45,22 +45,22 @@
 
 Лаунчер **не** переносит логику preflight/train/inference — только argv и `cwd=repo_root()`.
 
-- Python venv: `./.venv/Scripts/python.exe` (как в shell-фасадах).
-- Shell-фасады: `bash scripts/train_local.sh …` / `bash scripts/inference_local.sh …` (Git Bash / окружение оператора; `cwd` = корень репо).
-- Всегда явно: `--game`, `--mission`, `--save-state` (из workspace / Config).
-- Inference pool: без `--live`; live: `--live` + без pool-флагов.
-- Train rollback: только `train_local.sh --rollback --model-out models/genN.zip` (без learn).
+- Python venv: `./.venv/Scripts/python.exe` (прямой вызов; **не** `bash` из System32 — WSL-заглушка).
+- Inference/train: две фазы — `*_preflight.py` → `run_inference.py` / `train_ppo.py` (эквивалент shell-фасадов).
+- Replay/editorial: `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`.
+- Всегда явно: `--game`, `--mission`, `--save-state` (кроме rollback).
+- Стоп inference/replay: `taskkill /T` + cleanup orphan FCEUX; train — graceful Ctrl+Break.
 
 Пример сборки (логика в `commands.py`, не в UI):
 
 ```text
-# pool inference
-bash scripts/inference_local.sh --model gen0.zip --playlist-cnt 5 --stochastic \
-  --game rushn_attack --mission m1 --save-state save_states/cp_gameplay0.fc0
+# pool inference (фаза 1: inference_preflight.py; фаза 2: run_inference.py)
+.venv/Scripts/python.exe scripts/inference_preflight.py --game rushn_attack --mission m1 --model gen0.zip
+.venv/Scripts/python.exe src/stream/run_inference.py --skip-preflight --model gen0.zip --playlist-cnt 5 ...
 
-# train continue
-bash scripts/train_local.sh --model-out models/gen0.zip --timesteps 500000 --n-envs 6 \
-  --game rushn_attack --mission m1 --save-state save_states/cp_gameplay0.fc0
+# train continue (фаза 1: train_preflight.py; фаза 2: train_ppo.py)
+.venv/Scripts/python.exe scripts/train_preflight.py
+.venv/Scripts/python.exe src/train/train_ppo.py --n-envs 6 --model-out models/gen0.zip ...
 ```
 
 Запуск GUI после реализации: `./.venv/Scripts/python.exe scripts/operator_launcher.py`
@@ -137,21 +137,22 @@ bash scripts/train_local.sh --model-out models/gen0.zip --timesteps 500000 --n-e
 #### Train
 
 - Наследует из Config: `game`, `mission`, `save_state`.
-- `train_mode` — `continue` | `scratch` | `from_ancestor` | `rollback`.
+- `train_mode` — `continue` | `scratch` | `from_ancestor` (вкладка **Train**).
+- **Rollback** — отдельная вкладка: `model_out`, кнопка «Откатить» (`--rollback`, без learn).
 - `model_out` — enum `models/*.zip`; дефолт `gen0.zip`.
 - `model_in` — enum; только для `from_ancestor`.
 - `timesteps` — int, default `500000`.
 - `n_envs` — int, default `6` (как `train_local.sh`).
-- `bc_epochs` — int, default `0`; `bc_demo` — опц. (`reference/demos_for_bc/seg_*.npz`).
+- `bc_epochs` — int, default `0`; `bc_demo` — обязателен при `bc_epochs > 0` (`reference/demos_for_bc/seg_*.npz`); пустое значение в UI не запускается (иначе BC подхватит все сегменты).
 - `reward_profile` — enum из `routes.yaml → rewards`; default `default`.
 - Логирование (прокси CLI, без нового логгера в ядре):
-  - `progress` — bool → `--progress` (tqdm/rich поверх таблицы SB3); default `false`.
   - `progress_pct` — bool → инверсия `--no-progress-pct` (колонки `progress_pct` / `target_timesteps`); default `true`.
   - `save_every` — int → `--save-every` (промежуточные save в `models/runs/`); default `50000`.
   - `latest_model` — bool → `--latest-model`; default `true`.
   - `latest_every` — int → `--latest-every` (частота `genN.latest.zip`); default `5`.
+  - `save_log` — bool, default `false`; tee stdout в `tmp/bench/YYYYMMDD_HHMMSS_{model}_{train_mode}_[bc_epochs_N]_{timesteps}.log` (сырые значения + sanitize); GUI — через `ProcessRunner`, превью команды — `shell_with_tee`.
   - Панель stdout в GUI: subprocess `train_local.sh` → скролл вывода (та же таблица SB3, что в терминале).
-- Действия: Запустить / Стоп; отдельно «Откатить» (`--rollback --model-out`, без train).
+- Действия: Запустить / Стоп (вкладка **Train**); «Откатить» — вкладка **Rollback**.
 - Запуск: `train_preflight` → `train_local.sh`; стоп — graceful interrupt (атомарный save `model_out` + sidecar). Перед `continue`/`scratch` на существующем zip — snapshot `genN.prev.zip`.
 - Вне UI v1 (advanced): `--smoke`, `--dummy-vec`, PPO-гиперпараметры, `--allow-reduce-target`, `--task` JSON.
 
@@ -200,19 +201,19 @@ save_state: save_states/cp_gameplay0.fc0
 
 ### Чеклист сессии
 
-- [ ] Этап 1–2: каркас Tk + Config + `catalog.py`
-- [ ] Этап 3: `runner.py` (subprocess, stdout-панель, один процесс)
-- [ ] Этап 4–5: Inference (live / pool / replay + editorial)
-- [ ] Этап 6: Train + «Откатить»
-- [ ] Этап 7: SCRIPTS.md + ручная приёмка m1
+- [x] Этап 1–2: каркас Tk + Config + `catalog.py`
+- [x] Этап 3: `runner.py` (subprocess, stdout-панель, один процесс)
+- [x] Этап 4–5: Inference (live / pool / replay + editorial)
+- [x] Этап 6: Train + «Откатить»
+- [x] Этап 7: SCRIPTS.md (регистрация); ручная приёмка m1 — оператору
 
 ### Критерий готовности (DoD)
 
-- [ ] Config сохраняется в `workspace.yaml`; train/inference без ручного `--game`/`--mission` берут тот же контекст
+- [x] Config сохраняется в `workspace.yaml`; train/inference без ручного `--game`/`--mission` берут тот же контекст
 - [ ] Inference live / pool / replay запускаются из GUI и соответствуют утверждённым инвариантам (pool ≠ live флаги)
 - [ ] Train: continue/scratch/from_ancestor/rollback; стоп сохраняет `model_out`; stdout виден в панели
-- [ ] Нет игро-специфики в ядре ради лаунчера; enum из layout плагина и manifest
-- [ ] Новый entry point зарегистрирован в SCRIPTS.md
+- [x] Нет игро-специфики в ядре ради лаунчера; enum из layout плагина и manifest
+- [x] Новый entry point зарегистрирован в SCRIPTS.md
 
 ### Не делать (антискоуп)
 

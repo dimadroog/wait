@@ -241,6 +241,21 @@ Shell-раунд **не** перезаписывает scout и `ram_resolve` м
 
 Не путать с [поколением модели](#поколение-модели-genn) (`genN.zip`) и с игровым [CP](#cp) в `routes.yaml`.
 
+### Sidecar
+
+<a id="sidecar"></a>
+
+**Sidecar** (сопровождающий файл) — JSON рядом с [поколением модели](#поколение-модели-genn): `models/genN.train.json` (к `genN.zip`). В нём метаданные сессии обучения, которые **не** лежат внутри zip Stable-Baselines3: абсолютная цель `target_timesteps`, накопленные `num_timesteps`, `game` / `mission`, `n_envs`, `save_state`, время обновления.
+
+При **continue** `train_ppo` читает sidecar, чтобы понять, до какой цели добирать шаги и что уже накоплено. CLI `--timesteps` выше значения в sidecar **поднимает** цель; ниже — только с `--allow-reduce-target` (иначе отказ). Перед continue/scratch на существующем zip sidecar копируется вместе с zip в [снимок сессии](#снимок-сессии) (`genN.prev.train.json`); `--rollback` восстанавливает пару zip + sidecar. Код: `src/train/checkpointing.py` (`read_sidecar` / `write_sidecar`).
+
+Не путать с:
+
+- самими весами `genN.zip`;
+- промежуточными чекпоинтами в `models/runs/`;
+- зеркалом `genN.latest.zip` во время learn;
+- `.overlay.json` у FM2-клипа (Lua overlay на эфире) — другое «sidecar» в смысле «файл рядом», не train-метаданные.
+
 ### seg
 
 **Сегмент** (кратко **seg**, имена `seg_001`, `seg_002`, …) — фрагмент [эталона](#etalon) между контрольными точками или по диапазону кадров. Границы и пути описаны в [манифесте](#manifest). Для [behavioral cloning](#behavioral-cloning) из сегмента собирают файл `reference/demos_for_bc/<id>.npz` с кадрами и действиями человека.
@@ -293,7 +308,9 @@ Shell-раунд **не** перезаписывает scout и `ram_resolve` м
 
 ### Снимок сессии
 
-**Снимок сессии** — перед каждым train на существующем `models/genN.zip` (continue или `--scratch`) каркас копирует `genN.zip` и `genN.train.json` в **`genN.prev.zip`** / **`genN.prev.train.json`** (один уровень). Откат: `train_ppo --rollback --model-out models/genN.zip`. Не путать с `models/runs/` (промежуточные чекпоинты по шагам) и `models/genN.latest.zip` (зеркало во время learn).
+<a id="снимок-сессии"></a>
+
+**Снимок сессии** — перед каждым train на существующем `models/genN.zip` (continue или `--scratch`) каркас копирует `genN.zip` и [sidecar](#sidecar) `genN.train.json` в **`genN.prev.zip`** / **`genN.prev.train.json`** (один уровень). Откат: `train_ppo --rollback --model-out models/genN.zip`. Не путать с `models/runs/` (промежуточные чекпоинты по шагам) и `models/genN.latest.zip` (зеркало во время learn).
 
 ### Эталон
 

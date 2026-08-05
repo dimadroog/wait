@@ -526,7 +526,6 @@ def train(args: argparse.Namespace) -> Path:
                         wall_timeout_s=0.0,
                         total_timesteps=remaining,
                         callback=callback_list,
-                        progress_bar=args.progress,
                         reset_num_timesteps=reset_ts,
                     )
                     if collapse_cb.stopped:
@@ -653,7 +652,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--bc-demo", default=None, help="reference/demos_for_bc/seg_XXX.npz для BC")
     p.add_argument("--bc-epochs", type=int, default=0, help="BC epochs (0 = skip; на continue — refresh)")
     p.add_argument("--no-turbo", action="store_true", help="FCEUX без turbo (отладка)")
-    p.add_argument("--progress", action="store_true", help="tqdm/rich progress bar (доп. к таблице SB3)")
     p.add_argument(
         "--no-progress-pct",
         action="store_true",
