@@ -1,10 +1,10 @@
-# README — AI NES Learning Stream
+# README — AI NES Learning
 
 > **Единая точка входа** для разработки и AI-агентов.  
 > Статус: утверждённая концепция проекта. Код — Phase 0.  
 > **Цель:** платформа для обучения AI прохождению игр NES/Famicom.  
 > **Пилот:** [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md) (Rush'n Attack M1) — проверка pipeline.  
-> **Приоритет:** ML-стек (этап A) → стриминговое ПО (этап B, после gate).
+> **Приоритет:** ML-стек (train → inference → дообучение).
 
 ---
 
@@ -15,7 +15,6 @@
 | **[DESIGN.md](DESIGN.md)** | Pluggable Core, слоты, дерево репо / git A–B–C, гигиена · [регистрация скриптов](DESIGN.md#регистрация-скриптов-в-scriptsmd) |
 | **[ML_CONCEPT.md](ML_CONCEPT.md)** | Ядро ML: PPO, среда, награды, эталон, train pipeline · [GLOSSARY.md](GLOSSARY.md) · [скрипты](SCRIPTS.md) |
 | **[GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md)** | Пилот: Rush'n Attack — действия, CP, rewards, приёмка |
-| **[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)** | Twitch: live + OBS; прогресс по `genN` · [GLOSSARY.md](GLOSSARY.md) |
 | **[SCRIPTS.md](SCRIPTS.md)** | Каталог CLI: назначение и флаги entry point'ов (без замеров / журналов) |
 | **[TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md)** | Как читать консоль обучения: динамика полей, когда останавливать прогон |
 | **[tasks/TASK_BLANK.md](tasks/TASK_BLANK.md)** | Каркас задач: open в `tasks/`, done → `tasks/archive/` (без `ISSUE_*`) |
@@ -31,15 +30,11 @@
 
 | Этап | Фокус | Документ | Статус |
 | ---- | ----- | -------- | ------ |
-| **A — ML** | FCEUX bridge, env, train, локальный inference, дообучение | [ML_CONCEPT.md §11](ML_CONCEPT.md#11-roadmap-ml-фазы) | **текущий** |
-| **B — Стрим** | OBS, Twitch, live-inference, опц. Lua HUD | [STREAMING_CONCEPT.md §11–12](STREAMING_CONCEPT.md#11-roadmap) | после gate |
+| **ML** | FCEUX bridge, env, train, локальный inference, дообучение | [ML_CONCEPT.md §11](ML_CONCEPT.md#11-roadmap-ml-фазы) | **текущий** |
 
-**Gate (A → B):** [ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml) + чеклист пилота [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-приёмка-пилота).
+**Приёмка ML:** [ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml) + чеклист пилота [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-приёмка-пилота).
 
-До gate: **не** ставить OBS, **не** настраивать Twitch.  
-На этапе A: `run_inference` и `attempts.jsonl` — сбор попыток модели; эфир (live + OBS) — этап B.
-
-[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) — спецификация этапа B; live-inference и пул `logs/genN/` уже в коде (без editorial/board как продуктового пути).
+На текущем этапе: `run_inference` и `attempts.jsonl` — сбор попыток модели в [пул поколения](GLOSSARY.md#пул-поколения); `--live` — операторский просмотр в окне FCEUX (без записи пула).
 
 <a id="состав-проекта"></a>
 
@@ -51,8 +46,7 @@
 | **Portable в проекте** | FCEUX 2.6.6 (`fceux/portable/`) | `wait/`, **не в git** — распаковка вручную ([fceux/README.md](../fceux/README.md)) |
 | **Данные и артефакты** | ROM, models (`genN`), demos, save states, логи | `games/…`, **не в git** |
 | **Python-стек** | PyTorch, SB3, gymnasium… | `.venv/` в `wait/`, **не в git**; ставится из `requirements.txt` |
-| **Окружение хоста** | Windows 10, Python 3.11, Git, драйвер NVIDIA | системная установка |
-| **Стрим (этап B)** | OBS, Twitch | системная установка; профили сцен OBS — после gate |
+| **Окружение хоста** | Windows 10, Python 3.11, Git, драйвер NVIDIA (опц.) | системная установка |
 
 Полная матрица артефактов — [DESIGN.md § Структура](DESIGN.md#структура-репозитория). Скрипты — [SCRIPTS.md](SCRIPTS.md).
 
@@ -63,25 +57,24 @@
 
 ## Железо (хост, 2026-07-05)
 
-| Ресурс | Состав | Стрим | ML |
-| ------ | ------ | ----- | -- |
-| CPU | Intel **i7-3770** @ 3.40 GHz (4C/8T) | FCEUX live | PPO на CPU |
-| RAM | 2×8 GB Kingston DDR3-1600 (16 GB) | — | 4–8 parallel env |
-| GPU | **GTX 650** 1 GB | OBS NVENC | PyTorch CPU-only |
-| SSD | Kingston SA400S37 480 GB | — | модели, логи, demos |
-| МП | MSI **H61M-P20/W8** (MS-7788) | — | — |
-| ОС | Windows 10 Pro, build **19045** | Платформа проекта | Платформа проекта |
-| Upload | ≥5 Mbps | Twitch | — |
+| Ресурс | Состав | ML |
+| ------ | ----- | -- |
+| CPU | Intel **i7-3770** @ 3.40 GHz (4C/8T) | PPO на CPU; live/pool inference |
+| RAM | 2×8 GB Kingston DDR3-1600 (16 GB) | 4–8 parallel env |
+| GPU | **GTX 650** 1 GB | PyTorch CPU-only |
+| SSD | Kingston SA400S37 480 GB | модели, логи, demos |
+| МП | MSI **H61M-P20/W8** (MS-7788) | — |
+| ОС | Windows 10 Pro, build **19045** | Платформа проекта |
 
 БП заменён при апгрейде (2026-07); модель/мощность из OS не читаются.  
 Апгрейд: i3-3210 → **i7-3770**.
 
-Правила нагрузки: [STREAMING_CONCEPT.md §4](STREAMING_CONCEPT.md#4-инфраструктура-эфира) (схема эфира) · [ML_CONCEPT.md §2](ML_CONCEPT.md#2-инфраструктура-обучения) (обучение).
+Правила нагрузки: [ML_CONCEPT.md §2](ML_CONCEPT.md#2-инфраструктура-обучения).
 
 ---
 
 ## Следующий шаг
 
-**Этап A — ML Phase 0:** Python `.venv` (`scripts/setup_venv.ps1`), RAM-разведка и эталон пилота ([GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md)).  
+**ML Phase 0:** Python `.venv` (`scripts/setup_venv.ps1`), RAM-разведка и эталон пилота ([GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md)).  
 Окружение: `scripts/setup_all.ps1` · проверка: `python scripts/verify_env.py`.  
 Далее — ML Phases 1–4 по [ML_CONCEPT.md §11](ML_CONCEPT.md#11-roadmap-ml-фазы).

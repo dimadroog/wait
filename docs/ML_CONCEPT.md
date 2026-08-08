@@ -1,9 +1,9 @@
-# ML_CONCEPT — AI NES Learning Stream
+# ML_CONCEPT — AI NES Learning
 
 > **Фокус:** ML-ядро платформы: среда, данные, обучение и дообучение.  
-> Индекс: [README.md](README.md) · Стрим: [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) · Пилот: [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md) · [Скрипты](SCRIPTS.md) · [GLOSSARY.md](GLOSSARY.md)  
+> Индекс: [README.md](README.md) · Пилот: [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md) · [Скрипты](SCRIPTS.md) · [GLOSSARY.md](GLOSSARY.md)  
 > **Проект:** локальный CPU.  
-> **Приоритет:** этап A (ML); стриминговое ПО — после [§12](#12-критерии-приёмки-ml) (этап B).
+> **Приоритет:** ML-стек (train → inference → дообучение).
 
 ---
 
@@ -37,7 +37,7 @@
 | Компонент               | Описание                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | Алгоритм                | PPO (stable-baselines3)                                      |
-| Inference | CPU локально, `predict()` — **headless** FCEUX (эфир: `--live` + операторский cfg); логи attempts + inputs; опц. FM2. Пул: [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/` ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) |
+| Inference | CPU локально, `predict()` — **headless** FCEUX (операторский просмотр: `--live` + cfg); логи attempts + inputs; опц. FM2. Пул: [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/` |
 | Обучение                | **CPU локально**; запуск **вручную** по `train_task.json`                           |
 | Хостинг                 | **Только текущий ПК**                                                       |
 | Эталон       | FM2 + полное прохождение миссии + manifest + ≥3 seg |
@@ -113,7 +113,7 @@ flowchart TB
         Attempts --> Trigger
     end
 
-        ModelZip --> Infer[→ live / pool: STREAMING_CONCEPT]
+        ModelZip --> Infer[→ live / pool inference]
 ```
 
 
@@ -132,7 +132,7 @@ Inference + лог attempts (`logs/genN/`)
 PPO → genN+1
 ```
 
-Эфир (live + OBS) — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
+Операторский просмотр: `run_inference --live` (окно FCEUX, без записи пула) — [SCRIPTS.md](SCRIPTS.md).
 
 ---
 
@@ -410,7 +410,7 @@ save models/genN+1.zip
 | --- | --- | --- |
 | Факт | `logs/genN/` | [пул поколения](GLOSSARY.md#пул-поколения) |
 
-Схема полей и CLI — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Эфир / HUD — [STREAMING_CONCEPT.md §7](STREAMING_CONCEPT.md#7-слои-информации-на-экране) и §10. Устаревший day-layout — [retention window](GLOSSARY.md#retention-window-устарело) (архив).
+Схема полей и CLI — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Устаревший day-layout — [retention window](GLOSSARY.md#retention-window-устарело) (архив).
 
 ### FM2 из inference
 
@@ -437,7 +437,7 @@ save models/genN+1.zip
 }
 ```
 
-Не показывать получение ROM на эфире — [STREAMING_CONCEPT.md §6](STREAMING_CONCEPT.md#6-сюжет-и-контент).
+ROM лежит локально в `games/<game_id>/rom/` и в `.gitignore` — [DESIGN.md](DESIGN.md#структура-репозитория).
 
 ---
 
@@ -558,9 +558,9 @@ env = make_env("<game_id>", "<mission_id>")
 
 
 
-### Phase 4 — ML complete (gate перед стримом)
+### Phase 4 — ML complete
 
-См. [критерии приёмки §12](#12-критерии-приёмки-ml). После выполнения — переход к **этапу B** ([STREAMING_CONCEPT.md §11](STREAMING_CONCEPT.md#11-roadmap)).
+См. [критерии приёмки §12](#12-критерии-приёмки-ml).
 
 
 ---
@@ -570,8 +570,6 @@ env = make_env("<game_id>", "<mission_id>")
 ## 12. Критерии приёмки (ML)
 
 Проверка **pipeline платформы** на пилоте. Чеклист и пороги (CP и т.д.) — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-приёмка-пилота).
-
-**Gate этапа A → B.** Стрим-критерии ([STREAMING_CONCEPT.md §12](STREAMING_CONCEPT.md#12-критерии-приёмки-стрим)) — только на **этапе B**, не блокируют приёмку ML.
 
 
 ---

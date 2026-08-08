@@ -112,7 +112,7 @@ def _fceux_cfg_lock(fceux_dir: Path):
 
 
 def operator_fceux_cfg_path() -> Path:
-    """Полный пресет эфира: fceux/operator/fceux.cfg."""
+    """Полный операторский пресет GUI: fceux/operator/fceux.cfg."""
     return repo_root() / "fceux" / "operator" / "fceux.cfg"
 
 

@@ -1,1 +1,1 @@
-# AI NES Learning Stream — Python package
+# AI NES Learning — Python package

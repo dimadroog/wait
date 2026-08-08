@@ -1,4 +1,4 @@
-"""Preflight cleanup перед inference (запись) и эфирным replay."""
+"""Preflight cleanup перед inference (запись) и GUI replay."""
 from __future__ import annotations
 
 import shutil

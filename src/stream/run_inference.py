@@ -1,4 +1,4 @@
-"""Локальный inference: два сценария — pool (пул попыток) и live (эфир до Ctrl+C)."""
+"""Локальный inference: два сценария — pool (пул попыток) и live (окно до Ctrl+C)."""
 from __future__ import annotations
 
 import argparse
@@ -52,7 +52,7 @@ def validate_inference_args(
         conflicts.append("--wipe-gen-logs")
     if conflicts:
         raise SystemExit(
-            "--live — сценарий эфира без пула; "
+            "--live — операторский просмотр без пула; "
             f"уберите: {', '.join(conflicts)}"
         )
 
@@ -376,7 +376,7 @@ def main() -> None:
     parser.add_argument(
         "--live",
         action="store_true",
-        help="эфир: окно FCEUX до Ctrl+C, без записи logs/genN/",
+        help="операторский просмотр: окно FCEUX до Ctrl+C, без записи logs/genN/",
     )
     parser.add_argument(
         "--turbo",

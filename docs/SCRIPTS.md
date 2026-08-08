@@ -483,13 +483,13 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 ./scripts/inference_local.sh
 ./scripts/inference_local.sh --model gen0.zip --episodes 13 --wipe-gen-logs
 
-# Live: эфир до Ctrl+C (без пула)
+# Live: окно FCEUX до Ctrl+C (без пула)
 ./scripts/inference_local.sh --live --model gen0.zip
 ```
 
 | Флаг оболочки | Описание |
 | ------------- | -------- |
-| `--live` | сценарий эфира (пробрасывается в `run_inference`) |
+| `--live` | операторский просмотр (пробрасывается в `run_inference`) |
 | `--skip-preflight` | не вызывать `inference_preflight` |
 | `--wipe-gen-logs` | pool: снести `logs/<model_version>/` перед сбором |
 
@@ -505,7 +505,7 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 - **Pool** (по умолчанию): `--episodes N` попыток → `games/.../logs/<model_version>/` (`attempts.jsonl`, `inference_inputs.jsonl`).
 - **Live** (`--live`): окно FCEUX + `fceux/operator/fceux.cfg` до Ctrl+C, **без** записи в `logs/genN/`. Нельзя с `--episodes` / `--wipe-gen-logs`.
 
-`model_version` = stem модели (`gen0` из `gen0.zip`). Default save state: `save_states/cp_gameplay0.fc0`. Пул — [пул поколения](GLOSSARY.md#пул-поколения); эфир — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Multi-head — один zip.
+`model_version` = stem модели (`gen0` из `gen0.zip`). Default save state: `save_states/cp_gameplay0.fc0`. Пул — [пул поколения](GLOSSARY.md#пул-поколения). Multi-head — один zip.
 
 ```bash
 # Pool: N попыток в logs/genN/
@@ -520,7 +520,7 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 | Флаг | Описание |
 | ---- | -------- |
 | `--model` | один `.zip` в `models/` (default `gen0.zip`); Multi-head — тот же путь |
-| `--live` | эфир до Ctrl+C, без `logs/genN/` |
+| `--live` | окно FCEUX до Ctrl+C, без `logs/genN/` |
 | `--episodes` | pool: число попыток (default 5; нельзя с `--live`) |
 | `--max-steps` | default 8000 |
 | `--stochastic` | sampling (рекомендуется vs greedy) |
@@ -539,7 +539,7 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 <a id="fm2-из-inference-без-reference"></a>
 
-`inference_inputs.jsonl` → self-contained `.fm2` (embed savestate всегда). Не для BC — только просмотр / эфир.
+`inference_inputs.jsonl` → self-contained `.fm2` (embed savestate всегда). Не для BC — только просмотр / отладка.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/export_fm2.py -o logs/clip.fm2 --episode 42

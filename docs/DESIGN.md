@@ -89,7 +89,7 @@
 | --------- | ---- |
 | Windows 10, Python 3.10/3.11, Git | A |
 | pip в `.venv/` | A |
-| NVIDIA + NVENC, OBS, Twitch, upload ≥5 Mbps | B (эфир) |
+| Драйвер NVIDIA (опц.; train — CPU-only) | A |
 
 **Правило:** воспроизводимость ML — git (A) + `requirements.txt` / скрипты (B+C). ROM и models — копированием `games/`, не через git.
 
@@ -98,7 +98,7 @@
 ```
 wait/
 ├── config/workspace.yaml    # дефолты game/mission (оператор)
-├── docs/                    # README (вход), ML, STREAMING, DESIGN, GAME_*
+├── docs/                    # README (вход), ML, DESIGN, GAME_*
 ├── games/<game_id>/
 │   ├── game.yaml
 │   ├── env_config.yaml
@@ -122,7 +122,7 @@ wait/
 └── .gitignore
 ```
 
-Пилот — [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md); эфир (этап B) — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
+Пилот — [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).
 
 ### FCEUX: portable и режимы
 
@@ -134,7 +134,7 @@ wait/
 | Обучение | `profiles/train.yaml` | 4–8 | `bridge.lua` | вкл | headless |
 | Inference | `profiles/inference.yaml` | 1 | `bridge.lua` | pool: вкл; Live: выкл | headless; Live: `--live` + `fceux/operator/fceux.cfg` |
 
-Launcher: `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Override: `FCEUX_HOME`. Платформа: Windows 10; portable win64. Эфирный пресет GUI — [fceux/operator/](../fceux/operator/README.md) (полная подмена cfg при `--live`).
+Launcher: `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Override: `FCEUX_HOME`. Платформа: Windows 10; portable win64. Операторский пресет GUI — [fceux/operator/](../fceux/operator/README.md) (полная подмена cfg при `--live`).
 
 Скрипты в `fceux/lua/` — только **Lua 5.1** (в patterns нет альтернативы `|`; множественный `return` без скобок). Зафиксировано в [fceux/README.md § Lua 5.1](../fceux/README.md#lua-51-обязательно).
 
@@ -199,7 +199,7 @@ CP, heuristics, профили наград — в `games/.../config/` (мисс
 
 ### 4. Внешние процессы — только Adapter
 
-FCEUX, FM2, OBS (этап B) — за адаптером с узким API.  
+FCEUX и FM2 — за адаптером с узким API.  
 Ядро не размазывает IPC-детали (файлы, Lua) по train/inference.
 
 ### 5. `scripts/` — Facade, без бизнес-логики
@@ -370,7 +370,7 @@ CLI --game / --mission (если заданы) — побеждают
 | … | … |
 ```
 
-Допустимо кратко: вход → выход. Запрещено в карточке: таблицы ms/FPS, «этап 1.x», длинные runbook, дубли ML/STREAMING.
+Допустимо кратко: вход → выход. Запрещено в карточке: таблицы ms/FPS, «этап 1.x», длинные runbook, дубли ML_CONCEPT.
 
 ### Антипаттерны (снова «тёмный лес»)
 

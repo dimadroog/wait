@@ -17,7 +17,7 @@ fceux/
 ├── portable/          # официальный zip целиком (exe, dll, palettes, …)
 ├── lua/               # скрипты проекта (bridge, record_logger)
 ├── profiles/          # режимы: record | train | inference
-├── operator/          # полный fceux.cfg для эфира (--live / GUI play)
+├── operator/          # полный fceux.cfg для Live/GUI (--live / play)
 ├── runtime.yaml       # версия и путь к binary
 └── README.md
 ```
@@ -42,7 +42,7 @@ https://github.com/TASEmulators/fceux/releases/download/v2.6.6/fceux-2.6.6-win64
 | ------- | --- | ----- | ---- | ---------- |
 | `record` | `lua/record_logger.lua` | выкл | да | Запись эталона, FM2 |
 | `train` | `lua/bridge.lua` | вкл | headless | PPO, N parallel env |
-| `inference` | `lua/bridge.lua` | pool: вкл; Live: выкл | headless; Live: `--live` + `operator/fceux.cfg` | пул логов / эфир |
+| `inference` | `lua/bridge.lua` | pool: вкл; Live: выкл | headless; Live: `--live` + `operator/fceux.cfg` | пул логов / операторский live |
 
 Launcher (`src/env/`) читает `runtime.yaml` + `profiles/<mode>.yaml`.
 

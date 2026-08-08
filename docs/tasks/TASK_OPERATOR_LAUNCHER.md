@@ -216,7 +216,7 @@ save_state: save_states/cp_gameplay0.fc0
 
 - Дублировать train/inference/preflight в GUI — только фасад subprocess
 - `if game_id == …` и хардкод RnA/m1 в `src/`
-- OBS / Twitch в v1
+- Content production / стриминг (вне фокуса проекта)
 - Парсинг rollout-таблицы SB3 в графики; отдельный логгер в ядре train
 - Smoke/benchmark артефакты в `games/…/models/` из лаунчера
 
