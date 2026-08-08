@@ -5,7 +5,8 @@
 Скопируйте в `docs/tasks/TASK_<SHORT_NAME>.md` (только **открытые** задачи).  
 Закрытые и legacy — в [`archive/`](archive/). Отдельные `ISSUE_*` **не заводим**: гипотезы и прогоны — секции внутри TASK.
 
-**Не класть в промпт по умолчанию:** `docs/tasks/archive/` (только если задача снова актуальна).
+**Не класть в промпт по умолчанию:** `docs/tasks/archive/` (история baseline: playlist, эфир, ablation и т.п.).  
+При работе над **curiosity-форком** archive **не** подключать; ориентир — слой A в [README](../README.md) (DESIGN / SCRIPTS), не baseline ML_CONCEPT как закон обучения.
 
 ---
 

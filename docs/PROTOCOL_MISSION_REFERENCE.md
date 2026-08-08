@@ -1,9 +1,10 @@
 # Протокол: инициализация эталона миссии
 
-> Пошаговый runbook: от записи FM2 до готовой среды train/inference.  
+> **Статус:** runbook baseline-эталона (до curiosity-форка). Не конституция платформы и не обязательный путь форка.  
+> Пошаговый runbook: от записи FM2 до готовой среды train/inference для **baseline** (CP-маршруты, save states, сегменты).  
 > Пример путей — пилот `rushn_attack` / `m1`. Для другой миссии замените `<game_id>` и `<mission_id>`.  
 > Скрипты: [SCRIPTS.md](SCRIPTS.md) · термины: [GLOSSARY.md](GLOSSARY.md).  
-> [`GAME_RUSHN_ATTACK.md`](GAME_RUSHN_ATTACK.md) — описание пилота, **не** runbook заполнения конфигов.
+> [`GAME_RUSHN_ATTACK.md`](GAME_RUSHN_ATTACK.md) — описание пилота, **не** этот runbook.
 
 **Корень миссии:** `games/<game_id>/missions/<mission_id>/`
 

@@ -1,9 +1,11 @@
 # ML_CONCEPT — AI NES Learning
 
-> **Фокус:** ML-ядро платформы: среда, данные, обучение и дообучение.  
+> **Статус:** baseline до curiosity-форка (extrinsic PPO + эталон + CP-награды).  
+> **Не** считать обязательным контрактом нового обучения в форке: особенно §6–7 (награды/эталон/дообучение) и §12 (приёмка).  
+> **Фокус:** описание текущего ML-пути: среда, данные, обучение и дообучение.  
 > Индекс: [README.md](README.md) · Пилот: [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md) · [Скрипты](SCRIPTS.md) · [GLOSSARY.md](GLOSSARY.md)  
 > **Проект:** локальный CPU.  
-> **Приоритет:** ML-стек (train → inference → дообучение).
+> **Приоритет baseline:** train → inference → дообучение.
 
 ---
 
@@ -569,7 +571,7 @@ env = make_env("<game_id>", "<mission_id>")
 
 ## 12. Критерии приёмки (ML)
 
-Проверка **pipeline платформы** на пилоте. Чеклист и пороги (CP и т.д.) — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-приёмка-пилота).
+**Gate baseline-пайплайна** на пилоте (не обязательный DoD curiosity-форка). Чеклист и пороги (CP и т.д.) — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-приёмка-пилота).
 
 
 ---

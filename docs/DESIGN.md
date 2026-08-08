@@ -1,7 +1,8 @@
 # DESIGN — паттерны проектирования wait/
 
-> **Конституция кода:** куда класть новую логику и какие паттерны обязательны.  
-> Индекс: [README.md](README.md) · Задачи: [TASK_BLANK](tasks/TASK_BLANK.md) · ML: [ML_CONCEPT.md](ML_CONCEPT.md)
+> **Конституция кода (слой A):** куда класть новую логику и какие паттерны обязательны.  
+> Наследуется curiosity-форком; не описывает thesis обучения (см. baseline [ML_CONCEPT](ML_CONCEPT.md)).  
+> Индекс: [README.md](README.md) · Задачи: [TASK_BLANK](tasks/TASK_BLANK.md)
 
 ---
 

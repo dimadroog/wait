@@ -1,6 +1,7 @@
 # TRAIN_ANALYSIS — как читать лог обучения
 
-> Операторский разбор консоли `train_ppo` / `train_local.sh`.  
+> **Статус:** baseline — только для текущего `train_ppo` / `train_local.sh` (SB3 PPO, extrinsic reward).  
+> Intrinsic / curiosity-метрики в этот документ **не** входят.  
 > Термины: [GLOSSARY.md](GLOSSARY.md) · CLI: [SCRIPTS.md](SCRIPTS.md)
 
 **Зачем документ:** по цифрам в консоли вовремя понять, есть ли прогресс политики или пора остановить прогон и пересмотреть настройки — **без обязательного визуального inference**.

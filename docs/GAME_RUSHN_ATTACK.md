@@ -1,7 +1,9 @@
 # GAME — Rush'n Attack
 
-> Игро-специфичная концепция пилота. **Не runbook** заполнения конфигов — канон процедуры: [PROTOCOL_MISSION_REFERENCE.md](PROTOCOL_MISSION_REFERENCE.md).  
-> Ядро платформы: [ML_CONCEPT.md](ML_CONCEPT.md) · Индекс: [README.md](README.md) · [GLOSSARY.md](GLOSSARY.md)
+> Игро-специфичная концепция пилота.  
+> **Статус:** пилот baseline; §2–5 (награды, эталон, приёмка CP) — gate *baseline-пайплайна*, не DoD curiosity-форка. §1 (env/actions) полезен каркасу.  
+> Runbook эталона для baseline: [PROTOCOL_MISSION_REFERENCE.md](PROTOCOL_MISSION_REFERENCE.md).  
+> Baseline ML: [ML_CONCEPT.md](ML_CONCEPT.md) · Индекс: [README.md](README.md) · [GLOSSARY.md](GLOSSARY.md)
 
 **Роль в проекте:** первая игра для валидации pipeline (env → train → inference → дообучение). Не конечная цель платформы.
 
@@ -260,7 +262,7 @@ rewards:
 
 ## 5. Приёмка пилота
 
-Проверка pipeline платформы на этой игре ([ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml) ссылается сюда).
+**Gate baseline** на этой игре ([ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml)); не обязательный DoD curiosity-форка.
 
 - [ ] Эталон M1: FM2 + jsonl; manifest + ≥3 seg
 - [ ] `config/routes.yaml` с ≥4 CP, согласован с эталоном

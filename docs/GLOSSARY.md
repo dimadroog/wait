@@ -1,7 +1,8 @@
 # GLOSSARY — термины проекта
 
-> Единый словарь для [ML_CONCEPT.md](ML_CONCEPT.md), [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md).  
-> Разбор консоли обучения (когда останавливать прогон) — [TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md).  
+> Единый словарь. Индекс слоёв: [README.md](README.md) (A — платформа, B — baseline ML).  
+> Статьи про награды CP / эталон / BC описывают **baseline**; каркас env/bridge/пути — слой A.  
+> Разбор консоли baseline-обучения — [TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md).  
 > Перекрёстные ссылки вида `#term` работают внутри этого файла (режим Preview).  
 > Стиль статей: полные предложения; аббревиатура раскрывается при первом появлении в статье.
 
