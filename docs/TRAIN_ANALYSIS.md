@@ -1,7 +1,7 @@
 # TRAIN_ANALYSIS — как читать лог обучения
 
 > Операторский разбор консоли `train_ppo` / `train_local.sh`.  
-> Термины: [GLOSSARY.md](GLOSSARY.md) · CLI: [SCRIPTS.md](SCRIPTS.md) · замеры скорости: [MEASUREMENTS.md](MEASUREMENTS.md)
+> Термины: [GLOSSARY.md](GLOSSARY.md) · CLI: [SCRIPTS.md](SCRIPTS.md)
 
 **Зачем документ:** по цифрам в консоли вовремя понять, есть ли прогресс политики или пора остановить прогон и пересмотреть настройки — **без обязательного визуального inference**.
 
@@ -80,5 +80,4 @@
 ## Связанные документы
 
 - [GLOSSARY.md](GLOSSARY.md) — определения rollout, PPO, env-step, wall-clock  
-- [SCRIPTS.md](SCRIPTS.md) — флаги `train_ppo` / `train_local.sh`  
-- [MEASUREMENTS.md](MEASUREMENTS.md) — эталоны скорости и деградация fps  
+- [SCRIPTS.md](SCRIPTS.md) — флаги `train_ppo` / `train_local.sh` 

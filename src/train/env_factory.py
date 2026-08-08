@@ -18,7 +18,6 @@ DEFAULT_BRIDGE_PREFIXES = ("train_", "bench_")
 TRAIN_ORPHAN_SCRIPT_MARKERS = (
     "train_ppo.py",
     "test_parallel_env.py",
-    "benchmark_bridge.py",
 )
 
 _WIN32_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)

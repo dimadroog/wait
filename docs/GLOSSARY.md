@@ -37,7 +37,7 @@
 
 ### Поколение модели (`genN`)
 
-**Поколение модели** — сохранённый файл весов [PPO](#ppo) вида `models/genN.zip` в каталоге миссии (`gen0`, `gen1`, …). Номер поколения — версия обученной политики, а не прогресс внутри игры. При [разделении политик](#разделение-политик) (Multi-head) в том же `genN.zip` живут несколько голов; маппинг [`phase_id`](#фаза-экрана-phase_id) → голова — в YAML плагина ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md#постановка-v1-2026-07-25-multi-head)).
+**Поколение модели** — сохранённый файл весов [PPO](#ppo) вида `models/genN.zip` в каталоге миссии (`gen0`, `gen1`, …). Номер поколения — версия обученной политики, а не прогресс внутри игры. При [разделении политик](#разделение-политик) (Multi-head) в том же `genN.zip` живут несколько голов; маппинг [`phase_id`](#фаза-экрана-phase_id) → голова — в YAML плагина.
 
 Не путать с игровым [CP](#cp) (контрольная точка маршрута) и с [save state](#save-state) эмулятора (снимок состояния FCEUX).
 
@@ -78,7 +78,7 @@
 
 **Env-step** (шаг среды) — один вызов `env.step(action)`: агент отправил действие, среда вернула новое [наблюдение](#obs), награду и флаги окончания (`terminated` / `truncated`). Счётчик `total_timesteps` в [Stable-Baselines3](#sb3) суммирует такие шаги по **всем** параллельным средам (`n_envs`).
 
-Не путать с одним кадром [NES](#nes): при [frame skip](#frame-skip) равном 4 один шаг среды соответствует примерно четырём кадрам эмулятора. В [MEASUREMENTS.md](MEASUREMENTS.md) скорость обучения часто пишут как число env-step в секунду (варианты «wall» и «steady» — см. [wall-clock](#wall-clock)).
+Не путать с одним кадром [NES](#nes): при [frame skip](#frame-skip) равном 4 один шаг среды соответствует примерно четырём кадрам эмулятора. Скорость обучения часто пишут как число env-step в секунду (варианты «wall» и «steady» — см. [wall-clock](#wall-clock)).
 
 ### FCEUX
 
@@ -106,11 +106,11 @@
 | ------ | ------- |
 | Где писать вывод | `tmp/bench/<session>/` через `artifact_quarantine_dir("bench", …)` |
 | Какие артефакты | JSON с результатами, при необходимости скриншоты [PPU](#ppu); не складывать в `games/…/logs/` и не в `models/` |
-| Жизненный цикл | после зафиксированного вердикта в [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md) одноразовый скрипт обвязки удаляют, JSON можно оставить |
+| Жизненный цикл | после зафиксированного вердикта одноразовый скрипт обвязки удаляют, JSON можно оставить |
 | Критерий приёмки | картинку на [PPU](#ppu) смотрит оператор в окне эмулятора; headless-probe только вспомогательный и сам по себе issue не закрывает |
 | Не путать с | штатными `play_inference_fm2.py`, `run_inference.py`, `smoke_*.py` (регрессия и production) |
 
-После закрытия [ISSUE_INFERENCE](tasks/archive/ISSUE_INFERENCE.md) и пункта **[3.6](tasks/archive/TASK_FIRST_CAMPAIGN.md#36-inference-replay-fm2-gameplay-capture-f-proto)** одноразовые обвязки N6/F0 удалены. Регрессия вшитого save state в фильм проверяется через `movie_playback_probe.lua` и тесты `probe_movie_playback` / `_ppu` в `tests/test_fm2_playback_fceux.py`.
+Одноразовые обвязки N6/F0 удалены. Регрессия вшитого save state в фильм проверяется через `movie_playback_probe.lua` и тесты `probe_movie_playback` / `_ppu` в `tests/test_fm2_playback_fceux.py`.
 
 ### Inference
 
@@ -176,7 +176,7 @@
 
 **Picture Processing Unit** — микросхема [NES](#nes), отвечающая за картинку. В проекте под «PPU» почти всегда имеют в виду **то, что видно в окне** [FCEUX](#fceux) (кадр 256×240): title-экран, геймплей, attract и т.д. Это то, что видит оператор и зритель эфира.
 
-Не путать с [RAM](#ram) (числовые адреса вроде комнаты и координат через Lua) и с [obs](#obs) в смысле наблюдения для сети (стек 112×112). Проверки «на экране title или уже игра» делают по PPU; показания RAM иногда расходятся с картинкой (рассинхрон RAM↔PPU, см. [ISSUE_INFERENCE.md](tasks/archive/ISSUE_INFERENCE.md)). Снимок в probe: `gui.gdscreenshot` в Lua.
+Не путать с [RAM](#ram) (числовые адреса вроде комнаты и координат через Lua) и с [obs](#obs) в смысле наблюдения для сети (стек 112×112). Проверки «на экране title или уже игра» делают по PPU; показания RAM иногда расходятся с картинкой (рассинхрон RAM↔PPU). Снимок в probe: `gui.gdscreenshot` в Lua.
 
 ### RAM
 
@@ -215,7 +215,7 @@ Shell-раунд **не** перезаписывает scout и `ram_resolve` м
 
 **Разделение политик** — несколько голов одной сети (Multi-head: shared backbone) с явной маршрутизацией по [фазе экрана](#фаза-экрана-phase_id), чтобы опыт title / cutscene / босса не смешивал градиенты [PPO](#ppo) геймплея. Артефакт поколения — один [`genN.zip`](#поколение-модели-genn).
 
-В ядре: custom SB3 policy + phase→head (train и [inference](#inference) без `if game_id`). В плагине: детектор фазы, `phase_to_head`, опц. action mask головы. Скриптовый remap на title **не** заменяет механизм. Несколько zip + file-router — вне v1. Контракт — [постановка Multi-head](tasks/archive/TASK_POLICY_SEPARATION.md#постановка-v1-2026-07-25-multi-head). Слот в [DESIGN.md](DESIGN.md) § слоты.
+В ядре: custom SB3 policy + phase→head (train и [inference](#inference) без `if game_id`). В плагине: детектор фазы, `phase_to_head`, опц. action mask головы. Скриптовый remap на title **не** заменяет механизм. Несколько zip + file-router — вне v1. Слот в [DESIGN.md](DESIGN.md) § слоты.
 
 ### RL
 
@@ -272,7 +272,7 @@ Shell-раунд **не** перезаписывает scout и `ram_resolve` м
 
 Как читать поля, какую динамику ждать и когда **останавливать** прогон: **[TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md)**.
 
-Кратко: таблица [Stable-Baselines3](#sb3) при `learn` (`verbose=1` + `progress_pct`). Поле `fps` в таблице — не [FPS](#fps) видео, а кумулятивные [env-step](#env-step) / [wall-clock](#wall-clock). Исторические dual-train замеры — [MEASUREMENTS.md](MEASUREMENTS.md) (архив).
+Кратко: таблица [Stable-Baselines3](#sb3) при `learn` (`verbose=1` + `progress_pct`). Поле `fps` в таблице — не [FPS](#fps) видео, а кумулятивные [env-step](#env-step) / [wall-clock](#wall-clock).
 
 ### TAS
 
@@ -282,7 +282,7 @@ Shell-раунд **не** перезаписывает scout и `ram_resolve` м
 
 **Wall-clock** (время настенных часов, wall time) — сколько реально прошло времени на компьютере по часам, а не «сколько кадров сыграла игра» и не сумма загрузки всех ядер процессора. В журнале обучения это `time_elapsed` (накопительно с начала `learn`) и `wall` / `wall_rollout_s` (длительность одного [rollout](#rollout)); подробнее — [TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md).
 
-Скорость «wall env-steps/s» = число шагов среды, делённое на wall-секунды ([MEASUREMENTS.md](MEASUREMENTS.md)). **Steady** — тот же расчёт, но без первого rollout (на нём обычно холодный старт нескольких окон [FCEUX](#fceux)). В текстах иногда пишут «wall-секунда» в том же смысле.
+Скорость «wall env-steps/s» = число шагов среды, делённое на wall-секунды. **Steady** — тот же расчёт, но без первого rollout (на нём обычно холодный старт нескольких окон [FCEUX](#fceux)). В текстах иногда пишут «wall-секунда» в том же смысле.
 
 ### WR
 

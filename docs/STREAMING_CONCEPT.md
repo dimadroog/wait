@@ -4,7 +4,7 @@
 > ML: [ML_CONCEPT.md](ML_CONCEPT.md) · Пилот: [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md) · Индекс: [README.md](README.md) · [GLOSSARY.md](GLOSSARY.md)  
 > **Статус:** проектирование (этап B). Установка ПО — после gate [ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml).  
 > Порядок этапов — [README.md](README.md#порядок-разработки).  
-> Реализация целевой модели: [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md) (done), [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md) (done).
+> Каркас editorial / live / board и пул `logs/genN/` — в коде (см. [SCRIPTS.md](SCRIPTS.md)).
 
 ---
 
@@ -190,7 +190,7 @@ flowchart TB
 
 Не дублировать на Lua полную карту миссии, длинные таблицы дельты и CTA — это Board.
 
-Реализация as-is: `fceux/lua/achievement_overlay_*.lua` + sidecar `.overlay.json`; целевое ужатие полей — [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md).
+Реализация as-is: `fceux/lua/achievement_overlay_*.lua` + sidecar `.overlay.json`; поля HUD — компактные (gen, CP, тег / смерть).
 
 ### B. Broadcast board (перебивка / контекст)
 
@@ -222,7 +222,7 @@ Live по возможности играет **на границе** (реле�
 | Сцена Board | Browser Source / статика из `broadcast_board` |
 | Переходы | Game ↔ Board по каркасу эпизода |
 
-Профиль сцен и источник board — этап B / [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md).
+Профиль сцен и источник board — этап B (`scripts/build_broadcast_board.py`, `streaming/board/`).
 
 ---
 
@@ -244,8 +244,8 @@ Live по возможности играет **на границе** (реле�
 
 | Задача | Результат |
 | ------ | --------- |
-| [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md) | пул `logs/genN/`, без day-retention как сюжетной/отборочной рамки |
-| [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md) | editorial короткий + live + Board + slim Lua |
+| Пул логов по поколению | `logs/genN/`, без day-retention как сюжетной/отборочной рамки |
+| Hybrid editorial + live + Board | короткий editorial + live + Board + slim Lua |
 | OBS / Twitch | профиль 720p30, сцены Game/Board, stream key не на экране |
 | Тестовый эфир | каркас Board → editorial → Board → короткий live |
 
@@ -258,12 +258,12 @@ Live по возможности играет **на границе** (реле�
 
 После gate [ML §12](ML_CONCEPT.md#12-критерии-приёмки-ml); не блокируют приёмку ML.
 
-- [x] Каркас hybrid: короткий editorial (`--editorial` / `hybrid_episode_prep`) + live (`run_inference --live`) + Board (`streaming/board/`) — локально без Twitch ([TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md))
+- [x] Каркас hybrid: короткий editorial (`--editorial` / `hybrid_episode_prep`) + live (`run_inference --live`) + Board (`streaming/board/`) — локально без Twitch
 - [ ] OBS: 720p30 NVENC; сцены Game и Board (после gate ML / установка ПО)
 - [x] Lua HUD: slim (gen, CP, тег / смерть); карта миссии и CTA — на Board
 - [x] Board: поколение, граница/CP, смена режима; без агрессивного донат-CTA (макс. `support_line`)
 - [x] Сравнение прогресса в сюжете — по `genN`, не по дате папки логов
-- [x] Пул attempts для номинаций editorial — поколение ([TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md))
+- [x] Пул attempts для номинаций editorial — поколение (`logs/genN/`)
 
 ---
 

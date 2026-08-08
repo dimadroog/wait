@@ -67,7 +67,7 @@ noop | left | right | down | up | right+up | left+up | A | B | start
 Список в `games/rushn_attack/env_config.yaml`.
 
 Там же: `screen_phases` → `info.phase_id` (`title` / `intro` / `gameplay`) и `policy_heads` (Multi-head).  
-Фазы: title-поза; game over pose → `intro`; после `cp_gameplay*`/`cp_bossfight*` (sticky) или `room≥level_room_min` / `stage≥gameplay_min_stage` → `gameplay` (коридор m1 `room 0x00` не residual intro). Контракт — [TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md).
+Фазы: title-поза; game over pose → `intro`; после `cp_gameplay*`/`cp_bossfight*` (sticky) или `room≥level_room_min` / `stage≥gameplay_min_stage` → `gameplay` (коридор m1 `room 0x00` не residual intro). Контракт Multi-head — `env_config.yaml` (`screen_phases` / `policy_heads`).
 
 ### Конец эпизода (`death_mode`)
 
@@ -76,7 +76,7 @@ noop | left | right | down | up | right+up | left+up | A | B | start
 | `life_lost` | в **ядре** `BaseNesEnv`: `terminated` на первую потерю жизни; у **Rush'n Attack** death не режет эпизод | A/B / другие игры |
 | `game_over` (**default**) | `died` на каждую потерю (−`death_penalty`); **выход эпизода RnA — только game-over-freeze** (не бюджет N смертей) | train / inference |
 
-В RAM `lives` на смерти часто кратковременно **0** (анимация), затем respawn с lives−1 — поэтому счётчик смертей смотрит **события**, а не `lives==0`. На экране GAME OVER `lives` часто остаётся **6** — поэтому канон конца попытки не `lives`, а freeze (см. [TASK_STOP_TITLE_ATTRACT](tasks/archive/TASK_STOP_TITLE_ATTRACT.md)).
+В RAM `lives` на смерти часто кратковременно **0** (анимация), затем respawn с lives−1 — поэтому счётчик смертей смотрит **события**, а не `lives==0`. На экране GAME OVER `lives` часто остаётся **6** — поэтому канон конца попытки не `lives`, а freeze.
 
 Конец попытки у Rush'n Attack (`episode_end_title` → `RushnAttackEnv`) — **единственный критерий: game-over-freeze**:
 
@@ -262,7 +262,7 @@ rewards:
 ## 5. Achievements (номинации пилота)
 
 Идея и pipeline (evaluator, editorial playlist, overlay) — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); режиссура эфира — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).  
-Правила пилота: [`games/rushn_attack/achievements.yaml`](../games/rushn_attack/achievements.yaml) (поле `achievements` в `game.yaml`). Пул логов — [TASK_GEN_LOG_POOL](tasks/archive/TASK_GEN_LOG_POOL.md). Hybrid editorial / board — [TASK_HYBRID_BROADCAST](tasks/archive/TASK_HYBRID_BROADCAST.md).
+Правила пилота: [`games/rushn_attack/achievements.yaml`](../games/rushn_attack/achievements.yaml) (поле `achievements` в `game.yaml`). Пул логов — [пул поколения](GLOSSARY.md#пул-поколения). Hybrid editorial / board — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
 
 **Целевой пул** для `top_k` / `wall` / рекордов — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/`), не календарный день.  
 **Editorial** — короткий пакет (`build_playlist --editorial`, ориентир 8–15 мин [airtime](GLOSSARY.md#airtime)); см. [SCRIPTS.md](SCRIPTS.md#achievements-и-плейлист).

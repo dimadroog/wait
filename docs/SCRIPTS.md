@@ -6,7 +6,7 @@
 **Область документа:** только скрипты и CLI entry point'ы (`scripts/*`, `src/train/train_ppo.py`, `src/stream/run_inference.py`) — назначение, типовая команда, вход/выход, флаги.
 
 **Не писать сюда:** замеры FPS/ms, таблицы baseline, backlog-номера этапов, runbook расследований, описания контрактов данных, pytest-сюиты.  
-→ метрики: [MEASUREMENTS.md](MEASUREMENTS.md) · контракты: [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных) · задачи: [TASK_BLANK](tasks/TASK_BLANK.md) · гигиена: [DESIGN.md](DESIGN.md#гигиена-артефактов).
+→ контракты: [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных) · задачи: [TASK_BLANK](tasks/TASK_BLANK.md) · гигиена: [DESIGN.md](DESIGN.md#гигиена-артефактов).
 
 **Синхронизация:** алгоритм add/change/remove — [DESIGN § Регистрация скриптов](DESIGN.md#регистрация-скриптов-в-scriptsmd). Здесь — только каталог; устаревшие флаги не оставлять.
 
@@ -32,7 +32,6 @@
 | Короткий editorial + board | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) |
 | Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
 | Операторский GUI (Config / Inference / Train) | [`operator_launcher.py`](#operator_launcherpy) |
-| Benchmark bridge IPC | [`benchmark_bridge.py`](#benchmark_bridgepy) |
 
 ---
 
@@ -43,7 +42,6 @@
 | [`bc_obs_compare.py`](#bc_obs_comparepy) | NPZ vs live env obs diff на human-траектории |
 | [`bc_open_loop_eval.py`](#bc_open_loop_evalpy) | BC transfer diagnostic: open-loop + closed-loop match |
 | [`bc_open_loop_watch.py`](#bc_open_loop_watchpy) | BC open-loop watch: FCEUX + pred vs human |
-| [`benchmark_bridge.py`](#benchmark_bridgepy) | Benchmark IPC bridge → `tmp/bench/` |
 | [`build_broadcast_board.py`](#build_broadcast_boardpy) | JSON табло эфира (gen + дельта) |
 | [`build_playlist.py`](#build_playlistpy) | FM2-плейлист / короткий editorial |
 | [`compile_route_triggers.py`](#compile_route_triggerspy) | RAM-триггеры CP: `routes.yaml` anchor → `route_triggers.yaml` |
@@ -365,28 +363,6 @@ Random agent / короткий env smoke. `--log` пишет в `games/.../logs
 
 ---
 
-### `benchmark_bridge.py`
-
-IPC throughput → JSON в `tmp/bench/` (не `games/.../models/`). Числа baseline — [MEASUREMENTS.md](MEASUREMENTS.md).
-
-```bash
-./.venv/Scripts/python.exe scripts/benchmark_bridge.py --n-envs 8
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--n-envs` | parallel FCEUX (default 8) |
-| `--step-samples` / `--reset-samples` | число замеров (30 / 10) |
-| `--parallel-steps` | steps на env в parallel-фазе (default 20) |
-| `--step-warmup` | default 5 |
-| `--ep-len2-cycles` / `--ep-len2-steps` | профиль ep_len≈2 (64 / 2; `0` cycles = skip) |
-| `--gate-vec-cycles` | проекция gate rollout (default 128) |
-| `--json-out` | путь отчёта |
-| `--session` | id bridge (default `bench_bridge`) |
-| `--save-state`, `--frame-skip`, `--game`, `--mission` | |
-
----
-
 ### `train_preflight.py`
 
 Очистка `train_`/`bench_` IPC + orphan FCEUX/python. Exit 1, если после cleanup остались процессы. CLI нет. Вызывается из `train_local.sh`.
@@ -537,7 +513,7 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 - **Pool** (по умолчанию): `--playlist-cnt N` попыток → `games/.../logs/<model_version>/` (`attempts.jsonl`, `inference_inputs.jsonl`), теги ачивок, **всегда** сборка плейлиста.
 - **Live** (`--live`): окно FCEUX + `fceux/operator/fceux.cfg` до Ctrl+C, **без** записи в `logs/genN/`. Нельзя с `--playlist-cnt` / `--wipe-gen-logs` / `--playlist-no-dedupe`.
 
-`model_version` = stem модели (`gen0` из `gen0.zip`). Default save state: `save_states/cp_gameplay0.fc0`. Пул — [пул поколения](GLOSSARY.md#пул-поколения); эфир — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Multi-head — один zip ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)).
+`model_version` = stem модели (`gen0` из `gen0.zip`). Default save state: `save_states/cp_gameplay0.fc0`. Пул — [пул поколения](GLOSSARY.md#пул-поколения); эфир — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Multi-head — один zip.
 
 ```bash
 # Pool: N попыток + плейлист
@@ -759,6 +735,5 @@ GUI replay одного FM2 (отладка embed / movie).
 
 ## См. также
 
-- [MEASUREMENTS.md](MEASUREMENTS.md) — baseline FPS / ms
 - [DESIGN.md § Структура репозитория](DESIGN.md#структура-репозитория) · [гигиена](DESIGN.md#гигиена-артефактов)
 - [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных) — контракты данных

@@ -206,8 +206,7 @@ FCEUX, FM2, OBS (этап B) — за адаптером с узким API.
 
 ### 5. `scripts/` — Facade, без бизнес-логики
 
-Скрипт: argv → вызов `src/`. Логика в модулях `src/`, не в 200 строках CLI.  
-Толстые scripts и план выноса — [TASK_SCRIPTS_AUDIT § G8](tasks/archive/TASK_SCRIPTS_AUDIT.md#g8--план-переноса-толстых-scripts-2026-07-27).
+Скрипт: argv → вызов `src/`. Логика в модулях `src/`, не в 200 строках CLI.
 
 ### 6. Расширение игры — Template Method
 
@@ -291,11 +290,11 @@ CLI --game / --mission (если заданы) — побеждают
 | Угадывание game/mission по cwd | Dual canon, ложный контекст | [Контракт game/mission](#контракт-game--mission) |
 | Имена `phaseN_*`, `phaseN.yaml` в коде (roadmap) | Путает план ML и runtime | доменные имена (`etalon_build`, `playthrough`, …); не путать с [`phase_id`](GLOSSARY.md#фаза-экрана-phase_id) экрана |
 | Детектор title/cutscene/boss в `src/train/` | Игро-специфика в ядре | YAML/hooks плагина → нейтральный `phase_id`; ядро только выбирает голову |
-| Несколько `genN/*.zip` + bundle router как продуктовый путь | Ломает «поколение = один zip»; дубли train | Multi-head в одном `models/genN.zip` ([TASK_POLICY_SEPARATION](tasks/archive/TASK_POLICY_SEPARATION.md)) |
+| Несколько `genN/*.zip` + bundle router как продуктовый путь | Ломает «поколение = один zip»; дубли train | Multi-head в одном `models/genN.zip` |
 | Награды в `BaseNesEnv.step` | Нельзя менять профиль без форка env | `CheckpointRewardWrapper` |
 | Бизнес-логика в `scripts/` | Дубли, нет переиспользования | `src/` + тонкий Facade |
 | Копия train под игру | Два контура обучения | Один `train_ppo.py` + `make_env` |
-| Новый конфиг-модуль на 3 константы | Шум, лишние импорты | Константа рядом с владельцем (см. archive [3.3](tasks/archive/TASK_FIRST_CAMPAIGN.md#33-inference-без-legacy-replay--убрать-inference_configpy)) |
+| Новый конфиг-модуль на 3 константы | Шум, лишние импорты | Константа рядом с владельцем |
 | Smoke через `train_ppo` + `smoke_*` в models | Засоряет `games/` | `smoke_*.py` / `run_smoke.py`; карантин `tmp/smoke/` |
 | Лечение следствия вместо причины | Ложный «успех», долг, регресс | [§7](#7-корень-причины-не-следствие): dig root cause; experiment ≠ merge |
 
@@ -316,7 +315,7 @@ CLI --game / --mission (если заданы) — побеждают
 
 ## Для AI-сессий
 
-При объёмной работе — [TASK_BLANK](tasks/TASK_BLANK.md) (open в `docs/tasks/`, done → `archive/`). Архив первой кампании: [TASK_FIRST_CAMPAIGN](tasks/archive/TASK_FIRST_CAMPAIGN.md) (не подключать без нужды).
+При объёмной работе — [TASK_BLANK](tasks/TASK_BLANK.md) (open в `docs/tasks/`, done → `archive/`).
 
 1. Определить слот (ядро / плагин / adapter / decorator).
 2. Не нарушать семь правил выше (в т.ч. [§7](#7-корень-причины-не-следствие): не закрывать симптом компромиссом).
@@ -340,7 +339,7 @@ CLI --game / --mission (если заданы) — побеждают
 | Удалён скрипт | вычеркнуть из всех трёх мест |
 | Изменились флаги / дефолты / вход·выход | обновить **только карточку** |
 | Одноразовый отладочный скрипт | **не** регистрировать — удалить в конце сессии |
-| Замеры, контракты данных, pytest, журнал кампаний | **не** в SCRIPTS → [MEASUREMENTS](MEASUREMENTS.md) / [ML §8](ML_CONCEPT.md#8-форматы-данных) / [tasks/archive](tasks/archive/) |
+| Контракты данных, pytest, журнал кампаний | **не** в SCRIPTS → [ML §8](ML_CONCEPT.md#8-форматы-данных) / [tasks/archive](tasks/archive/) |
 
 ### Алгоритм (add)
 
