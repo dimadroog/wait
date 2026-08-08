@@ -5,7 +5,6 @@ rom_file: rom/rushn_attack.nes
 env_class: RushnAttackEnv
 env_package: env
 env_config: env_config.yaml
-achievements: achievements.yaml
 route_trigger_compile: route_trigger_compile.yaml
 emulator:
   runtime: fceux/runtime.yaml

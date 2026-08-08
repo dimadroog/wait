@@ -1,8 +1,7 @@
-"""Локальный inference: два сценария — pool (пул + плейлист) и live (эфир до Ctrl+C)."""
+"""Локальный inference: два сценария — pool (пул попыток) и live (эфир до Ctrl+C)."""
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,21 +11,12 @@ from stable_baselines3 import PPO
 _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "src"))
 
-from achievements.airtime import load_playlist_airtime  # noqa: E402
-from achievements.evaluator import (  # noqa: E402
-    evaluate_records,
-    load_achievements_config,
-    overlay_payload,
-    write_tagged_attempts,
-)
-from achievements.playlist import build_playlist  # noqa: E402
 from attempt_logger import AttemptLogger  # noqa: E402
 from env.loader import make_env  # noqa: E402
 from fceux_launch import load_fceux_profile  # noqa: E402
 from inference_input_logger import InferenceInputLogger  # noqa: E402
 from inference_states import resolve_inference_reset_state  # noqa: E402
 from jsonl_logs import (  # noqa: E402
-    load_jsonl,
     next_episode_number,
     normalize_model_version,
     require_consistent_model_version,
@@ -35,7 +25,6 @@ from project_paths import (  # noqa: E402
     add_game_mission_arguments,
     apply_resolved_game_mission,
     mission_dir,
-    repo_root,
 )
 from train.phase_aware_ppo import PhaseAwarePPO  # noqa: E402
 from train.phase_heads import (  # noqa: E402
@@ -44,7 +33,7 @@ from train.phase_heads import (  # noqa: E402
     resolve_model_zip,
 )
 
-DEFAULT_PLAYLIST_CNT = 5
+DEFAULT_EPISODES = 5
 
 
 def validate_inference_args(
@@ -57,61 +46,15 @@ def validate_inference_args(
         return
     conflicts: list[str] = []
     argv_list = list(sys.argv[1:] if argv is None else argv)
-    if "--playlist-cnt" in argv_list:
-        conflicts.append("--playlist-cnt")
-    if bool(getattr(args, "playlist_no_dedupe", False)):
-        conflicts.append("--playlist-no-dedupe")
+    if "--episodes" in argv_list:
+        conflicts.append("--episodes")
     if bool(getattr(args, "wipe_gen_logs", False)):
         conflicts.append("--wipe-gen-logs")
     if conflicts:
         raise SystemExit(
-            "--live — сценарий эфира без пула/плейлиста; "
+            "--live — сценарий эфира без пула; "
             f"уберите: {', '.join(conflicts)}"
         )
-
-
-def _overlay_path(session_id: str) -> Path:
-    return repo_root() / "tmp" / "bridge" / session_id / "overlay.json"
-
-
-def _write_overlay(session_id: str, payload: dict) -> None:
-    path = _overlay_path(session_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-
-
-def _rebuild_playlist(
-    *,
-    attempts_path: Path,
-    logs_dir: Path,
-    achievements_cfg: dict[str, Any],
-    inputs_path: Path,
-    game: str,
-    mission: str,
-    dedupe: bool,
-    model_version: str,
-) -> tuple[Path | None, int, float]:
-    created, manifest_path, clip_count = build_playlist(
-        attempts_path,
-        logs_dir,
-        config=achievements_cfg,
-        inference_inputs_path=inputs_path if inputs_path.is_file() else None,
-        game=game,
-        mission=mission,
-        dedupe=dedupe,
-        model_version=model_version,
-    )
-    hours = 0.0
-    if manifest_path and manifest_path.is_file():
-        air = load_playlist_airtime(manifest_path.parent)
-        hours = air.hours if air else 0.0
-        print(f"playlist manifest: {manifest_path} ({clip_count} clips)")
-        print(f"playlist launcher: {manifest_path.with_suffix('.play.cmd')}")
-        print(f"playlist airtime={hours * 3600:.1f}s ({hours:.4f}h), clips={clip_count}")
-    else:
-        print("playlist: no clips matched nominations")
-    print(f"playlist blocks: {len(created)} slug(s), {sum(len(v) for v in created.values())} clips")
-    return manifest_path, clip_count, hours
 
 
 def _load_model(args: argparse.Namespace, model_path: Path) -> tuple[Any, Any]:
@@ -222,7 +165,6 @@ def _run_pool_episode(
     save_state: str,
     attempt_logger: AttemptLogger,
     input_logger: InferenceInputLogger,
-    achievements_cfg: dict[str, Any],
     model_version: str,
 ) -> None:
     last_info, steps, heads_used, head_switches = _play_episode_steps(
@@ -234,7 +176,7 @@ def _run_pool_episode(
         ep=ep,
     )
 
-    record = attempt_logger.log_episode(
+    attempt_logger.log_episode(
         mission=args.mission.replace("m", ""),
         episode=ep,
         info=last_info,
@@ -243,18 +185,9 @@ def _run_pool_episode(
         inference_inputs_ref=input_logger.log_path.name,
     )
 
-    history = load_jsonl(attempt_logger.log_path)
-    tagged = evaluate_records(history, achievements_cfg)
-    write_tagged_attempts(attempt_logger.log_path, tagged)
-    record = next((r for r in tagged if r.get("episode") == ep), record)
-
-    overlay = overlay_payload(record, config=achievements_cfg)
-    _write_overlay(args.session, overlay)
-
     print(
         f"episode {ep}: steps={steps} max_cp={last_info.get('max_checkpoint')} "
         f"reward={last_info.get('episode_reward', 0):.2f} died={last_info.get('died')} "
-        f"tags={record.get('tags', [])} "
         f"heads={sorted(heads_used)} switches={head_switches} "
         f"end_phase={last_info.get('phase_id')}"
     )
@@ -301,12 +234,10 @@ def _run_pool_inference(
     logs_dir = mission / "logs"
     attempt_logger = AttemptLogger(logs_dir, model_version=model_version)
     input_logger = InferenceInputLogger(logs_dir, model_version=model_version)
-    achievements_cfg = load_achievements_config(game_id=args.game)
-    playlist_cnt = args.playlist_cnt
-    if playlist_cnt is None:
-        playlist_cnt = DEFAULT_PLAYLIST_CNT
-    batch_size = max(1, int(playlist_cnt))
-    dedupe = not args.playlist_no_dedupe
+    episodes = args.episodes
+    if episodes is None:
+        episodes = DEFAULT_EPISODES
+    batch_size = max(1, int(episodes))
     next_ep = next_episode_number(attempt_logger.log_path)
 
     env = _make_inference_env(
@@ -323,19 +254,8 @@ def _run_pool_inference(
                 save_state=save_state,
                 attempt_logger=attempt_logger,
                 input_logger=input_logger,
-                achievements_cfg=achievements_cfg,
                 model_version=model_version,
             )
-        _rebuild_playlist(
-            attempts_path=attempt_logger.log_path,
-            logs_dir=logs_dir,
-            achievements_cfg=achievements_cfg,
-            inputs_path=input_logger.log_path,
-            game=args.game,
-            mission=args.mission,
-            dedupe=dedupe,
-            model_version=model_version,
-        )
     finally:
         env.close()
 
@@ -431,19 +351,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Local PPO inference. "
-            "Pool: --playlist-cnt N -> logs/genN/ + playlist. "
+            "Pool: --episodes N -> logs/genN/. "
             "Live: --live until Ctrl+C (window, no pool)."
         )
     )
     add_game_mission_arguments(parser)
     parser.add_argument("--model", default="gen0.zip", help="models/gen0.zip или имя файла")
     parser.add_argument(
-        "--playlist-cnt",
+        "--episodes",
         type=int,
         default=None,
         help=(
-            f"pool: число попыток перед сборкой плейлиста "
-            f"(default {DEFAULT_PLAYLIST_CNT}; нельзя с --live)"
+            f"pool: число попыток в logs/genN/ "
+            f"(default {DEFAULT_EPISODES}; нельзя с --live)"
         ),
     )
     parser.add_argument("--max-steps", type=int, default=8000)
@@ -463,11 +383,6 @@ def main() -> None:
         action="store_true",
         default=None,
         help="force turbo on (pool: из inference.yaml; live: по умолчанию выкл)",
-    )
-    parser.add_argument(
-        "--playlist-no-dedupe",
-        action="store_true",
-        help="pool: плейлист без дедупликации (нельзя с --live)",
     )
     parser.add_argument(
         "--skip-preflight",

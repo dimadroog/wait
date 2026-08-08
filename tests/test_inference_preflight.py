@@ -1,7 +1,6 @@
 """Unit tests for inference preflight (gen pool)."""
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -13,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from inference_preflight import (  # noqa: E402
     cleanup_inference_logs,
     cleanup_play_fm2_staging,
-    report_gen_airtime,
     require_inference_preflight,
     require_playback_preflight,
 )
@@ -70,7 +68,6 @@ def test_require_inference_preflight_keeps_logs_by_default(tmp_path: Path, capsy
     require_clean.assert_called_once()
     out = capsys.readouterr().out
     assert "keep gen logs" in out
-    assert "airtime=0s" in out
 
 
 def test_require_inference_preflight_wipe_gen_logs(tmp_path: Path) -> None:
@@ -78,7 +75,7 @@ def test_require_inference_preflight_wipe_gen_logs(tmp_path: Path) -> None:
     logs = mission / "logs"
     pool = logs / "gen0"
     pool.mkdir(parents=True)
-    stale = pool / "playlist.json"
+    stale = pool / "attempts.jsonl"
     stale.write_text("{}", encoding="utf-8")
     with patch("inference_preflight.repo_root", return_value=tmp_path):
         with patch("inference_preflight.mission_dir", return_value=mission):
@@ -92,23 +89,6 @@ def test_require_inference_preflight_wipe_gen_logs(tmp_path: Path) -> None:
                 )
     assert not pool.exists()
     require_clean.assert_called_once()
-
-
-def test_report_gen_airtime_reads_playlist(tmp_path: Path, capsys) -> None:
-    pool = tmp_path / "gen0"
-    pool.mkdir()
-    fm2 = pool / "01_x_001.fm2"
-    fm2.write_text("version 3\n" + "".join("|0|........|\n" for _ in range(60)), encoding="utf-8")
-    (pool / "01_x_001.overlay.json").write_text(
-        json.dumps({"show_until_frame": 120}), encoding="utf-8"
-    )
-    (pool / "playlist.json").write_text(
-        json.dumps({"clips": [{"fm2": "01_x_001.fm2", "overlay": "01_x_001.overlay.json"}]}),
-        encoding="utf-8",
-    )
-    hours = report_gen_airtime(tmp_path, model_version="gen0", label="test")
-    assert abs(hours - 3.0 / 3600.0) < 1e-9
-    assert "airtime=3.0s" in capsys.readouterr().out
 
 
 def test_require_playback_preflight_skips_log_wipe(tmp_path: Path) -> None:

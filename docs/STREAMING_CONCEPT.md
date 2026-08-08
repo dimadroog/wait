@@ -4,7 +4,7 @@
 > ML: [ML_CONCEPT.md](ML_CONCEPT.md) · Пилот: [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md) · Индекс: [README.md](README.md) · [GLOSSARY.md](GLOSSARY.md)  
 > **Статус:** проектирование (этап B). Установка ПО — после gate [ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml).  
 > Порядок этапов — [README.md](README.md#порядок-разработки).  
-> Каркас editorial / live / board и пул `logs/genN/` — в коде (см. [SCRIPTS.md](SCRIPTS.md)).
+> Каркас: live-inference + пул `logs/genN/` (см. [SCRIPTS.md](SCRIPTS.md)); OBS/Twitch — после gate.
 
 ---
 
@@ -33,11 +33,12 @@
 
 **Единица эфира** — [эпизод поколения](GLOSSARY.md#эпизод-поколения): витрина того, на что способна `genN`, на фоне `genN−1` (и при необходимости эталона человека). Сезон = миссия; внутри сезона идут эпизоды поколений и, при необходимости, отчёты с той же `genN` на текущей [границе](GLOSSARY.md#граница-прогресса-frontier) («просто тренируем, пока не получится» — без обещаний сроков и прорывов).
 
-**Формат эфира (Hybrid):**
+**Формат эфира (этап B):**
 
-1. **Editorial** — короткий кураторский пакет клипов поколения (ориентир **8–15 мин** realtime), не часовой «набитый» плейлист.
-2. **Live-inference** — основное тело слота: модель играет сейчас на границе прогресса.
-3. Между режимами — [broadcast board](GLOSSARY.md#broadcast-board) (перебивка вне окна NES).
+1. **Live-inference** — основное тело слота: модель играет сейчас на границе прогресса (`run_inference --live`).
+2. Захват окна FCEUX в OBS → Twitch (720p30 NVENC).
+
+Кураторский пакет клипов, editorial-плейлист и broadcast board **не** входят в продуктовый путь этапа B.
 
 Ниша: RL-прогресс на стриме, смена поколений модели, retro-NES эстетика. Не speedrun WR — обучение и рост CP.
 
@@ -49,7 +50,7 @@
 
 **Аудитория:** retro-gaming + AI-curious.
 
-**Тон:** «AI реально учится» — провалы, скачки прогресса, рост CP, честный застой на границе. Без обещаний «в следующем эфире пробьём». Без явного давления на донат; скромная возможность «поддержать проект» (панель Twitch / мелкая ссылка на board) допустима.
+**Тон:** «AI реально учится» — провалы, скачки прогресса, рост CP, честный застой на границе. Без обещаний «в следующем эфире пробьём». Без явного давления на донат; скромная возможность «поддержать проект» (панель Twitch) допустима.
 
 **Метрики сезона (для зрителя):**
 
@@ -65,39 +66,35 @@
 
 Спецификация эфира. До gate [ML §12](ML_CONCEPT.md#12-критерии-приёмки-ml) — только проектирование, без установки OBS/Twitch.
 
-Материал editorial и live опирается на inference / FM2 / achievements — [ML_CONCEPT.md](ML_CONCEPT.md) / [SCRIPTS.md](SCRIPTS.md). **Пул попыток** — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/…`), не календарный день.
+Материал эфира опирается на live-inference и при необходимости одиночные FM2-клипы — [ML_CONCEPT.md](ML_CONCEPT.md) / [SCRIPTS.md](SCRIPTS.md). **Пул попыток** (для анализа / дообучения) — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/…`), не календарный день.
 
 | Компонент | Описание |
 | --------- | -------- |
 | Платформа | Twitch |
-| Эфир | Hybrid: editorial replay + live `run_inference` + OBS 720p30 NVENC |
-| Захват | Game Capture → окно FCEUX (режим Game); отдельно сцена Board |
-| Editorial | короткий `playlist.json` поколения |
-| Live | стохастический inference на границе, тот же захват FCEUX |
-| HUD в кадре | тонкий Lua overlay (инженерный вид) |
-| Перебивки / контекст | broadcast board (OBS Browser Source или эквивалент) |
+| Эфир | Live `run_inference --live` + OBS 720p30 NVENC |
+| Захват | Game Capture → окно FCEUX |
+| Live | стохастический inference на границе |
+| HUD в кадре | опциональный тонкий Lua overlay (инженерный вид); без кураторского пакета |
 | Лог | целевой: `logs/genN/attempts.jsonl` (+ inputs); см. §10 |
 
 ---
 
 ## 4. Инфраструктура эфира
 
-Железо — [README.md](README.md#железо-хост-2026-07-05). В эфире: CPU (FCEUX playlist и/или live inference), GTX 650 (NVENC), upload ≥5 Mbps.
+Железо — [README.md](README.md#железо-хост-2026-07-05). В эфире: CPU (live inference / опц. replay одного `.fm2`), GTX 650 (NVENC), upload ≥5 Mbps.
 
 ```
-editorial: play_inference_fm2.py (короткий playlist) + FCEUX
-live:      run_inference --live   # до Ctrl+C, без записи пула
-board:     OBS сцена без NES (HTML/JSON board)
-encode:    OBS NVENC 720p30 → Twitch
+live:   run_inference --live   # до Ctrl+C, без записи пула
+encode: OBS NVENC 720p30 → Twitch
 ```
 
 ПО этапа B: OBS Studio на хосте; FCEUX/venv уже из этапа A. Артефакты — [DESIGN.md § Структура](DESIGN.md#структура-репозитория).
 
 **Операторский смысл:**
 
-- Pool: `inference_local.sh --playlist-cnt N` → `logs/genN/` + плейлист → короткий editorial (`build_playlist --editorial` / `hybrid_episode_prep`).
-- Эфир: Board → Editorial → Board → Live (`--live` до Ctrl+C) → Board (финал).
-- Длина Twitch-слота (часто ~1 ч) = editorial + live + перебивки; **не** = длина кураторского плейлиста.
+- Pool (офлайн): `inference_local.sh --episodes N` → `logs/genN/` для анализа / дообучения (не обязательный блок эфира).
+- Эфир: Live (`--live` до Ctrl+C) в окне FCEUX под OBS.
+- Длина Twitch-слота задаётся оператором (live); отдельного кураторского пакета нет.
 
 ---
 
@@ -105,36 +102,27 @@ encode:    OBS NVENC 720p30 → Twitch
 
 ```mermaid
 flowchart TB
-    subgraph prep [Подготовка эпизода поколения]
-        Eval["eval / inference pool genN"]
-        EditBuild["build editorial playlist"]
-        BoardJson["broadcast_board.json"]
-        Eval --> EditBuild
-        Eval --> BoardJson
-        EditBuild --> Manifest["editorial playlist.json"]
+    subgraph prep [Подготовка]
+        Pool["опц. inference pool genN"]
+        Model["models/genN.zip"]
     end
-    subgraph air [Эфир Hybrid]
-        Board[OBS scene Board]
-        Play[play_inference_fm2 editorial]
+    subgraph air [Эфир]
         Live[run_inference live]
-        FCEUX[FCEUX + slim Lua HUD]
+        FCEUX[FCEUX + опц. slim Lua HUD]
         OBS[OBS NVENC 720p30]
-        Manifest --> Play
-        Play --> FCEUX
         Live --> FCEUX
         FCEUX --> OBS
-        Board --> OBS
         OBS --> Twitch[Twitch]
     end
+    Model --> Live
 ```
 
 ### Роли носителей
 
 | Носитель | Роль | Длина (ориентир) |
 | -------- | ---- | ---------------- |
-| Editorial | внимание + доказательство прогресса (`genN` vs `genN−1`) | 8–15 мин |
-| Live | удержание, suspense на границе | остаток слота |
-| Board | контекст, дельта поколений, смена режима | 20–60 с на перебивку |
+| Live | удержание, suspense на границе; доказательство `genN` | слот эфира |
+| Опц. replay `.fm2` | точечный показ клипа (не пакет) | по решению оператора |
 
 ### Цикл для зрителя
 
@@ -149,28 +137,9 @@ flowchart TB
 
 ### Эпизод поколения (каркас)
 
-1. **Board** — `genN`, карта CP, граница, карточка дельты vs `genN−1` (если есть данные).
-2. **Editorial** — мало клипов, высокий сигнал (см. ниже).
-3. **Board** — переход: «live на границе».
-4. **Live** — попытки на frontier; периодические мини-итоги блока на Board или компактной карточке.
-5. **Board** — статус без обещаний («продолжаем тренировать»); скромно «поддержать проект» при желании оператора.
-
-### Состав editorial (сигнальные клипы)
-
-Ориентир: хук → contrast `genN−1`/`genN` → стена (кластер смертей) → редкий breakthrough/clear.  
-Не цель — закрыть номинациями час эфира.
-
-### Achievements (драматургия)
-
-Целевые слои (деталь пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота); код/YAML — задачи ниже):
-
-| Слой | Примеры смысла | Роль |
-| ---- | -------------- | ---- |
-| Сюжетные | `new_frontier`, `wall`, `breakthrough`, `mission_clear`, дельта поколений | каркас editorial / board |
-| Честность | `regression`, откат поколения | доверие |
-| Второстепенные | быстрая смерть, узкие death-gag | B-roll, не наполнители слота |
-
-Пул тегов/`top_k`/`wall` — **поколение**, не календарный день.
+1. Краткий вход: `genN`, граница / CP (устно или статичная карточка оператора — вне кода board).
+2. **Live** — попытки на frontier.
+3. Финал слота — статус без обещаний («продолжаем тренировать»); скромно «поддержать проект» при желании.
 
 ### ROM
 
@@ -180,25 +149,15 @@ flowchart TB
 
 ## 7. Слои информации на экране
 
-Два слоя с разными задачами. Lua overlay **сохраняем** (технологичный, «инженерный» вид), но не перегружаем картинку NES.
+Lua overlay **допустим** (технологичный, «инженерный» вид), но не перегружаем картинку NES. Broadcast board / кураторский JSON-пакет **не** входят в этап B.
 
-### A. Lua HUD (в кадре игры)
+### Lua HUD (в кадре игры)
 
-Работает только пока идёт FCEUX (editorial clip или live).
+Работает только пока идёт FCEUX (live или одиночный replay `.fm2`).
 
-**Минимум на экране:** `genN` / `model_version`, текущий `max_checkpoint` (или CP), краткий тег номинации клипа (если есть), при смерти — компактно `room`/`x` или маркер стены.
+**Минимум на экране (целевой):** `genN` / `model_version`, текущий `max_checkpoint` (или CP), при смерти — компактно `room`/`x`.
 
-Не дублировать на Lua полную карту миссии, длинные таблицы дельты и CTA — это Board.
-
-Реализация as-is: `fceux/lua/achievement_overlay_*.lua` + sidecar `.overlay.json`; поля HUD — компактные (gen, CP, тег / смерть).
-
-### B. Broadcast board (перебивка / контекст)
-
-OBS-сцена **без** зависимости от текущего FM2/live-кадра (Browser Source по JSON/HTML или заранее собранные карточки).
-
-**Показывает:** поколение, лестница `gen0…genN`, карта CP / граница, дельта eval `genN` vs `genN−1`, название режима (Editorial / Live / Frontier report), при желании скромная строка «поддержать проект».
-
-**Когда:** открытие эфира, стык editorial↔live, финал, пауза между блоками live.
+Карта миссии, длинные таблицы дельты и CTA — вне кадра NES (панель Twitch / устно).
 
 ---
 
@@ -218,23 +177,22 @@ Live по возможности играет **на границе** (реле�
 | FPS | 30 |
 | Encoder | NVENC (GTX 650) |
 | Bitrate | 3000–4500 kbps |
-| Сцена Game | Game Capture → окно FCEUX + Lua HUD |
-| Сцена Board | Browser Source / статика из `broadcast_board` |
-| Переходы | Game ↔ Board по каркасу эпизода |
+| Сцена Game | Game Capture → окно FCEUX (+ опц. Lua HUD) |
+| Переходы | по решению оператора; отдельной сцены Board нет |
 
-Профиль сцен и источник board — этап B (`scripts/build_broadcast_board.py`, `streaming/board/`).
+Профиль сцен OBS — этап B (после gate ML).
 
 ---
 
 ## 10. Метрики и логи
 
-**Раскладка:** `games/…/missions/<m>/logs/genN/` — `attempts.jsonl`, `inference_inputs.jsonl`, editorial `playlist.json`, артефакты board.
+**Раскладка:** `games/…/missions/<m>/logs/genN/` — `attempts.jsonl`, `inference_inputs.jsonl` (пул поколения; не материал эфирного пакета).
 
-**Поля для эфира / HUD / board:** `model_version` (`genN`), `max_checkpoint`, `died`, `death_x`, `death_room`, `mission_clear`, теги achievements; для board дополнительно агрегаты eval и дельта к предыдущему поколению.
+**Поля для анализа / HUD:** `model_version` (`genN`), `max_checkpoint`, `died`, `death_x`, `death_room`, `mission_clear`.
 
 Устаревший day-layout — [retention window](GLOSSARY.md#retention-window-устарело).
 
-**Airtime** в целевой модели — длина **editorial**-пакета (и вспомогательная метрика длины клипов), а не обязательство заполнить час плейлистом. Длина Twitch-слота задаётся оператором (editorial + live).
+Длина Twitch-слота задаётся оператором (live).
 
 ---
 
@@ -244,10 +202,10 @@ Live по возможности играет **на границе** (реле�
 
 | Задача | Результат |
 | ------ | --------- |
-| Пул логов по поколению | `logs/genN/`, без day-retention как сюжетной/отборочной рамки |
-| Hybrid editorial + live + Board | короткий editorial + live + Board + slim Lua |
-| OBS / Twitch | профиль 720p30, сцены Game/Board, stream key не на экране |
-| Тестовый эфир | каркас Board → editorial → Board → короткий live |
+| Пул логов по поколению | `logs/genN/`, без day-retention как сюжетной рамки |
+| Live + OBS | `run_inference --live` + захват FCEUX; без кураторского пакета / board JSON |
+| OBS / Twitch | профиль 720p30, сцена Game, stream key не на экране |
+| Тестовый эфир | короткий live под OBS локально / на Twitch |
 
 ---
 
@@ -258,12 +216,12 @@ Live по возможности играет **на границе** (реле�
 
 После gate [ML §12](ML_CONCEPT.md#12-критерии-приёмки-ml); не блокируют приёмку ML.
 
-- [x] Каркас hybrid: короткий editorial (`--editorial` / `hybrid_episode_prep`) + live (`run_inference --live`) + Board (`streaming/board/`) — локально без Twitch
-- [ ] OBS: 720p30 NVENC; сцены Game и Board (после gate ML / установка ПО)
-- [x] Lua HUD: slim (gen, CP, тег / смерть); карта миссии и CTA — на Board
-- [x] Board: поколение, граница/CP, смена режима; без агрессивного донат-CTA (макс. `support_line`)
+- [x] Live (`run_inference --live`) — локально без Twitch
+- [ ] OBS: 720p30 NVENC; сцена Game (после gate ML / установка ПО)
+- [ ] Опц. slim Lua HUD (gen, CP / смерть) без перегруза кадра
 - [x] Сравнение прогресса в сюжете — по `genN`, не по дате папки логов
-- [x] Пул attempts для номинаций editorial — поколение (`logs/genN/`)
+- [x] Пул attempts для анализа / дообучения — поколение (`logs/genN/`)
+- [x] Нет зависимости эфира от editorial-плейлиста / broadcast board JSON
 
 ---
 
@@ -272,14 +230,13 @@ Live по возможности играет **на границе** (реле�
 | Риск | Митигация |
 | ---- | --------- |
 | Слабый upload | 720p30, ~3000 kbps, speedtest |
-| Скучный live | фокус на границе; короткие блоки + Board-итог |
-| Перегруз HUD | вынести контекст на Board; Lua только компактный |
-| Дорогой часовой плейлист | editorial 8–15 мин (`--editorial`) |
+| Скучный live | фокус на границе; короткие блоки |
+| Перегруз HUD | Lua только компактный; контекст вне кадра |
 | ROM на стриме | не показывать получение ROM |
 
 ---
 
 ## 14. Сезоны
 
-Пилот и сезоны Rush'n Attack — [GAME_RUSHN_ATTACK.md §7](GAME_RUSHN_ATTACK.md#7-эфир--сезоны).  
+Пилот и сезоны Rush'n Attack — [GAME_RUSHN_ATTACK.md §6](GAME_RUSHN_ATTACK.md#6-эфир--сезоны).  
 Другие игры — после pipeline на пилоте (отдельный `GAME_*.md`).

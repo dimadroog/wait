@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Inference: два сценария.
-#   Pool  — --playlist-cnt N → logs/genN/ + плейлист (ачивки)
+#   Pool  — --episodes N → logs/genN/
 #   Live  — --live: окно FCEUX до Ctrl+C, без записи пула
 # Дефолты game/mission — config/workspace.yaml (резолв в Python).
 set -euo pipefail
@@ -65,8 +65,8 @@ if [[ "$LIVE" == true ]]; then
     exit 1
   fi
   for a in "${ARGS[@]+"${ARGS[@]}"}"; do
-    if [[ "$a" == "--playlist-cnt" ]]; then
-      echo "inference: error: --live нельзя с --playlist-cnt (это pool)" >&2
+    if [[ "$a" == "--episodes" ]]; then
+      echo "inference: error: --live нельзя с --episodes (это pool)" >&2
       exit 1
     fi
   done
@@ -81,10 +81,10 @@ if [[ "$LIVE" == true ]]; then
     ARGS+=(--stochastic)
   fi
 else
-  # Pool: пустой argv → короткий прогон с плейлистом
+  # Pool: пустой argv → короткий прогон
   if [[ ${#ARGS[@]} -eq 0 ]]; then
     ARGS=(
-      --playlist-cnt 5
+      --episodes 5
       --max-steps 1200
       --stochastic
     )

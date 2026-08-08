@@ -14,7 +14,7 @@
 ┌─────────────────────────────────────────┐
 │  CORE (src/)                            │
 │  bridge · env · rewards · train         │
-│  inference · achievements · utils       │
+│  inference · utils                      │
 └──────────────┬──────────────────────────┘
                │ make_env(game_id)
                ▼
@@ -100,8 +100,7 @@ wait/
 ├── config/workspace.yaml    # дефолты game/mission (оператор)
 ├── docs/                    # README (вход), ML, STREAMING, DESIGN, GAME_*
 ├── games/<game_id>/
-│   ├── game.yaml            # + achievements: path к YAML номинаций
-│   ├── achievements.yaml    # номинации / editorial (плагин)
+│   ├── game.yaml
 │   ├── env_config.yaml
 │   ├── env/
 │   ├── rom/
@@ -116,7 +115,6 @@ wait/
 │       └── tasks/
 ├── src/
 ├── fceux/                   # portable + lua/profiles
-├── streaming/board/         # OBS Browser Source: index.html + broadcast_board.json
 ├── scripts/
 ├── requirements.txt
 ├── .venv/
@@ -124,7 +122,7 @@ wait/
 └── .gitignore
 ```
 
-`streaming/board/` — каркас [broadcast board](GLOSSARY.md#broadcast-board) (этап B). Пилот — [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md); сборка JSON — `scripts/build_broadcast_board.py`.
+Пилот — [GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md); эфир (этап B) — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
 
 ### FCEUX: portable и режимы
 
@@ -149,7 +147,7 @@ Launcher: `runtime.yaml` + `profiles/<mode>.yaml` + `--game` / `--mission`. Over
 | Внешняя система | **Adapter** | `src/` | `FceuxBridge`, `fm2_export` |
 | Создание env | **Abstract Factory** | `src/env/loader.py` + `games/.../env/` | `make_env()`, `build_vec_env()` |
 | Награды, метрики на env | **Decorator** | `src/rewards/` | `CheckpointRewardWrapper` |
-| Варианты правил | **Strategy** | YAML + тонкий evaluator | `routes.yaml`, `achievements.yaml` |
+| Варианты правил | **Strategy** | YAML + тонкий evaluator | `routes.yaml` |
 | Несколько политик по фазе экрана | **Multi-head Policy** | ядро: `src/train/multi_head_policy.py`, `phase_heads.py`; сигнал фазы — из env | shared backbone + головы по [`phase_id`](GLOSSARY.md#фаза-экрана-phase_id); детектор фазы — YAML/hooks плагина |
 | Общий цикл env, hooks | **Template Method** | `BaseNesEnv` + override в плагине | `_death_occurred()` |
 | CLI / smoke | **Facade** | `scripts/` | `smoke_bridge.py`, `run_inference` entry |
@@ -192,7 +190,7 @@ CP, heuristics, профили наград — в `games/.../config/` (мисс
 **Плохо:** `if game_id == "rushn_attack": ...` в ядре.  
 **Хорошо:** правило в YAML плагина; ядро читает и интерпретирует.
 
-Отсутствие `if game_id` **не** достаточно: словарь фаз пилота в train, PPU-пороги, argparse-дефолты `rushn_attack`/`m1`, номинации вне `games/<id>/` — тоже нарушения Pluggable Core. См. [антипаттерны](#антипаттерны) и [контракт game/mission](#контракт-game--mission).
+Отсутствие `if game_id` **не** достаточно: словарь фаз пилота в train, PPU-пороги, argparse-дефолты `rushn_attack`/`m1`, routes-числа вне `games/<id>/` — тоже нарушения Pluggable Core. См. [антипаттерны](#антипаттерны) и [контракт game/mission](#контракт-game--mission).
 
 ### 3. Награды — только Decorator
 
@@ -235,7 +233,7 @@ Experiment-ветки — для проверки гипотез; в main и в 
 │   ├─ Действия, lives, env-параметры → games/.../env_config.yaml
 │   ├─ Детектор фазы экрана (phase_id) → YAML + hooks в games/<game>/env/
 │   ├─ Словарь фаз / isolation / required heads → env_config / policy_heads плагина (не src/train)
-│   ├─ Номинации achievements, пороги PPU/RAM одной игры → games/<id>/… (не корневой config/)
+│   ├─ Пороги PPU/RAM одной игры → games/<id>/… (не корневой config/)
 │   └─ Фабрика env, override hooks → games/<game>/env/__init__.py
 │
 ├─ Общий для всех игр?
@@ -286,7 +284,7 @@ CLI --game / --mission (если заданы) — побеждают
 | Словарь фаз/isolation пилота зашит в `src/train` | Другая игра ломает gate | Контракт в YAML плагина; ядро читает |
 | Игровые room/CP-константы в `src/` | Нарушает Pluggable Core | `routes.yaml` / `head_save_states` (опц. `etalon_build.yaml`) в плагине |
 | Игровые пороги PPU/RAM в `src/` вне конфига плагина | Эвристики пилота в каркасе | YAML/hook плагина |
-| Номинации / routes-числа одной игры в корневом `config/` | Обход плагина | `games/<id>/…` или путь из `game.yaml` |
+| Routes-числа одной игры в корневом `config/` | Обход плагина | `games/<id>/…` или путь из `game.yaml` |
 | Угадывание game/mission по cwd | Dual canon, ложный контекст | [Контракт game/mission](#контракт-game--mission) |
 | Имена `phaseN_*`, `phaseN.yaml` в коде (roadmap) | Путает план ML и runtime | доменные имена (`etalon_build`, `playthrough`, …); не путать с [`phase_id`](GLOSSARY.md#фаза-экрана-phase_id) экрана |
 | Детектор title/cutscene/boss в `src/train/` | Игро-специфика в ядре | YAML/hooks плагина → нейтральный `phase_id`; ядро только выбирает голову |

@@ -53,15 +53,15 @@ def test_inference_pool_phases_preflight_wipe_flag():
         mission="m1",
         save_state="save_states/cp_gameplay0.fc0",
         model="gen0.zip",
-        playlist_cnt=2,
+        episodes=2,
         stochastic=True,
         max_steps=100,
         wipe_gen_logs=True,
-        playlist_no_dedupe=False,
         reward_profile="default",
     )
     assert "--wipe-gen-logs" in phases[0]
-    assert "--playlist-cnt" in phases[1]
+    assert "--episodes" in phases[1]
+    assert "2" in phases[1]
 
 
 def _train_phases_kwargs(**overrides):
@@ -123,7 +123,7 @@ def test_replay_argv_uses_python():
     argv = commands.build_inference_replay_argv(
         game="rushn_attack",
         mission="m1",
-        input_path="logs/gen0/playlist.json",
+        input_path="logs/gen0/clip.fm2",
         turbo=False,
         timeout=10.0,
     )
@@ -173,7 +173,7 @@ def test_format_argv_for_shell_single_phase():
     argv = commands.build_inference_replay_argv(
         game="rushn_attack",
         mission="m1",
-        input_path="logs/gen0/playlist.json",
+        input_path="logs/gen0/clip.fm2",
         turbo=False,
         timeout=10.0,
     )

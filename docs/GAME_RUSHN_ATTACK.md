@@ -3,7 +3,7 @@
 > Игро-специфичная концепция пилота. **Не runbook** заполнения конфигов — канон процедуры: [PROTOCOL_MISSION_REFERENCE.md](PROTOCOL_MISSION_REFERENCE.md).  
 > Ядро платформы: [ML_CONCEPT.md](ML_CONCEPT.md) · Индекс: [README.md](README.md) · Эфир: [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) · [GLOSSARY.md](GLOSSARY.md)
 
-**Роль в проекте:** первая игра для валидации pipeline (env → train → inference → дообучение → плейлист). Не конечная цель платформы.
+**Роль в проекте:** первая игра для валидации pipeline (env → train → inference → дообучение). Не конечная цель платформы.
 
 | Поле | Значение |
 | ---- | -------- |
@@ -22,10 +22,9 @@
 2. [Награды и чекпоинты M1](#2-награды-и-чекпоинты-m1)
 3. [Эталон и сегменты](#3-эталон-и-сегменты)
 4. [Примеры конфигов](#4-примеры-конфигов)
-5. [Achievements (номинации пилота)](#5-achievements-номинации-пилота)
-6. [Приёмка пилота](#6-приёмка-пилота)
-7. [Эфир / сезоны](#7-эфир--сезоны)
-8. [Риски (игра)](#8-риски-игра)
+5. [Приёмка пилота](#5-приёмка-пилота)
+6. [Эфир / сезоны](#6-эфир--сезоны)
+7. [Риски (игра)](#7-риски-игра)
 
 ---
 
@@ -259,43 +258,7 @@ rewards:
 
 ---
 
-## 5. Achievements (номинации пилота)
-
-Идея и pipeline (evaluator, editorial playlist, overlay) — [ML_CONCEPT.md §8](ML_CONCEPT.md#8-форматы-данных); режиссура эфира — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).  
-Правила пилота: [`games/rushn_attack/achievements.yaml`](../games/rushn_attack/achievements.yaml) (поле `achievements` в `game.yaml`). Пул логов — [пул поколения](GLOSSARY.md#пул-поколения). Hybrid editorial / board — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
-
-**Целевой пул** для `top_k` / `wall` / рекордов — [пул поколения](GLOSSARY.md#пул-поколения) (`logs/genN/`), не календарный день.  
-**Editorial** — короткий пакет (`build_playlist --editorial`, ориентир 8–15 мин [airtime](GLOSSARY.md#airtime)); см. [SCRIPTS.md](SCRIPTS.md#achievements-и-плейлист).
-
-### Слои (драматургия)
-
-| Слой | Смысл | Slug в YAML |
-| ---- | ----- | ----------- |
-| Сюжетные | каркас editorial / board | `mission_clear`, `new_frontier`, `wall`, `breakthrough` |
-| Честность | доверие к обучению | `regression` |
-| Второстепенные | B-roll, не наполнители слота | `episode_reward`, `ladder_ouch`, `fastest_death` |
-
-Порядок editorial: `editorial_order` в YAML (сюжет → честность → secondary). Полный `broadcast_order` — для не-editorial сборки.
-
-### Номинации в `games/rushn_attack/achievements.yaml`
-
-| Idx | slug | Overlay | Слой | Тип | Условие |
-| --- | ---- | ------- | ---- | --- | ------- |
-| 01 | `mission_clear` | Clear | story | instant | `mission_clear == true` |
-| 02 | `new_frontier` | Frontier | story | new_max_checkpoint | новый max `max_checkpoint` в пуле |
-| 03 | `wall` | Wall | story | death_cluster | `(death_room, death_x_bucket)` ≥ 3 |
-| 04 | `breakthrough` | Breakthrough | story | instant | `max_checkpoint ≥ 4` и не clear |
-| 05 | `regression` | Regression | honesty | regression | откат ≥ 2 CP от best в пуле |
-| 06 | `episode_reward` | Greedy | secondary | top_k | top‑K по `episode_reward` |
-| 07 | `ladder_ouch` | Ladder | secondary | instant | `died` и `death_room == "0x08"` |
-| 08 | `fastest_death` | Instant | secondary | instant | `died` и `episode_frames ≤ 3` |
-
-`death_x_bucket = death_x // 16`.  
-Дельта `genN` vs `genN−1` (reach CP, frontier, стена) — в `broadcast_board.json` (`scripts/build_broadcast_board.py`), не как отдельный slug клипа.
-
----
-
-## 6. Приёмка пилота
+## 5. Приёмка пилота
 
 Проверка pipeline платформы на этой игре ([ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml) ссылается сюда).
 
@@ -310,18 +273,18 @@ rewards:
 
 ---
 
-## 7. Эфир / сезоны
+## 6. Эфир / сезоны
 
 | Этап | Содержание |
 | ---- | ---------- |
 | Пилот / сезон 1 | M1; единица эфира — [эпизод поколения](GLOSSARY.md#эпизод-поколения) |
 | Сезон 1b | M2–M6 (миссия = сезон; внутри — поколения / frontier report) |
 
-Формат: hybrid editorial + live + board — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Захват: FCEUX → OBS 720p.
+Формат: live + OBS — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Захват: FCEUX → OBS 720p.
 
 ---
 
-## 8. Риски (игра)
+## 7. Риски (игра)
 
 | Риск | Митигация |
 | ---- | --------- |

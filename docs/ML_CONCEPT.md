@@ -37,7 +37,7 @@
 | Компонент               | Описание                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | Алгоритм                | PPO (stable-baselines3)                                      |
-| Inference | CPU локально, `predict()` — **headless** FCEUX (эфир: `--live` + операторский cfg); логи attempts + inputs; FM2, achievements. Пул: [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/`; [airtime](GLOSSARY.md#airtime) — длина editorial ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) |
+| Inference | CPU локально, `predict()` — **headless** FCEUX (эфир: `--live` + операторский cfg); логи attempts + inputs; опц. FM2. Пул: [пул поколения](GLOSSARY.md#пул-поколения) `logs/genN/` ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)) |
 | Обучение                | **CPU локально**; запуск **вручную** по `train_task.json`                           |
 | Хостинг                 | **Только текущий ПК**                                                       |
 | Эталон       | FM2 + полное прохождение миссии + manifest + ≥3 seg |
@@ -113,7 +113,7 @@ flowchart TB
         Attempts --> Trigger
     end
 
-        ModelZip --> Infer[→ editorial / live: STREAMING_CONCEPT]
+        ModelZip --> Infer[→ live / pool: STREAMING_CONCEPT]
 ```
 
 
@@ -132,7 +132,7 @@ Inference + лог attempts (`logs/genN/`)
 PPO → genN+1
 ```
 
-Эфир (editorial + live) — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
+Эфир (live + OBS) — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md).
 
 ---
 
@@ -404,24 +404,17 @@ save models/genN+1.zip
 
 ### Логи inference (`attempts.jsonl` / `inference_inputs.jsonl`)
 
-Одна строка JSON на попытку: прогресс CP, смерть, reward, `tags[]`; inputs — покадровый `(frame, action)` для FM2.
+Одна строка JSON на попытку: прогресс CP, смерть, reward; inputs — покадровый `(frame, action)` для FM2.
 
-| | Путь | Пул номинаций |
+| | Путь | Пул |
 | --- | --- | --- |
 | Факт | `logs/genN/` | [пул поколения](GLOSSARY.md#пул-поколения) |
 
-Схема полей и CLI — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Overlay / board — [STREAMING_CONCEPT.md §7](STREAMING_CONCEPT.md#7-слои-информации-на-экране) и §10. Устаревший day-layout — [retention window](GLOSSARY.md#retention-window-устарело) (архив).
+Схема полей и CLI — [SCRIPTS.md § Inference](SCRIPTS.md#inference). Эфир / HUD — [STREAMING_CONCEPT.md §7](STREAMING_CONCEPT.md#7-слои-информации-на-экране) и §10. Устаревший day-layout — [retention window](GLOSSARY.md#retention-window-устарело) (архив).
 
 ### FM2 из inference
 
-Клипы модели для просмотра / editorial (не эталон `reference/`). Self-contained FM2 + CLI — [SCRIPTS.md § FM2](SCRIPTS.md#fm2-из-inference-без-reference).
-
-### Achievements и editorial
-
-Идея: после inference — теги 🏆/💀 по правилам YAML (целевой пул = поколение) → короткий editorial FM2 → hybrid-эфир ([STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)); live — отдельно.
-
-Компоненты и CLI as-is — [SCRIPTS.md § Achievements](SCRIPTS.md#achievements-и-плейлист).  
-Номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
+Клипы модели для просмотра (не эталон `reference/`). Self-contained FM2 + CLI — [SCRIPTS.md § FM2](SCRIPTS.md#fm2-из-inference-без-reference).
 
 ### `tasks/train_task.json`
 
@@ -548,7 +541,7 @@ env = make_env("<game_id>", "<mission_id>")
 | ------------------ | -------------------------------------------------------- |
 | `train_ppo.py`     | SubprocVecEnv 4–8, CPU, save каждые 50k                  |
 | `train_local.sh`   | запуск по `tasks/train_task.json`                        |
-| `run_inference.py` | локальный inference, логи, FM2, achievements |
+| `run_inference.py` | локальный inference, логи, опц. FM2 |
 | Первая модель      | checkpoint пилота; прогресс по gate игры          |
 
 
@@ -576,7 +569,7 @@ env = make_env("<game_id>", "<mission_id>")
 
 ## 12. Критерии приёмки (ML)
 
-Проверка **pipeline платформы** на пилоте. Чеклист и пороги (CP и т.д.) — [GAME_RUSHN_ATTACK.md §6](GAME_RUSHN_ATTACK.md#6-приёмка-пилота).
+Проверка **pipeline платформы** на пилоте. Чеклист и пороги (CP и т.д.) — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-приёмка-пилота).
 
 **Gate этапа A → B.** Стрим-критерии ([STREAMING_CONCEPT.md §12](STREAMING_CONCEPT.md#12-критерии-приёмки-стрим)) — только на **этапе B**, не блокируют приёмку ML.
 
@@ -596,7 +589,7 @@ env = make_env("<game_id>", "<mission_id>")
 | Медленный PPO               | Средняя     | Ночной train; 1–3 суток на v0 — норма            |
 | Переобучение на seg         | Средняя     | Короткий PPO; rollback                           |
 
-Риски пилота — [GAME_RUSHN_ATTACK.md §8](GAME_RUSHN_ATTACK.md#8-риски-игра).
+Риски пилота — [GAME_RUSHN_ATTACK.md §7](GAME_RUSHN_ATTACK.md#7-риски-игра).
 
 ---
 

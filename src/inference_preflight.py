@@ -4,7 +4,6 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from achievements.airtime import load_playlist_airtime
 from jsonl_logs import gen_pool_dir, normalize_model_version, resolve_default_model_version
 from project_paths import mission_dir, repo_root
 from train.env_factory import require_clean_preflight
@@ -40,30 +39,6 @@ def gen_logs_dir(logs_dir: Path, *, model_version: str) -> Path:
     return gen_pool_dir(logs_dir, model_version, mkdir=False)
 
 
-def report_gen_airtime(
-    logs_dir: Path,
-    *,
-    model_version: str,
-    label: str = "preflight",
-) -> float:
-    """Напечатать текущий airtime пула поколения; вернуть hours (0 если плейлиста нет)."""
-    pool_dir = gen_logs_dir(logs_dir, model_version=model_version)
-    air = load_playlist_airtime(pool_dir) if pool_dir.is_dir() else None
-    if air is None:
-        print(
-            f"preflight [{label}]: keep gen logs ({pool_dir.name}); "
-            f"airtime=0s (no playlist.json yet)",
-            flush=True,
-        )
-        return 0.0
-    print(
-        f"preflight [{label}]: keep gen logs ({pool_dir.name}); "
-        f"airtime={air.seconds:.1f}s ({air.hours:.4f}h), clips={air.clip_count}",
-        flush=True,
-    )
-    return air.hours
-
-
 def warn_portable_movies_pollution(*, label: str = "preflight") -> None:
     """FCEUX путает FM2 с одинаковым romChecksum в fceux/portable/movies/."""
     movies = repo_root() / "fceux" / "portable" / "movies"
@@ -92,7 +67,6 @@ def require_inference_preflight(
     """Перед inference: staging/bridge; пул gen по умолчанию сохраняется.
 
     clean_logs=True — опциональный wipe logs/<model_version>/ перед сбором.
-    При keep — печатает текущий airtime пула.
     Возвращает канонический model_version.
     """
     cleanup_play_fm2_staging()
@@ -115,7 +89,11 @@ def require_inference_preflight(
                 flush=True,
             )
     else:
-        report_gen_airtime(logs_dir, model_version=version, label=label)
+        pool_dir = gen_logs_dir(logs_dir, model_version=version)
+        print(
+            f"preflight [{label}]: keep gen logs ({pool_dir.name})",
+            flush=True,
+        )
     require_clean_preflight(label=label, prefixes=INFERENCE_BRIDGE_PREFIXES)
     return version
 

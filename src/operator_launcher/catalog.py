@@ -155,9 +155,15 @@ def model_out_rel(model_name: str) -> str:
     return f"models/{name}"
 
 
-def default_playlist_input(game_id: str, mission_id: str, model_name: str) -> str:
+def default_replay_input(game_id: str, mission_id: str, model_name: str) -> str:
+    """Первый .fm2 в logs/<stem>/, иначе пустая строка (оператор выбирает файл)."""
     stem = Path(model_name).stem
-    return f"logs/{stem}/playlist.json"
+    logs = mission_dir(game_id, mission_id) / "logs" / stem
+    if logs.is_dir():
+        fm2s = sorted(logs.glob("*.fm2"))
+        if fm2s:
+            return f"logs/{stem}/{fm2s[0].name}"
+    return ""
 
 
 def list_reward_profiles(game_id: str, mission_id: str) -> list[str]:

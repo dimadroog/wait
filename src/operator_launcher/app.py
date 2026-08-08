@@ -46,15 +46,10 @@ class OperatorLauncherApp:
         self.var_inf_max_steps = tk.IntVar(value=8000)
         self.var_inf_turbo = tk.BooleanVar(value=False)
         self.var_inf_reward = tk.StringVar(value="default")
-        self.var_inf_playlist_cnt = tk.IntVar(value=5)
+        self.var_inf_episodes = tk.IntVar(value=5)
         self.var_inf_wipe = tk.BooleanVar(value=False)
-        self.var_inf_no_dedupe = tk.BooleanVar(value=False)
         self.var_inf_input = tk.StringVar()
         self.var_inf_timeout = tk.DoubleVar(value=120.0)
-        self.var_ed_max_airtime = tk.StringVar()
-        self.var_ed_max_clips = tk.StringVar()
-        self.var_ed_max_per_slug = tk.StringVar()
-        self.var_ed_no_dedupe = tk.BooleanVar(value=False)
 
     def _build_train_vars(self) -> None:
         self.var_train_mode = tk.StringVar(value="continue")
@@ -122,15 +117,10 @@ class OperatorLauncherApp:
             self.var_inf_max_steps,
             self.var_inf_turbo,
             self.var_inf_reward,
-            self.var_inf_playlist_cnt,
+            self.var_inf_episodes,
             self.var_inf_wipe,
-            self.var_inf_no_dedupe,
             self.var_inf_input,
             self.var_inf_timeout,
-            self.var_ed_max_airtime,
-            self.var_ed_max_clips,
-            self.var_ed_max_per_slug,
-            self.var_ed_no_dedupe,
             self.var_train_mode,
             self.var_train_model_out,
             self.var_train_model_in,
@@ -210,18 +200,15 @@ class OperatorLauncherApp:
         self._inf_live = ttk.LabelFrame(frame, text="Live", padding=6)
         self._inf_pool = ttk.LabelFrame(frame, text="Pool", padding=6)
         self._inf_replay = ttk.LabelFrame(frame, text="Replay", padding=6)
-        self._inf_editorial = ttk.LabelFrame(frame, text="Editorial (pool)", padding=6)
 
         self._build_inference_live_panel(self._inf_live)
         self._build_inference_pool_panel(self._inf_pool)
         self._build_inference_replay_panel(self._inf_replay)
-        self._build_inference_editorial_panel(self._inf_editorial)
 
         row += 1
         self._inf_live.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=4)
         self._inf_pool.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=4)
         self._inf_replay.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=4)
-        self._inf_editorial.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=4)
 
         row += 1
         btn_row = ttk.Frame(frame)
@@ -248,8 +235,8 @@ class OperatorLauncherApp:
         self._combo_inf_reward.grid(row=2, column=1, sticky=tk.W)
 
     def _build_inference_pool_panel(self, parent: ttk.LabelFrame) -> None:
-        ttk.Label(parent, text="playlist_cnt").grid(row=0, column=0, sticky=tk.W)
-        ttk.Entry(parent, textvariable=self.var_inf_playlist_cnt, width=10).grid(row=0, column=1, sticky=tk.W)
+        ttk.Label(parent, text="episodes").grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(parent, textvariable=self.var_inf_episodes, width=10).grid(row=0, column=1, sticky=tk.W)
         ttk.Checkbutton(parent, text="stochastic", variable=self.var_inf_stochastic).grid(
             row=1, column=0, sticky=tk.W
         )
@@ -258,15 +245,12 @@ class OperatorLauncherApp:
         ttk.Checkbutton(parent, text="wipe_gen_logs", variable=self.var_inf_wipe).grid(
             row=3, column=0, sticky=tk.W
         )
-        ttk.Checkbutton(parent, text="playlist_no_dedupe", variable=self.var_inf_no_dedupe).grid(
-            row=4, column=0, sticky=tk.W
-        )
-        ttk.Label(parent, text="reward_profile").grid(row=5, column=0, sticky=tk.W)
+        ttk.Label(parent, text="reward_profile").grid(row=4, column=0, sticky=tk.W)
         self._combo_inf_pool_reward = ttk.Combobox(parent, textvariable=self.var_inf_reward, width=24)
-        self._combo_inf_pool_reward.grid(row=5, column=1, sticky=tk.W)
+        self._combo_inf_pool_reward.grid(row=4, column=1, sticky=tk.W)
 
     def _build_inference_replay_panel(self, parent: ttk.LabelFrame) -> None:
-        ttk.Label(parent, text="input").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(parent, text="input (.fm2)").grid(row=0, column=0, sticky=tk.W)
         ttk.Entry(parent, textvariable=self.var_inf_input, width=48).grid(row=0, column=1, sticky=tk.EW)
         ttk.Checkbutton(parent, text="turbo", variable=self.var_inf_turbo).grid(
             row=1, column=0, sticky=tk.W
@@ -274,20 +258,6 @@ class OperatorLauncherApp:
         ttk.Label(parent, text="timeout").grid(row=2, column=0, sticky=tk.W)
         ttk.Entry(parent, textvariable=self.var_inf_timeout, width=10).grid(row=2, column=1, sticky=tk.W)
         parent.columnconfigure(1, weight=1)
-
-    def _build_inference_editorial_panel(self, parent: ttk.LabelFrame) -> None:
-        ttk.Label(parent, text="max_airtime").grid(row=0, column=0, sticky=tk.W)
-        ttk.Entry(parent, textvariable=self.var_ed_max_airtime, width=12).grid(row=0, column=1, sticky=tk.W)
-        ttk.Label(parent, text="max_clips").grid(row=1, column=0, sticky=tk.W)
-        ttk.Entry(parent, textvariable=self.var_ed_max_clips, width=12).grid(row=1, column=1, sticky=tk.W)
-        ttk.Label(parent, text="max_per_slug").grid(row=2, column=0, sticky=tk.W)
-        ttk.Entry(parent, textvariable=self.var_ed_max_per_slug, width=12).grid(row=2, column=1, sticky=tk.W)
-        ttk.Checkbutton(parent, text="no_dedupe", variable=self.var_ed_no_dedupe).grid(
-            row=3, column=0, sticky=tk.W
-        )
-        ttk.Button(parent, text="Пересобрать editorial", command=self._start_editorial).grid(
-            row=4, column=0, columnspan=2, sticky=tk.W, pady=4
-        )
 
     def _build_train_tab(self) -> None:
         frame = self._tab_train
@@ -521,11 +491,10 @@ class OperatorLauncherApp:
                         mission=mission_id,
                         save_state=save_state,
                         model=self.var_inf_model.get().strip(),
-                        playlist_cnt=self._var_int(self.var_inf_playlist_cnt, 5),
+                        episodes=self._var_int(self.var_inf_episodes, 5),
                         stochastic=bool(self.var_inf_stochastic.get()),
                         max_steps=self._var_int(self.var_inf_max_steps, 8000),
                         wipe_gen_logs=bool(self.var_inf_wipe.get()),
-                        playlist_no_dedupe=bool(self.var_inf_no_dedupe.get()),
                         reward_profile=self.var_inf_reward.get().strip(),
                     )
                 return commands.build_inference_replay_argv(
@@ -600,21 +569,6 @@ class OperatorLauncherApp:
                 self.var_train_log_path.set("")
         else:
             self.var_train_log_path.set("")
-        if tab == "Inference" and self.var_inf_mode.get() == "pool":
-            try:
-                game_id, mission_id, _ = self._context()
-                ed = commands.build_editorial_playlist_argv(
-                    game=game_id,
-                    mission=mission_id,
-                    model=self.var_inf_model.get().strip(),
-                    max_airtime=self.var_ed_max_airtime.get().strip() or None,
-                    max_clips=self._optional_int(self.var_ed_max_clips.get()),
-                    max_per_slug=self._optional_int(self.var_ed_max_per_slug.get()),
-                    no_dedupe=bool(self.var_ed_no_dedupe.get()),
-                )
-                text += "\n# editorial:\n" + commands.format_argv_for_shell(ed)
-            except (ValueError, TypeError):
-                pass
         self._set_command_preview(text)
 
     def _on_game_changed(self) -> None:
@@ -632,7 +586,7 @@ class OperatorLauncherApp:
         game_id = self._current_game_id()
         mission_id = self.var_mission.get().strip()
         model = self.var_inf_model.get().strip() or "gen0.zip"
-        self.var_inf_input.set(catalog.default_playlist_input(game_id, mission_id, model))
+        self.var_inf_input.set(catalog.default_replay_input(game_id, mission_id, model))
         self._update_command_preview()
 
     def _context(self) -> tuple[str, str, str]:
@@ -663,13 +617,11 @@ class OperatorLauncherApp:
         self._inf_live.grid_remove()
         self._inf_pool.grid_remove()
         self._inf_replay.grid_remove()
-        self._inf_editorial.grid_remove()
         if mode == "live":
             self._inf_live.grid()
             self._btn_inf_start.configure(text="Запустить")
         elif mode == "pool":
             self._inf_pool.grid()
-            self._inf_editorial.grid()
             self._btn_inf_start.configure(text="Собрать")
         else:
             self._inf_replay.grid()
@@ -776,11 +728,10 @@ class OperatorLauncherApp:
                     mission=mission_id,
                     save_state=save_state,
                     model=self.var_inf_model.get().strip(),
-                    playlist_cnt=self._var_int(self.var_inf_playlist_cnt, 5),
+                    episodes=self._var_int(self.var_inf_episodes, 5),
                     stochastic=bool(self.var_inf_stochastic.get()),
                     max_steps=self._var_int(self.var_inf_max_steps, 8000),
                     wipe_gen_logs=bool(self.var_inf_wipe.get()),
-                    playlist_no_dedupe=bool(self.var_inf_no_dedupe.get()),
                     reward_profile=self.var_inf_reward.get().strip(),
                 )
                 self._launch(argv, graceful_stop=False, cleanup_fceux=True)
@@ -797,26 +748,6 @@ class OperatorLauncherApp:
             messagebox.showerror("Inference", str(exc))
         except tk.TclError:
             messagebox.showerror("Inference", "Введите корректные числа в полях")
-
-    def _start_editorial(self) -> None:
-        if self._runner.running:
-            return
-        try:
-            game_id, mission_id, _save_state = self._context()
-            max_clips = self._optional_int(self.var_ed_max_clips.get())
-            max_per_slug = self._optional_int(self.var_ed_max_per_slug.get())
-            argv = commands.build_editorial_playlist_argv(
-                game=game_id,
-                mission=mission_id,
-                model=self.var_inf_model.get().strip(),
-                max_airtime=self.var_ed_max_airtime.get().strip() or None,
-                max_clips=max_clips,
-                max_per_slug=max_per_slug,
-                no_dedupe=bool(self.var_ed_no_dedupe.get()),
-            )
-            self._launch(argv, graceful_stop=False, cleanup_fceux=False)
-        except (ValueError, TypeError) as exc:
-            messagebox.showerror("Editorial", str(exc))
 
     def _start_train(self) -> None:
         if self._runner.running:

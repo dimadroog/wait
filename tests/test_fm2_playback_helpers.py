@@ -48,10 +48,10 @@ def test_fceux_playmovie_argv() -> None:
 def test_resolve_mission_relative_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     mission = tmp_path / "m1"
     (mission / "logs").mkdir(parents=True)
-    target = mission / "logs" / "playlist.json"
+    target = mission / "logs" / "clip.fm2"
     target.write_text("{}", encoding="utf-8")
     monkeypatch.setattr("fm2_playback.mission_dir", lambda g, m: mission)
-    got = resolve_mission_relative_path(Path("logs/playlist.json"), "g", "m1")
+    got = resolve_mission_relative_path(Path("logs/clip.fm2"), "g", "m1")
     assert got == target.resolve()
 
 

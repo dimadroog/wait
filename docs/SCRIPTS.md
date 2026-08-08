@@ -28,9 +28,8 @@
 | Сравнить NPZ obs vs live env | [`bc_obs_compare.py`](#bc_obs_comparepy) |
 | Smoke после правок bridge/env | [`run_smoke.py`](#run_smokepy) |
 | Обучение PPO | [`train_local.sh`](#train_localsh) → [`train_ppo.py`](#train_ppopy) |
-| Inference pool (N + playlist) или live (до Ctrl+C) | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
-| Короткий editorial + board | [`hybrid_episode_prep.py`](#hybrid_episode_preppy) |
-| Replay клипа / эфир | [`play_inference_fm2.py`](#play_inference_fm2py) |
+| Inference pool (`--episodes N`) или live (до Ctrl+C) | [`inference_local.sh`](#inference_localsh) → [`run_inference.py`](#run_inferencepy) |
+| Replay одного `.fm2` | [`play_inference_fm2.py`](#play_inference_fm2py) |
 | Операторский GUI (Config / Inference / Train) | [`operator_launcher.py`](#operator_launcherpy) |
 
 ---
@@ -42,13 +41,9 @@
 | [`bc_obs_compare.py`](#bc_obs_comparepy) | NPZ vs live env obs diff на human-траектории |
 | [`bc_open_loop_eval.py`](#bc_open_loop_evalpy) | BC transfer diagnostic: open-loop + closed-loop match |
 | [`bc_open_loop_watch.py`](#bc_open_loop_watchpy) | BC open-loop watch: FCEUX + pred vs human |
-| [`build_broadcast_board.py`](#build_broadcast_boardpy) | JSON табло эфира (gen + дельта) |
-| [`build_playlist.py`](#build_playlistpy) | FM2-плейлист / короткий editorial |
 | [`compile_route_triggers.py`](#compile_route_triggerspy) | RAM-триггеры CP: `routes.yaml` anchor → `route_triggers.yaml` |
 | [`build_playthrough.py`](#build_playthroughpy) | Эталон: jsonl, routes, `cp_<head><i>.fc0` |
-| [`eval_achievements.py`](#eval_achievementspy) | `tags[]` в `attempts.jsonl` |
 | [`export_fm2.py`](#export_fm2py) | `inference_inputs.jsonl` → self-contained `.fm2` |
-| [`hybrid_episode_prep.py`](#hybrid_episode_preppy) | Editorial + board + шаги оператора |
 | [`inference_local.sh`](#inference_localsh) | Фасад: preflight → `run_inference` |
 | [`inference_preflight.py`](#inference_preflightpy) | Очистка перед inference / playback |
 | [`operator_launcher.py`](#operator_launcherpy) | GUI: workspace + inference + train (subprocess фасады) |
@@ -455,7 +450,7 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 ### `inference_preflight.py`
 
-Перед inference: staging/bridge; **пул поколения по умолчанию сохраняется** (печатает текущий airtime). Wipe — только по флагу. Вызывается из `inference_local.sh` / `play_inference_fm2`.
+Перед inference: staging/bridge; **пул поколения по умолчанию сохраняется**. Wipe — только по флагу. Вызывается из `inference_local.sh` / `play_inference_fm2`.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/inference_preflight.py --model gen0.zip
@@ -478,21 +473,18 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 | Сценарий | Как вызвать | Что делает |
 | -------- | ----------- | ---------- |
-| **Pool** | без `--live` | `--playlist-cnt N` попыток → `logs/genN/` + ачивки + плейлист |
+| **Pool** | без `--live` | `--episodes N` попыток → `logs/genN/` (`attempts.jsonl`, `inference_inputs.jsonl`) |
 | **Live** | `--live` | окно FCEUX до Ctrl+C, **без** записи пула |
 
-Без аргументов — pool: `--playlist-cnt 5`, `--stochastic`. Свои флаги оболочки: `--skip-preflight`, `--wipe-gen-logs`. `--wipe-gen-logs` / `--playlist-cnt` нельзя с `--live`. Wipe + `--skip-preflight` — ошибка. `--model` и `--model-version` с разным stem — отказ.
+Без аргументов — pool: `--episodes 5`, `--stochastic`. Свои флаги оболочки: `--skip-preflight`, `--wipe-gen-logs`. `--wipe-gen-logs` / `--episodes` нельзя с `--live`. Wipe + `--skip-preflight` — ошибка. `--model` и `--model-version` с разным stem — отказ.
 
 ```bash
-# Pool: пул + плейлист
+# Pool: N попыток в logs/genN/
 ./scripts/inference_local.sh
-./scripts/inference_local.sh --model gen0.zip --playlist-cnt 13 --wipe-gen-logs
+./scripts/inference_local.sh --model gen0.zip --episodes 13 --wipe-gen-logs
 
 # Live: эфир до Ctrl+C (без пула)
 ./scripts/inference_local.sh --live --model gen0.zip
-
-# Hybrid editorial + board (после накопления пула)
-./.venv/Scripts/python.exe scripts/hybrid_episode_prep.py --model gen0.zip
 ```
 
 | Флаг оболочки | Описание |
@@ -510,15 +502,15 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 Локальный PPO inference. Два взаимоисключающих режима:
 
-- **Pool** (по умолчанию): `--playlist-cnt N` попыток → `games/.../logs/<model_version>/` (`attempts.jsonl`, `inference_inputs.jsonl`), теги ачивок, **всегда** сборка плейлиста.
-- **Live** (`--live`): окно FCEUX + `fceux/operator/fceux.cfg` до Ctrl+C, **без** записи в `logs/genN/`. Нельзя с `--playlist-cnt` / `--wipe-gen-logs` / `--playlist-no-dedupe`.
+- **Pool** (по умолчанию): `--episodes N` попыток → `games/.../logs/<model_version>/` (`attempts.jsonl`, `inference_inputs.jsonl`).
+- **Live** (`--live`): окно FCEUX + `fceux/operator/fceux.cfg` до Ctrl+C, **без** записи в `logs/genN/`. Нельзя с `--episodes` / `--wipe-gen-logs`.
 
 `model_version` = stem модели (`gen0` из `gen0.zip`). Default save state: `save_states/cp_gameplay0.fc0`. Пул — [пул поколения](GLOSSARY.md#пул-поколения); эфир — [STREAMING_CONCEPT.md](STREAMING_CONCEPT.md). Multi-head — один zip.
 
 ```bash
-# Pool: N попыток + плейлист
+# Pool: N попыток в logs/genN/
 ./.venv/Scripts/python.exe src/stream/run_inference.py \
-  --model gen0.zip --playlist-cnt 5 --stochastic
+  --model gen0.zip --episodes 5 --stochastic
 
 # Live: окно до Ctrl+C, без пула
 ./.venv/Scripts/python.exe src/stream/run_inference.py \
@@ -529,11 +521,10 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 | ---- | -------- |
 | `--model` | один `.zip` в `models/` (default `gen0.zip`); Multi-head — тот же путь |
 | `--live` | эфир до Ctrl+C, без `logs/genN/` |
-| `--playlist-cnt` | pool: число попыток перед плейлистом (default 5; нельзя с `--live`) |
+| `--episodes` | pool: число попыток (default 5; нельзя с `--live`) |
 | `--max-steps` | default 8000 |
 | `--stochastic` | sampling (рекомендуется vs greedy) |
 | `--save-state` | reset state (default `cp_gameplay0.fc0`) |
-| `--playlist-no-dedupe` | pool: без дедупа (нельзя с `--live`) |
 | `--fceux-profile` | default `inference` |
 | `--turbo` | force turbo on (live по умолчанию выкл) |
 | `--session` | id bridge (default `inference`) |
@@ -567,102 +558,6 @@ Continue / прерывание: Ctrl+C/SIGTERM → атомарный save + si
 
 ---
 
-### `eval_achievements.py`
-
-Правила [`games/<game>/achievements.yaml`](../games/rushn_attack/achievements.yaml) (путь из `game.yaml`) → `tags[]` в attempts. Номинации пилота — [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-achievements-номинации-пилота).
-
-```bash
-./.venv/Scripts/python.exe scripts/eval_achievements.py --model gen0.zip
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--attempts` | путь к attempts (default — `logs/<model_version>/attempts.jsonl`) |
-| `--model` / `--model-version` | stem пула, если нет `--attempts` |
-| `--config` | путь к YAML |
-| `--game` / `--mission` | |
-
----
-
-### `build_playlist.py`
-
-<a id="achievements-и-плейлист"></a>
-
-Attempts (+ опц. inputs) → `NN_slug_MMM.fm2`, `.overlay.json`, `playlist.json` (поле `airtime`), `playlist.play.cmd`.  
-Кандидаты — из [пула поколения](GLOSSARY.md#пул-поколения); длина editorial — [airtime](GLOSSARY.md#airtime).  
-Режиссёрский сценарий hybrid: `--editorial` (порядок `editorial_order`, потолок ~12 мин / `max_clips`).
-
-```bash
-# Короткий editorial (дефолт hybrid)
-./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip --editorial
-./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip --editorial --max-airtime 8m --max-clips 10
-
-# Полная пересборка по broadcast_order (без лимита editorial)
-./.venv/Scripts/python.exe scripts/build_playlist.py --model gen0.zip
-./.venv/Scripts/python.exe scripts/build_playlist.py --inputs logs/gen0/inference_inputs.jsonl
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--editorial` | короткий пакет: `editorial_order` + лимиты |
-| `--max-airtime` | потолок airtime (`12m`, `8m`, …); с `--editorial` дефолт из YAML |
-| `--max-clips` / `--max-per-slug` | потолки числа клипов |
-| `--attempts` | attempts.jsonl |
-| `--inputs` | on-demand FM2 из inputs |
-| `--model` / `--model-version` | stem пула, если нет `--attempts` |
-| `--no-dedupe` | не пропускать дубликаты эпизодов |
-| `--game` / `--mission` | |
-
-Выход в `logs/<model_version>/`: `.fm2` (embed savestate), `.overlay.json`, `playlist.json` (+ `airtime`, `model_version`, при editorial — `kind`), `.play.cmd`.
-
----
-
-### `build_broadcast_board.py`
-
-<a id="build_broadcast_boardpy"></a>
-
-Агрегаты `logs/genN/attempts.jsonl` (+ дельта vs `genN−1`) → `broadcast_board.json` для OBS Browser Source (`streaming/board/`).
-
-```bash
-./.venv/Scripts/python.exe scripts/build_broadcast_board.py --model gen1.zip --mode open
-./.venv/Scripts/python.exe scripts/build_broadcast_board.py --model gen1.zip --mode live --no-support-line
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--mode` | `open` / `editorial` / `live` / `close` / `frontier_report` |
-| `--model` / `--model-version` | stem пула |
-| `--support-line` / `--no-support-line` | скромная строка поддержки |
-| `--output` | один путь JSON (иначе pool + `streaming/board/`) |
-| `--game` / `--mission` | |
-
-Поля JSON: `model_version`, `frontier`, `eval.reach_cp`, `delta` (frontier / clear rate / wall), `mode`, опц. `support_line`. Без CTA «донать на GPU / ETA».
-
----
-
-### `hybrid_episode_prep.py`
-
-<a id="hybrid_episode_preppy"></a>
-
-Один вызов: `--editorial` playlist + `broadcast_board.json` + печать операторского потока Board → editorial → Board → live → Board.
-
-```bash
-./.venv/Scripts/python.exe scripts/hybrid_episode_prep.py --model gen1.zip
-./.venv/Scripts/python.exe scripts/hybrid_episode_prep.py --model gen1.zip --max-airtime 8m --mode open
-```
-
-| Флаг | Описание |
-| ---- | -------- |
-| `--max-airtime` / `--max-clips` | лимиты editorial |
-| `--mode` | начальный mode board |
-| `--no-support-line` | без строки поддержки |
-| `--model` / `--model-version` | |
-| `--game` / `--mission` | |
-
-Board в браузере: `streaming/board/index.html` (читает соседний `broadcast_board.json`). Live: `run_inference --live`.
-
----
-
 ### `operator_launcher.py`
 
 <a id="operator_launcherpy"></a>
@@ -682,30 +577,26 @@ operator_launcher.cmd
 | Область | Действия |
 | ------- | -------- |
 | **Config** | game, mission, чекпоинт миссии (`save_state`); кнопка «Применить» → `workspace.yaml` |
-| **Inference** | `mode`: live / pool / replay; live+pool → `inference_local.sh`; replay → `play_inference_fm2.py`; pool editorial → `build_playlist.py --editorial` |
+| **Inference** | `mode`: live / pool / replay; live+pool → preflight + `run_inference`; replay → `play_inference_fm2.py` (один `.fm2`) |
 | **Train** | `continue` / `scratch` / `from_ancestor` → preflight + `train_ppo` |
 | **Rollback** | `genN.prev.zip` → `genN.zip` (без learn) |
 
-Лаунчер вызывает те же шаги, что `inference_local.sh` / `train_local.sh`, через **venv Python** (не `bash` — на Windows `bash` из System32 это WSL-заглушка). Под формами — **предпросмотр команды** (копировать в терминал); для pool вторая строка — editorial.
+Лаунчер вызывает те же шаги, что `inference_local.sh` / `train_local.sh`, через **venv Python** (не `bash` — на Windows `bash` из System32 это WSL-заглушка). Под формами — **предпросмотр команды** (копировать в терминал).
 
 ---
 
 ### `play_inference_fm2.py`
 
 Фасад: argv → `stream.play_fm2.play_input` (хелперы staging/wait — `fm2_playback`).  
-Replay одного self-contained `.fm2` или всего `playlist.json` (эфир).
+Replay одного self-contained `.fm2` (без playlist / overlay HUD).
 
 ```bash
-# После сбора (genN = stem модели)
-./.venv/Scripts/python.exe scripts/play_inference_fm2.py \
-  games/rushn_attack/missions/m1/logs/gen0/playlist.json
 ./.venv/Scripts/python.exe scripts/play_inference_fm2.py path/to/clip.fm2
 ```
 
 | Флаг | Описание |
 | ---- | -------- |
-| `input` | `.fm2` или `playlist.json` |
-| `--overlay` | sidecar (default `{fm2}.overlay.json`) |
+| `input` | путь к `.fm2` |
 | `--turbo` | макс. скорость |
 | `--noicon` | скрыть окно |
 | `--timeout` | default 120 |

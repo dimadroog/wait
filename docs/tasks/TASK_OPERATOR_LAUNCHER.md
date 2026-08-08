@@ -36,7 +36,7 @@
 | `scripts/train_local.sh`, `scripts/inference_local.sh` | фасады preflight + argv |
 | `src/stream/run_inference.py` | `validate_inference_args` (live vs pool) |
 | `src/train/train_ppo.py` | `build_parser`, режимы model-out |
-| [SCRIPTS.md](../SCRIPTS.md) | карточки train / inference / play_inference_fm2 / build_playlist |
+| [SCRIPTS.md](../SCRIPTS.md) | карточки train / inference / play_inference_fm2 |
 | [TRAIN_ANALYSIS.md](../TRAIN_ANALYSIS.md) | что оператор видит в stdout train |
 
 Пилот для ручной приёмки: `games/rushn_attack/missions/m1/`.
@@ -47,7 +47,7 @@
 
 - Python venv: `./.venv/Scripts/python.exe` (прямой вызов; **не** `bash` из System32 — WSL-заглушка).
 - Inference/train: две фазы — `*_preflight.py` → `run_inference.py` / `train_ppo.py` (эквивалент shell-фасадов).
-- Replay/editorial: `scripts/play_inference_fm2.py`, `scripts/build_playlist.py`.
+- Replay: `scripts/play_inference_fm2.py` (один `.fm2`).
 - Всегда явно: `--game`, `--mission`, `--save-state` (кроме rollback).
 - Стоп inference/replay: `taskkill /T` + cleanup orphan FCEUX; train — graceful Ctrl+Break.
 
@@ -56,7 +56,7 @@
 ```text
 # pool inference (фаза 1: inference_preflight.py; фаза 2: run_inference.py)
 .venv/Scripts/python.exe scripts/inference_preflight.py --game rushn_attack --mission m1 --model gen0.zip
-.venv/Scripts/python.exe src/stream/run_inference.py --skip-preflight --model gen0.zip --playlist-cnt 5 ...
+.venv/Scripts/python.exe src/stream/run_inference.py --skip-preflight --model gen0.zip --episodes 5 ...
 
 # train continue (фаза 1: train_preflight.py; фаза 2: train_ppo.py)
 .venv/Scripts/python.exe scripts/train_preflight.py
@@ -76,7 +76,7 @@
 
 Сейчас: этап N из чеклиста (смотри «Состояние реализации» — что уже [x]).
 
-Стек: Tkinter, без новых зависимостей. Фасад subprocess — train_local.sh / inference_local.sh / play_inference_fm2.py / build_playlist.py. Логика train/inference не в GUI.
+Стек: Tkinter, без новых зависимостей. Фасад subprocess — train_local.sh / inference_local.sh / play_inference_fm2.py. Логика train/inference не в GUI.
 
 Ограничения: pluggable-core (enum из games/*, без if game_id); artifact-hygiene; scripts/ — тонкий фасад.
 
@@ -111,22 +111,20 @@
 - Запуск: preflight → `inference_local.sh --live` (или `run_inference.py --live --skip-preflight`).
 - Инварианты: окно FCEUX + `fceux/operator/fceux.cfg`; без записи `logs/genN/`; цикл эпизодов до стоп.
 
-**`mode: pool`** (сбор [пула поколения](../GLOSSARY.md#пул-поколения) + автосборка `playlist.json`)
+**`mode: pool`** (сбор [пула поколения](../GLOSSARY.md#пул-поколения))
 
-- `playlist_cnt` — int, default `5`.
+- `episodes` — int, default `5`.
 - `stochastic` — bool, default `true`.
 - `max_steps` — int, default `8000`.
 - `wipe_gen_logs` — bool, default `false`.
-- `playlist_no_dedupe` — bool, default `false`.
 - `reward_profile` — enum; default `default`.
 - Действия: Собрать / Стоп.
-- Собрать: preflight (опц. wipe) → `inference_local.sh` без `--live`.
-- Опц. «Пересобрать editorial» (без новых попыток): `build_playlist.py --editorial` + `max_airtime`, `max_clips`, `max_per_slug`, `no_dedupe`.
-- Инварианты: headless pool; пишет `logs/<model_version>/`; всегда пересобирает плейлист в конце прогона.
+- Собрать: preflight (опц. wipe) → `inference_local.sh` без `--live` (`--episodes N`).
+- Инварианты: headless pool; пишет `logs/<model_version>/` (`attempts.jsonl`, `inference_inputs.jsonl`); без плейлиста / editorial.
 
-**`mode: replay`** (проигрывание готового плейлиста / клипа)
+**`mode: replay`** (проигрывание одного клипа)
 
-- `input` — путь к `logs/<model_version>/playlist.json` (дефолт по `model`) или `.fm2`.
+- `input` — путь к `.fm2` (дефолт: первый `.fm2` в `logs/<model_version>/` по `model`, иначе пусто).
 - `turbo` — bool, default `false`.
 - `timeout` — float, default `120`.
 - Действия: Запустить / Стоп.
@@ -169,7 +167,7 @@
 | `src/operator_launcher/workspace.py` | Чтение/запись `config/workspace.yaml` (`game`, `mission`, `save_state`) |
 | `src/operator_launcher/catalog.py` | Enum для UI: игры, миссии, save_state якоря, `models/*.zip`, reward profiles |
 | `src/operator_launcher/runner.py` | Один subprocess; start/stop; pump stdout/stderr в GUI |
-| `src/operator_launcher/commands.py` | Сбор argv для `train_local.sh`, `inference_local.sh`, `play_inference_fm2.py`, `build_playlist.py` |
+| `src/operator_launcher/commands.py` | Сбор argv для `train_local.sh`, `inference_local.sh`, `play_inference_fm2.py` |
 
 Логика train/inference **не** в GUI — только argv и `repo_root()` из [`project_paths.py`](../../src/project_paths.py).
 
@@ -178,10 +176,9 @@
 1. **Каркас + Config** — окно Tk, `workspace.yaml` load/save, combobox game/mission/save_state; кнопка «Применить».
 2. **Catalog** — `list_games()`, `list_missions()`, `list_save_state_anchors()`, `list_model_zips()` из layout миссии; без `if game_id`.
 3. **Runner** — `subprocess.Popen` из корня репо; поток читает pipe → `queue` → `Text`; env `PYTHONIOENCODING=utf-8`; один активный процесс (блокировать второй запуск).
-4. **Inference** — переключатель `mode`; условные поля; live/pool → `inference_local.sh`; replay → `play_inference_fm2.py`; стоп через terminate/SIGINT-эквивалент.
-5. **Pool editorial** — кнопка «Пересобрать editorial» → `build_playlist.py --editorial` (+ опц. лимиты).
-6. **Train** — `train_mode`, прокси флагов логирования, «Откатить»; общая панель stdout с Inference.
-7. **Приёмка + SCRIPTS.md** — ручной прогон на m1; регистрация entry point.
+4. **Inference** — переключатель `mode`; условные поля; live/pool → preflight + `run_inference`; replay → `play_inference_fm2.py` (один `.fm2`); стоп через terminate/SIGINT-эквивалент.
+5. **Train** — `train_mode`, прокси флагов логирования, «Откатить»; общая панель stdout с Inference.
+6. **Приёмка + SCRIPTS.md** — ручной прогон на m1; регистрация entry point.
 
 **Стоп и безопасность**
 
@@ -203,9 +200,9 @@ save_state: save_states/cp_gameplay0.fc0
 
 - [x] Этап 1–2: каркас Tk + Config + `catalog.py`
 - [x] Этап 3: `runner.py` (subprocess, stdout-панель, один процесс)
-- [x] Этап 4–5: Inference (live / pool / replay + editorial)
-- [x] Этап 6: Train + «Откатить»
-- [x] Этап 7: SCRIPTS.md (регистрация); ручная приёмка m1 — оператору
+- [x] Этап 4: Inference (live / pool / replay, без editorial)
+- [x] Этап 5: Train + «Откатить»
+- [x] Этап 6: SCRIPTS.md (регистрация); ручная приёмка m1 — оператору
 
 ### Критерий готовности (DoD)
 
@@ -217,14 +214,14 @@ save_state: save_states/cp_gameplay0.fc0
 
 ### Не делать (антискоуп)
 
-- Дублировать train/inference/preflight/playlists в GUI — только фасад subprocess
+- Дублировать train/inference/preflight в GUI — только фасад subprocess
 - `if game_id == …` и хардкод RnA/m1 в `src/`
-- OBS / Twitch / hybrid board в v1 (отдельные скрипты остаются в CLI)
+- OBS / Twitch в v1
 - Парсинг rollout-таблицы SB3 в графики; отдельный логгер в ядре train
 - Smoke/benchmark артефакты в `games/…/models/` из лаунчера
 
 ### Заметки / гипотезы
 
-- Inference live и playlist объединены в одну область с `mode` (меньше дублирования `model` / Config).
+- Inference live / pool / replay объединены в одну область с `mode` (меньше дублирования `model` / Config).
 - GUI: **Tkinter** (см. [План реализации клиента](#план-реализации-клиента)); CustomTkinter — только если v1 визуально неудовлетворит.
 - Расширение workspace полем `save_state` — скрипты получают `--save-state` от лаунчера; yaml — дефолт оператора.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Проигрывание inference FM2 (-playmovie) и playlist.json (один FCEUX на весь плейлист)."""
+"""Проигрывание одного inference FM2 (-playmovie)."""
 from __future__ import annotations
 
 import argparse
@@ -15,15 +15,14 @@ from stream.play_fm2 import play_input  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Play inference FM2 (-playmovie) or playlist")
-    parser.add_argument("input", help=".fm2 | logs/<model_version>/playlist.json")
+    parser = argparse.ArgumentParser(description="Play inference FM2 (-playmovie)")
+    parser.add_argument("input", help=".fm2")
     add_game_mission_arguments(parser)
-    parser.add_argument("--overlay", type=Path, default=None)
     parser.add_argument("--turbo", action="store_true", help="ускорить replay")
     parser.add_argument(
         "--noicon",
         action="store_true",
-        help="скрытое окно (по умолчанию окно видно для эфира)",
+        help="скрытое окно (по умолчанию окно видно)",
     )
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--skip-preflight", action="store_true")
@@ -43,7 +42,6 @@ def main() -> None:
         input_path,
         game=args.game,
         mission=args.mission,
-        overlay=args.overlay,
         turbo=bool(args.turbo),
         noicon=bool(args.noicon),
         timeout=float(args.timeout),

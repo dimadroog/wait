@@ -22,7 +22,6 @@ class AttemptLogger:
         info: dict[str, Any],
         model_version: str | None = None,
         save_state: str | None = None,
-        tags: list[str] | None = None,
         inference_inputs_ref: str | None = None,
     ) -> dict[str, Any]:
         ram = info.get("ram") or {}
@@ -53,7 +52,6 @@ class AttemptLogger:
             "episode_reward": round(episode_reward, 3),
             "reward_per_step": round(episode_reward / episode_frames, 5) if episode_frames else 0.0,
             "save_state": save_state,
-            "tags": list(tags or []),
         }
         if inference_inputs_ref:
             record["inference_inputs_ref"] = inference_inputs_ref

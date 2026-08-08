@@ -14,8 +14,8 @@
 | -------- | ----- |
 | **[DESIGN.md](DESIGN.md)** | Pluggable Core, слоты, дерево репо / git A–B–C, гигиена · [регистрация скриптов](DESIGN.md#регистрация-скриптов-в-scriptsmd) |
 | **[ML_CONCEPT.md](ML_CONCEPT.md)** | Ядро ML: PPO, среда, награды, эталон, train pipeline · [GLOSSARY.md](GLOSSARY.md) · [скрипты](SCRIPTS.md) |
-| **[GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md)** | Пилот: Rush'n Attack — действия, CP, rewards, achievements, приёмка |
-| **[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)** | Twitch hybrid: editorial + live + board; прогресс по `genN` · [GLOSSARY.md](GLOSSARY.md) |
+| **[GAME_RUSHN_ATTACK.md](GAME_RUSHN_ATTACK.md)** | Пилот: Rush'n Attack — действия, CP, rewards, приёмка |
+| **[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md)** | Twitch: live + OBS; прогресс по `genN` · [GLOSSARY.md](GLOSSARY.md) |
 | **[SCRIPTS.md](SCRIPTS.md)** | Каталог CLI: назначение и флаги entry point'ов (без замеров / журналов) |
 | **[TRAIN_ANALYSIS.md](TRAIN_ANALYSIS.md)** | Как читать консоль обучения: динамика полей, когда останавливать прогон |
 | **[tasks/TASK_BLANK.md](tasks/TASK_BLANK.md)** | Каркас задач: open в `tasks/`, done → `tasks/archive/` (без `ISSUE_*`) |
@@ -32,14 +32,14 @@
 | Этап | Фокус | Документ | Статус |
 | ---- | ----- | -------- | ------ |
 | **A — ML** | FCEUX bridge, env, train, локальный inference, дообучение | [ML_CONCEPT.md §11](ML_CONCEPT.md#11-roadmap-ml-фазы) | **текущий** |
-| **B — Стрим** | OBS, Twitch, hybrid editorial/live, board + Lua HUD | [STREAMING_CONCEPT.md §11–12](STREAMING_CONCEPT.md#11-roadmap) | после gate |
+| **B — Стрим** | OBS, Twitch, live-inference, опц. Lua HUD | [STREAMING_CONCEPT.md §11–12](STREAMING_CONCEPT.md#11-roadmap) | после gate |
 
-**Gate (A → B):** [ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml) + чеклист пилота [GAME_RUSHN_ATTACK.md §6](GAME_RUSHN_ATTACK.md#6-приёмка-пилота).
+**Gate (A → B):** [ML_CONCEPT.md §12](ML_CONCEPT.md#12-критерии-приёмки-ml) + чеклист пилота [GAME_RUSHN_ATTACK.md §5](GAME_RUSHN_ATTACK.md#5-приёмка-пилота).
 
-До gate: **не** ставить OBS, **не** настраивать Twitch, **не** готовить board/overlay под эфир.  
-На этапе A: `run_inference` и `attempts.jsonl` — сбор попыток модели; hybrid-эфир — этап B.
+До gate: **не** ставить OBS, **не** настраивать Twitch.  
+На этапе A: `run_inference` и `attempts.jsonl` — сбор попыток модели; эфир (live + OBS) — этап B.
 
-[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) — спецификация этапа B; каркас editorial/live/board и пул `logs/genN/` уже в коде.
+[STREAMING_CONCEPT.md](STREAMING_CONCEPT.md) — спецификация этапа B; live-inference и пул `logs/genN/` уже в коде (без editorial/board как продуктового пути).
 
 <a id="состав-проекта"></a>
 
@@ -52,7 +52,7 @@
 | **Данные и артефакты** | ROM, models (`genN`), demos, save states, логи | `games/…`, **не в git** |
 | **Python-стек** | PyTorch, SB3, gymnasium… | `.venv/` в `wait/`, **не в git**; ставится из `requirements.txt` |
 | **Окружение хоста** | Windows 10, Python 3.11, Git, драйвер NVIDIA | системная установка |
-| **Стрим (этап B)** | OBS, Twitch | системная установка; конфиги сцен — позже в `streaming/` |
+| **Стрим (этап B)** | OBS, Twitch | системная установка; профили сцен OBS — после gate |
 
 Полная матрица артефактов — [DESIGN.md § Структура](DESIGN.md#структура-репозитория). Скрипты — [SCRIPTS.md](SCRIPTS.md).
 
@@ -65,7 +65,7 @@
 
 | Ресурс | Состав | Стрим | ML |
 | ------ | ------ | ----- | -- |
-| CPU | Intel **i7-3770** @ 3.40 GHz (4C/8T) | FCEUX editorial / live | PPO на CPU |
+| CPU | Intel **i7-3770** @ 3.40 GHz (4C/8T) | FCEUX live | PPO на CPU |
 | RAM | 2×8 GB Kingston DDR3-1600 (16 GB) | — | 4–8 parallel env |
 | GPU | **GTX 650** 1 GB | OBS NVENC | PyTorch CPU-only |
 | SSD | Kingston SA400S37 480 GB | — | модели, логи, demos |

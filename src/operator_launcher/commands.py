@@ -68,9 +68,8 @@ def build_inference_run_argv(
     max_steps: int,
     turbo: bool,
     reward_profile: str,
-    playlist_cnt: int | None = None,
+    episodes: int | None = None,
     wipe_gen_logs: bool = False,
-    playlist_no_dedupe: bool = False,
 ) -> list[str]:
     argv = [
         _py(),
@@ -89,14 +88,12 @@ def build_inference_run_argv(
         if stochastic:
             argv.append("--stochastic")
     else:
-        if playlist_cnt is not None:
-            argv.extend(["--playlist-cnt", str(playlist_cnt)])
+        if episodes is not None:
+            argv.extend(["--episodes", str(episodes)])
         if stochastic:
             argv.append("--stochastic")
         if wipe_gen_logs:
             argv.append("--wipe-gen-logs")
-        if playlist_no_dedupe:
-            argv.append("--playlist-no-dedupe")
     if turbo:
         argv.append("--turbo")
     return argv
@@ -136,11 +133,10 @@ def build_inference_pool_phases(
     mission: str,
     save_state: str,
     model: str,
-    playlist_cnt: int,
+    episodes: int,
     stochastic: bool,
     max_steps: int,
     wipe_gen_logs: bool,
-    playlist_no_dedupe: bool,
     reward_profile: str,
 ) -> list[list[str]]:
     """Эквивалент inference_local.sh pool (preflight → run_inference)."""
@@ -161,9 +157,8 @@ def build_inference_pool_phases(
             max_steps=max_steps,
             turbo=False,
             reward_profile=reward_profile,
-            playlist_cnt=playlist_cnt,
+            episodes=episodes,
             wipe_gen_logs=wipe_gen_logs,
-            playlist_no_dedupe=playlist_no_dedupe,
         ),
     ]
 
@@ -189,38 +184,6 @@ def build_inference_replay_argv(
     ]
     if turbo:
         argv.append("--turbo")
-    return argv
-
-
-def build_editorial_playlist_argv(
-    *,
-    game: str,
-    mission: str,
-    model: str,
-    max_airtime: str | None = None,
-    max_clips: int | None = None,
-    max_per_slug: int | None = None,
-    no_dedupe: bool = False,
-) -> list[str]:
-    argv = [
-        _py(),
-        "scripts/build_playlist.py",
-        "--editorial",
-        "--model",
-        model,
-        "--game",
-        game,
-        "--mission",
-        mission,
-    ]
-    if max_airtime:
-        argv.extend(["--max-airtime", max_airtime])
-    if max_clips is not None:
-        argv.extend(["--max-clips", str(max_clips)])
-    if max_per_slug is not None:
-        argv.extend(["--max-per-slug", str(max_per_slug)])
-    if no_dedupe:
-        argv.append("--no-dedupe")
     return argv
 
 
